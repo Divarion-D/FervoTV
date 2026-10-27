@@ -16,7 +16,8 @@ app/src/main/java/app/iptvplayer/
   Repository.kt       хранение Source, load(source), httpGet(url), USER_AGENT
   Input.kt            Action, KeyEvent.toAction(), Modifier.touchActions(), isTv(), initialFocus()
   ui/SetupScreen.kt   ввод источника: SegmentedButton M3U/Xtream, поля с иконками
-  ui/SettingsScreen.kt настройки (TopAppBar + SettingItem)
+  ui/SettingsScreen.kt настройки (TopAppBar + SettingItem), «О приложении», экран «Что нового» (ChangelogScreen)
+app/src/main/assets/CHANGELOG.md     журнал изменений: «## версия — дата» + строки «- …»; показывается в приложении
   ui/Theme.kt         AppTheme: цветовая схема Material 3 (сгенерирована, см. «Дизайн»)
   ui/Components.kt    focusRing, BackButton, IconLabel, SettingItem — общие элементы
   ui/ChannelsScreen.kt поиск (M3 search bar), категории (NavigationDrawerItem / FilterChip), сетка ChannelCard
@@ -79,6 +80,10 @@ app/src/test/java/app/iptvplayer/LogoIndexTest.kt
   сеть (`USER_AGENT`, таймауты, редиректы, срок кэша логотипов), интерфейс (debounce поиска, время показа инфо, порог свайпа).
 - `Settings` (Model.kt) — то, что меняет пользователь; поля по умолчанию берутся из `Defaults`.
   Хранятся в `SharedPreferences("settings")`: `autoLogos`, `logoSource`. Отдельно от источника плейлиста (`"iptv"`).
+- **О приложении**: версия читается из установленного пакета (`PackageManager`), поэтому всегда совпадает с
+  `versionName` / `versionCode` в `app/build.gradle.kts`, а в debug-сборке помечается `· debug`.
+  `Defaults.AUTHOR` и `Defaults.GITHUB_URL` — автор и ссылка. Если браузера нет (частый случай на TV-приставках),
+  ссылка показывается во всплывающем сообщении.
 - **Новая настройка** = поле в `Settings` + дефолт в `Defaults` + чтение/запись в `Repository.settings` + строка в `SettingsScreen`
   (`SettingItem` с `trailing = { Switch(...) }` для переключателя).
 - Источник логотипов меняется кнопкой «Применить», а не по каждому символу: смена источника перекачивает базу.

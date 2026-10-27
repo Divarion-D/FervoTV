@@ -12,6 +12,10 @@ object Defaults {
     /** iptv-org API base: must serve channels.json and logos.json (https://github.com/iptv-org/api). */
     const val LOGO_SOURCE = "https://iptv-org.github.io/api"
 
+    // --- About ---
+    const val AUTHOR = "Divarion-D"
+    const val GITHUB_URL = "https://github.com/Divarion-D/FervoTV"
+
     // --- Network ---
     const val USER_AGENT = "FervoTV/0.1 (Android)"
     const val CONNECT_TIMEOUT_MS = 15_000

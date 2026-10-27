@@ -1,6 +1,14 @@
 package app.iptvplayer.ui
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -48,7 +56,13 @@ fun SettingsScreen(
     onEditSource: () -> Unit,
     onClose: () -> Unit,
 ) {
+    var changelogOpen by remember { mutableStateOf(false) }
+    if (changelogOpen) {
+        ChangelogScreen(onClose = { changelogOpen = false })
+        return
+    }
     BackHandler(onBack = onClose)
+    val ctx = LocalContext.current
     // Edited locally and applied by button, so the logo index isn't rebuilt on every keystroke.
     var logoSource by remember(settings.logoSource) { mutableStateOf(settings.logoSource) }
     val resetLogoSource = {
@@ -100,6 +114,69 @@ fun SettingsScreen(
                     onClick = { onChange(settings.copy(logoSource = logoSource.trim())) },
                     modifier = Modifier.focusRing(CircleShape),
                 ) { IconLabel(R.drawable.ic_check, "Применить") }
+            }
+
+            SectionTitle("О приложении")
+            SettingItem(R.drawable.ic_info, "Версия", remember { versionLabel(ctx) }) {}
+            SettingItem(R.drawable.ic_person, "Автор", Defaults.AUTHOR) {}
+            SettingItem(R.drawable.ic_code, "Исходный код на GitHub", Defaults.GITHUB_URL) { openUrl(ctx, Defaults.GITHUB_URL) }
+            SettingItem(R.drawable.ic_history, "Что нового", "Список изменений по версиям") { changelogOpen = true }
+        }
+    }
+}
+
+/** "0.1 · сборка 1 · debug" — from the installed package, so it always matches build.gradle.kts. */
+private fun versionLabel(ctx: Context): String {
+    @Suppress("DEPRECATION") // getPackageInfo(String, PackageInfoFlags) is API 33+
+    val info = ctx.packageManager.getPackageInfo(ctx.packageName, 0)
+    @Suppress("DEPRECATION") // longVersionCode is API 28+
+    val code = info.versionCode
+    val debug = ctx.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+    return "${info.versionName} · сборка $code" + if (debug) " · debug" else ""
+}
+
+/** TV boxes often have no browser: then show the link so it can be typed elsewhere. */
+private fun openUrl(ctx: Context, url: String) {
+    try {
+        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    } catch (e: ActivityNotFoundException) {
+        Toast.makeText(ctx, "Нет браузера. Откройте вручную: $url", Toast.LENGTH_LONG).show()
+    }
+}
+
+/** Shows assets/CHANGELOG.md: "## version — date" headings and "- item" lines. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChangelogScreen(onClose: () -> Unit) {
+    BackHandler(onBack = onClose)
+    val ctx = LocalContext.current
+    val lines = remember { ctx.assets.open("CHANGELOG.md").bufferedReader().use { it.readLines() } }
+    Column(Modifier.fillMaxSize().safeDrawingPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
+        TopAppBar(
+            title = { Text("Что нового") },
+            navigationIcon = { BackButton(onClose) },
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+        )
+        Column(
+            Modifier
+                .widthIn(max = 720.dp)
+                .fillMaxWidth()
+                // Focusable so the remote can scroll the text with the D-pad.
+                .initialFocus()
+                .focusable()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            for (line in lines) when {
+                line.startsWith("## ") -> Text(
+                    line.removePrefix("## "),
+                    Modifier.padding(top = 16.dp),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                line.startsWith("- ") -> Text("•  " + line.removePrefix("- "), style = MaterialTheme.typography.bodyMedium)
+                else -> {} // "# title" duplicates the app bar; blank lines are spacing
             }
         }
     }
