@@ -29,8 +29,6 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -55,6 +53,10 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.material3.ripple
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.focus.FocusRequester
@@ -416,6 +418,9 @@ private fun EmptyState(modifier: Modifier) {
 /**
  * Channel card: logo on top, name and "number · category" below.
  * Focus follows Google's TV guidance ("big, bold focus"): orange fill, slight scale-up and an orange glow.
+ * Not an M3 Card: the logo and the text each paint their own half (no fill under the logo) and nothing is clipped
+ * at rest — on a weak phone GPU every overlapping fill and rounded clip in a grid cell costs (ARCHITECTURE.md,
+ * «Бюджет производительности отрисовки»). The clip only exists while pressed or focused, for the ripple.
  */
 @Composable
 private fun ChannelCard(number: Int, ch: Channel, modifier: Modifier, onClick: () -> Unit) {
@@ -423,20 +428,24 @@ private fun ChannelCard(number: Int, ch: Channel, modifier: Modifier, onClick: (
     val shape = RoundedCornerShape(16.dp)
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(if (focused) 1.06f else 1f, label = "cardScale")
-    Card(
-        onClick = onClick,
-        modifier = modifier
+    Column(
+        modifier
             .zIndex(if (focused) 1f else 0f) // scaled card draws over its neighbours
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .shadow(if (focused) 24.dp else 0.dp, shape, ambientColor = c.primary, spotColor = c.primary)
-            .focusRing(shape),
-        shape = shape,
-        colors = CardDefaults.cardColors(containerColor = if (focused) c.primary else c.surfaceContainer),
-        interactionSource = interaction,
+            .focusRing(shape)
+            .then(if (pressed || focused) Modifier.clip(shape) else Modifier)
+            .clickable(interaction, ripple(), onClick = onClick),
     ) {
-        ChannelLogo(ch, Modifier.fillMaxWidth().aspectRatio(16f / 10f))
-        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+        ChannelLogo(ch, Modifier.fillMaxWidth().aspectRatio(16f / 10f), RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .background(if (focused) c.primary else c.surfaceContainer, RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp))
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        ) {
             Text(
                 ch.name,
                 style = MaterialTheme.typography.titleSmall,

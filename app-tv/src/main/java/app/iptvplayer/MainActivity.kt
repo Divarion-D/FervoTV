@@ -79,6 +79,8 @@ class MainActivity : ComponentActivity() {
                 Surface(Modifier.fillMaxSize()) { App(repo) }
             }
         }
+        // The root Surface paints the whole screen anyway: a window background under it is one more full-screen fill per frame.
+        window.setBackgroundDrawable(null)
     }
 }
 

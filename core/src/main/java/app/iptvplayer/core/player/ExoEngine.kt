@@ -1,6 +1,9 @@
 package app.iptvplayer.core.player
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.view.SurfaceView
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
@@ -37,10 +40,32 @@ class ExoEngine(ctx: Context) : PlaybackEngine {
             .build()
     }
 
+    private val main = Handler(Looper.getMainLooper())
+    private val stall = StallWatch(Defaults.BUFFER_STALL_TIMEOUT_MS)
+
+    /** Once a second while buffering: no progress for [Defaults.BUFFER_STALL_TIMEOUT_MS] → stop and show an error. */
+    private val checkStall = object : Runnable {
+        override fun run() {
+            if (exo.playbackState != Player.STATE_BUFFERING) return
+            if (stall.stalled(exo.bufferedPosition, SystemClock.elapsedRealtime())) {
+                exo.stop()
+                _state.update {
+                    it.copy(buffering = false, error = PlaybackError(PlaybackError.Kind.Network, "нет данных ${Defaults.BUFFER_STALL_TIMEOUT_MS / 1000} с"))
+                }
+            } else main.postDelayed(this, 1_000)
+        }
+    }
+
     init {
         exo.addListener(object : Player.Listener {
-            override fun onPlaybackStateChanged(state: Int) =
+            override fun onPlaybackStateChanged(state: Int) {
                 _state.update { it.copy(buffering = state == Player.STATE_BUFFERING) }
+                main.removeCallbacks(checkStall)
+                if (state == Player.STATE_BUFFERING) {
+                    stall.reset()
+                    checkStall.run()
+                }
+            }
 
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) =
                 _state.update { it.copy(paused = !playWhenReady) }
@@ -95,7 +120,32 @@ class ExoEngine(ctx: Context) : PlaybackEngine {
     override fun setVideoView(view: SurfaceView?) =
         if (view != null) exo.setVideoSurfaceView(view) else exo.clearVideoSurface()
 
-    override fun release() = exo.release()
+    override fun release() {
+        main.removeCallbacks(checkStall)
+        exo.release()
+    }
+}
+
+/**
+ * Buffering without progress: e.g. an MP4 with its index (moov) at the end, served without Range support,
+ * buffers forever and ExoPlayer never reports an error. [stalled] is fed the buffered position while buffering.
+ */
+internal class StallWatch(private val timeoutMs: Long) {
+    private var last = -1L
+    private var since = 0L
+
+    fun reset() {
+        last = -1
+    }
+
+    /** True once [progress] hasn't changed for [timeoutMs]. */
+    fun stalled(progress: Long, now: Long): Boolean {
+        if (progress != last) {
+            last = progress
+            since = now
+        }
+        return now - since >= timeoutMs
+    }
 }
 
 internal enum class Recovery { ToLiveEdge, AsHls }

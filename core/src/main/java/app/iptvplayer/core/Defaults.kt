@@ -31,6 +31,9 @@ object Defaults {
     const val READ_TIMEOUT_MS = 60_000
     const val MAX_REDIRECTS = 5
 
+    /** Playback buffering with no progress this long is an error (with retry), not an endless spinner. */
+    const val BUFFER_STALL_TIMEOUT_MS = 20_000L
+
     /** How long the downloaded logo index is used before re-downloading. */
     const val LOGO_INDEX_MAX_AGE_MS = 7L * 24 * 60 * 60 * 1000
 

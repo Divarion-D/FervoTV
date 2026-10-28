@@ -2,7 +2,9 @@ package app.iptvplayer.core.player
 
 import androidx.media3.common.PlaybackException
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ExoRecoveryTest {
@@ -23,6 +25,21 @@ class ExoRecoveryTest {
     fun otherErrorsAreShown() {
         assertNull(recovery(PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS, typed = false))
         assertNull(recovery(PlaybackException.ERROR_CODE_DECODER_INIT_FAILED, typed = false))
+    }
+
+    @Test
+    fun bufferingWithoutProgressStalls() {
+        val w = StallWatch(timeoutMs = 20_000)
+        assertFalse(w.stalled(0, now = 1_000))
+        assertFalse(w.stalled(0, now = 20_999))
+        assertTrue(w.stalled(0, now = 21_000))
+        // Progress restarts the clock.
+        assertFalse(w.stalled(500, now = 22_000))
+        assertFalse(w.stalled(500, now = 41_999))
+        assertTrue(w.stalled(500, now = 42_000))
+        // A new buffering period starts from scratch, even at the same position.
+        w.reset()
+        assertFalse(w.stalled(500, now = 50_000))
     }
 
     @Test

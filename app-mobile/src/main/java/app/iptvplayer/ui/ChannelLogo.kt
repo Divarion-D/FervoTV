@@ -23,6 +23,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
@@ -80,10 +82,10 @@ private object BrokenLogos {
 
 /**
  * Logo with an adaptive backdrop. Tries the playlist logo, then the auto-found one ([Channel.autoLogo]), then shows
- * initials on a brand gradient.
+ * initials on a brand gradient. [shape] is the backdrop's own shape, so the tile needn't clip it.
  */
 @Composable
-fun ChannelLogo(ch: Channel, modifier: Modifier = Modifier) {
+fun ChannelLogo(ch: Channel, modifier: Modifier = Modifier, shape: Shape = RectangleShape) {
     val c = MaterialTheme.colorScheme
     BrokenLogos.init(LocalContext.current)
     val candidates = remember(ch.logo, ch.autoLogo) {
@@ -103,7 +105,7 @@ fun ChannelLogo(ch: Channel, modifier: Modifier = Modifier) {
         is Backdrop.Tinted -> tinted(b.accent?.let { Color(it) } ?: c.primary)
     }
 
-    Box(modifier.background(brush), contentAlignment = Alignment.Center) {
+    Box(modifier.background(brush, shape), contentAlignment = Alignment.Center) {
         if (url == null) {
             Text(
                 initials(ch.name),
