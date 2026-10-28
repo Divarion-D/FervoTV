@@ -1,5 +1,9 @@
 # Архитектура
 
+> Это описание **текущего** состояния (v0.1). Целевая архитектура — модули `core` / `app-tv` / `app-mobile`,
+> база данных, потоковые парсеры, цепочка движков плеера — описана в
+> [`docs/spec/01-architecture.md`](spec/01-architecture.md) и вводится в фазе P0.
+
 Один модуль `app`, пакет `app.iptvplayer`. Ни DI, ни navigation-библиотеки, ни ViewModel: состояние живёт
 в Compose (`remember`), источник хранится в `SharedPreferences`.
 
