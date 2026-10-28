@@ -79,15 +79,15 @@ private object BrokenLogos {
 }
 
 /**
- * Logo with an adaptive backdrop. Tries the playlist logo, then the auto-found one, then shows initials
- * on a brand gradient.
+ * Logo with an adaptive backdrop. Tries the playlist logo, then the auto-found one ([Channel.autoLogo]), then shows
+ * initials on a brand gradient.
  */
 @Composable
-fun ChannelLogo(ch: Channel, autoLogo: String?, modifier: Modifier = Modifier) {
+fun ChannelLogo(ch: Channel, modifier: Modifier = Modifier) {
     val c = MaterialTheme.colorScheme
     BrokenLogos.init(LocalContext.current)
-    val candidates = remember(ch.logo, autoLogo) {
-        listOfNotNull(ch.logo, autoLogo).distinct().filterNot(BrokenLogos::isBroken)
+    val candidates = remember(ch.logo, ch.autoLogo) {
+        listOfNotNull(ch.logo, ch.autoLogo).distinct().filterNot(BrokenLogos::isBroken)
     }
     var attempt by remember(candidates) { mutableIntStateOf(0) }
     val url = candidates.getOrNull(attempt)

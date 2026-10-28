@@ -28,7 +28,6 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import app.iptvplayer.R
-import app.iptvplayer.core.logos.LogoIndex
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -36,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,11 +64,17 @@ import app.iptvplayer.toAction
 import app.iptvplayer.touchActions
 import kotlinx.coroutines.delay
 
+/**
+ * Plays position [startIndex] of a filtered channel list of [count] channels; [channelAt] reads a position from the
+ * database. Channel up/down goes round the list.
+ */
 @OptIn(UnstableApi::class)
 @Composable
-fun PlayerScreen(channels: List<Channel>, startIndex: Int, logos: LogoIndex?, onIndexChange: (Int) -> Unit) {
+fun PlayerScreen(count: Int, startIndex: Int, channelAt: suspend (Int) -> Channel?, onIndexChange: (Int) -> Unit) {
     val ctx = LocalContext.current
     var index by remember { mutableIntStateOf(startIndex) }
+    var ch by remember { mutableStateOf<Channel?>(null) }
+    val total by rememberUpdatedState(count) // a background refresh can change it
     var showInfo by remember { mutableStateOf(true) }
     var buffering by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -113,7 +119,9 @@ fun PlayerScreen(channels: List<Channel>, startIndex: Int, logos: LogoIndex?, on
         error = null
         showInfo = true
         onIndexChange(index)
-        exo.setMediaItem(MediaItem.fromUri(channels[index].url))
+        val next = channelAt(index) ?: return@LaunchedEffect
+        ch = next
+        exo.setMediaItem(MediaItem.fromUri(next.url))
         exo.prepare()
     }
     LaunchedEffect(index, showInfo) {
@@ -131,8 +139,8 @@ fun PlayerScreen(channels: List<Channel>, startIndex: Int, logos: LogoIndex?, on
     val handle: (Action) -> Unit = remember {
         { a ->
             when (a) {
-                Action.Up, Action.ChannelUp -> index = (index + 1).mod(channels.size)
-                Action.Down, Action.ChannelDown -> index = (index - 1).mod(channels.size)
+                Action.Up, Action.ChannelUp -> if (total > 0) index = (index + 1).mod(total)
+                Action.Down, Action.ChannelDown -> if (total > 0) index = (index - 1).mod(total)
                 Action.Ok -> if (error != null) {
                     error = null
                     exo.prepare()
@@ -145,7 +153,7 @@ fun PlayerScreen(channels: List<Channel>, startIndex: Int, logos: LogoIndex?, on
     }
 
     val focus = remember { FocusRequester() }
-    val ch = channels[index]
+    val shown = ch
     Box(
         Modifier
             .fillMaxSize()
@@ -169,7 +177,9 @@ fun PlayerScreen(channels: List<Channel>, startIndex: Int, logos: LogoIndex?, on
         )
         Box(Modifier.matchParentSize().touchActions(handle))
         if (buffering && error == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
-        if (showInfo || error != null) InfoBar(ch, logos?.find(ch), index + 1, channels.size, error, Modifier.align(Alignment.BottomStart))
+        if (shown != null && (showInfo || error != null)) {
+            InfoBar(shown, index + 1, total, error, Modifier.align(Alignment.BottomStart))
+        }
     }
     LaunchedEffect(Unit) { focus.requestFocus() }
 
@@ -186,7 +196,7 @@ fun PlayerScreen(channels: List<Channel>, startIndex: Int, logos: LogoIndex?, on
 
 /** Bottom info bar on a gradient scrim: logo, category, name, position, error. */
 @Composable
-private fun InfoBar(ch: Channel, autoLogo: String?, number: Int, total: Int, error: String?, modifier: Modifier) {
+private fun InfoBar(ch: Channel, number: Int, total: Int, error: String?, modifier: Modifier) {
     val c = MaterialTheme.colorScheme
     Row(
         modifier
@@ -195,7 +205,7 @@ private fun InfoBar(ch: Channel, autoLogo: String?, number: Int, total: Int, err
             .padding(start = 32.dp, end = 32.dp, top = 64.dp, bottom = 32.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ChannelLogo(ch, autoLogo, Modifier.size(width = 112.dp, height = 70.dp).clip(RoundedCornerShape(12.dp)))
+        ChannelLogo(ch, Modifier.size(width = 112.dp, height = 70.dp).clip(RoundedCornerShape(12.dp)))
         Spacer(Modifier.width(20.dp))
         Column(Modifier.weight(1f)) {
             Text(ch.group, style = MaterialTheme.typography.labelLarge, color = c.primary, maxLines = 1)

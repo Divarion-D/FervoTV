@@ -23,11 +23,12 @@ class LogoIndex(private val map: Map<String, String>) {
         /**
          * Cached on disk per logo source. Rebuilt (re-downloaded) when older than [Defaults.LOGO_INDEX_MAX_AGE_MS]
          * or when the playlist's channels changed. A stale cache beats none.
+         * [channels] is iterated up to twice (stamp, matching) and never held whole: it's read from the database.
          */
-        suspend fun load(ctx: Context, source: String, channels: List<Channel>): LogoIndex = withContext(Dispatchers.IO) {
+        suspend fun load(ctx: Context, source: String, channels: Sequence<Channel>): LogoIndex = withContext(Dispatchers.IO) {
             val base = source.trim().trimEnd('/')
             val file = File(ctx.cacheDir, "$PREFIX${base.hashCode().toUInt()}.tsv")
-            val stamp = "#" + channels.map { "${it.tvgId}|${it.name}" }.sorted().hashCode()
+            val stamp = "#" + stamp(channels)
             val cached = if (file.exists()) read(file) else null
             val fresh = cached != null && cached.first == stamp &&
                 System.currentTimeMillis() - file.lastModified() < Defaults.LOGO_INDEX_MAX_AGE_MS
@@ -51,6 +52,17 @@ class LogoIndex(private val map: Map<String, String>) {
                 }
             }
             LogoIndex(cached!!.second)
+        }
+
+        /** Order-independent fingerprint of what matching depends on (tvg-id, name), in one pass without sorting. */
+        private fun stamp(channels: Sequence<Channel>): String {
+            var n = 0
+            var sum = 0L
+            for (ch in channels) {
+                n++
+                sum += "${ch.tvgId}|${ch.name}".hashCode()
+            }
+            return "$n:$sum"
         }
 
         /** First line is the playlist stamp, then "key\turl" lines. */

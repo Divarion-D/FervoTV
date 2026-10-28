@@ -8,6 +8,10 @@ data class Channel(
     val group: String,
     val logo: String? = null,
     val tvgId: String? = null,
+    /** Logo found by [app.iptvplayer.core.logos.LogoIndex]; stored next to the channel in the database. */
+    val autoLogo: String? = null,
+    /** Database row id; 0 for a channel that isn't stored. */
+    val id: Long = 0,
 )
 
 sealed interface Source {

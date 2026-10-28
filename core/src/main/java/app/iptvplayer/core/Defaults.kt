@@ -36,6 +36,13 @@ object Defaults {
     /** A host with this many 4xx logo answers and no successful one is skipped as a whole. */
     const val BROKEN_LOGO_HOST_FAILS = 3
 
+    // --- Database ---
+    /** Channels written per transaction while importing a source: bounds memory, keeps readers unblocked. */
+    const val IMPORT_BATCH_SIZE = 1_000
+
+    /** Channels loaded per page of the grid (Paging 3); the first load is 3 pages. */
+    const val CHANNEL_PAGE_SIZE = 60
+
     // --- UI / input ---
     const val SEARCH_DEBOUNCE_MS = 250L
     const val PLAYER_INFO_HIDE_MS = 4_000L

@@ -3,8 +3,6 @@ package app.iptvplayer
 import android.os.Bundle
 import android.widget.Toast
 import app.iptvplayer.core.Repository
-import app.iptvplayer.core.logos.LogoIndex
-import app.iptvplayer.core.model.Channel
 import app.iptvplayer.core.model.Source
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
@@ -77,12 +75,11 @@ class MainActivity : ComponentActivity() {
 private fun App(repo: Repository) {
     var source by remember { mutableStateOf(repo.source) }
     var editing by remember { mutableStateOf(false) }
-    var channels by remember { mutableStateOf<List<Channel>?>(null) }
+    var ready by remember { mutableStateOf(false) } // the source's channels are saved in the database
     var error by remember { mutableStateOf<String?>(null) }
     var attempt by remember { mutableIntStateOf(0) }
     var settings by remember { mutableStateOf(repo.settings) }
     var settingsOpen by remember { mutableStateOf(false) }
-    var logos by remember { mutableStateOf<LogoIndex?>(null) }
     var logoStatus by remember { mutableStateOf("") }
     var refreshing by remember { mutableStateOf(false) }
     var playlistStatus by remember { mutableStateOf("") }
@@ -91,18 +88,14 @@ private fun App(repo: Repository) {
     val scope = rememberCoroutineScope()
     var logoJob by remember { mutableStateOf<Job?>(null) }
 
-    // Channels are shown right away; logos from the index fill in when it's ready.
-    suspend fun loadLogos(list: List<Channel>) {
-        logos = null
-        if (!settings.autoLogos) {
-            logoStatus = "Автоподгрузка выключена"
-            return
-        }
-        logoStatus = "Подбор логотипов…"
+    // Channels are shown right away; logos found in the index are stored next to them and fill in when ready.
+    suspend fun loadLogos(s: Source) {
+        val on = settings.autoLogos
+        logoStatus = if (on) "Подбор логотипов…" else "Автоподгрузка выключена"
         try {
-            val index = repo.logoIndex(settings.logoSource, list)
-            logos = index
-            logoStatus = "Логотипы найдены для ${list.count { index.find(it) != null }} из ${list.size} каналов"
+            // Off: clears the stored matches.
+            val (found, total) = repo.matchLogos(s, settings.logoSource.takeIf { on })
+            if (on) logoStatus = "Логотипы найдены для $found из $total каналов"
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -110,26 +103,26 @@ private fun App(repo: Repository) {
         }
     }
 
-    // One logo job at a time: a newer channel list cancels matching for the older one.
-    fun startLogos(list: List<Channel>) {
+    // One logo job at a time: a newer import cancels matching for the older one.
+    fun startLogos(s: Source) {
         logoJob?.cancel()
-        logoJob = scope.launch { loadLogos(list) }
+        logoJob = scope.launch { loadLogos(s) }
     }
 
     /**
-     * Downloads the playlist. With a cached list on screen a failure only reports (the cache stays usable offline);
-     * without one it shows the error screen.
+     * Downloads the playlist into the database. With saved channels on screen a failure only reports (they stay
+     * usable offline); without them it shows the error screen.
      */
     suspend fun refresh(s: Source) {
         refreshing = true
         playlistStatus = "Обновление…"
-        val list = try {
+        try {
             repo.load(s)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             val msg = errorText(e)
-            if (channels == null) {
+            if (!ready) {
                 error = msg
             } else {
                 playlistStatus = "Не удалось обновить: $msg"
@@ -140,33 +133,31 @@ private fun App(repo: Repository) {
             refreshing = false
         }
         playlistStatus = "Обновлён ${formatTime(System.currentTimeMillis())}"
-        if (list != channels) {
-            channels = list
-            startLogos(list)
-        }
+        ready = true
+        startLogos(s)
     }
 
-    // Logo settings changed: re-match against the already loaded channels.
+    // Logo settings changed: re-match against the saved channels.
     LaunchedEffect(settings.autoLogos, settings.logoSource) {
-        channels?.let { startLogos(it) }
+        if (ready) source?.let { startLogos(it) }
     }
 
-    // Cache first, network second: the app opens instantly and still works without internet.
+    // Saved channels first, network second: the app opens instantly and still works without internet.
     // Outside the branches below so opening/cancelling the source editor doesn't reload the playlist.
     LaunchedEffect(source, attempt) {
         val s = source ?: return@LaunchedEffect
-        channels = null
+        ready = false
         error = null
-        val cached = repo.cachedPlaylist(s)
-        if (cached == null) {
+        val savedAt = repo.savedAt(s)
+        if (savedAt == null) {
             refresh(s)
             return@LaunchedEffect
         }
-        channels = cached.channels
-        playlistStatus = "Сохранён ${formatTime(cached.savedAt)}"
+        ready = true
+        playlistStatus = "Сохранён ${formatTime(savedAt)}"
         // Logo matching starts right away, in parallel with the first frame of the grid.
-        startLogos(cached.channels)
-        if (settings.playlistRefresh.isDue(cached.savedAt)) refresh(s)
+        startLogos(s)
+        if (settings.playlistRefresh.isDue(savedAt)) refresh(s)
     }
 
     // "Обновить плейлист сейчас" in Настройки.
@@ -174,7 +165,6 @@ private fun App(repo: Repository) {
         if (refreshRequest > 0) source?.let { refresh(it) }
     }
 
-    val list = channels
     val err = error
     val src = source
     when {
@@ -210,7 +200,7 @@ private fun App(repo: Repository) {
                 }
             }
         }
-        list == null -> Column(
+        !ready -> Column(
             Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -222,7 +212,7 @@ private fun App(repo: Repository) {
                 IconLabel(R.drawable.ic_settings, "Настройки")
             }
         }
-        else -> ChannelsScreen(list, logos, onOpenSettings = { settingsOpen = true })
+        else -> ChannelsScreen(repo, src, onOpenSettings = { settingsOpen = true })
     }
 }
 

@@ -25,7 +25,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -46,6 +45,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -71,58 +71,68 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.iptvplayer.R
 import app.iptvplayer.core.Defaults
-import app.iptvplayer.core.logos.LogoIndex
+import app.iptvplayer.core.Repository
+import app.iptvplayer.core.db.ChannelFilter
 import app.iptvplayer.core.model.Channel
+import app.iptvplayer.core.model.Source
+import app.iptvplayer.core.source.cacheKey
 import app.iptvplayer.isTv
-import kotlinx.coroutines.Dispatchers
+import androidx.paging.compose.collectAsLazyPagingItems
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 
 private const val ALL = "Все"
+private val BLANK = Channel("", "", "")
 
 @Composable
-fun ChannelsScreen(channels: List<Channel>, logos: LogoIndex?, onOpenSettings: () -> Unit) {
+fun ChannelsScreen(repo: Repository, source: Source, onOpenSettings: () -> Unit) {
     val tv = LocalContext.current.isTv()
-    val counts = remember(channels) { channels.groupingBy { it.group }.eachCount() + (ALL to channels.size) }
-    val groups = remember(channels) { listOf(ALL) + channels.map { it.group }.distinct() }
+    // Straight from the database: a background refresh updates counts and the grid in place.
+    val categories by remember(source) { repo.categories(source) }.collectAsState(initial = emptyList())
+    val counts = remember(categories) { categories.associate { it.name to it.count } + (ALL to categories.sumOf { it.count }) }
+    val groups = remember(categories) { listOf(ALL) + categories.map { it.name } }
     var group by remember { mutableStateOf(ALL) }
     var query by remember { mutableStateOf("") }
-    var shown by remember { mutableStateOf(channels) }
-    var playing by remember { mutableStateOf<List<Channel>?>(null) }
-    var current by remember { mutableIntStateOf(0) } // index in `shown` to return focus to
+    var search by remember { mutableStateOf("") } // query after the input delay
+    var playing by remember { mutableStateOf<ChannelFilter?>(null) }
+    var current by remember { mutableIntStateOf(0) } // index in the filtered list to return focus to
+    var refocus by remember { mutableStateOf(true) } // on start and on return from the player
     val gridState = rememberLazyGridState()
     val currentFocus = remember { FocusRequester() }
 
     // A background playlist refresh can drop the selected category.
-    if (group != ALL && group !in counts) group = ALL
-    var lastFilter by remember { mutableStateOf<Pair<String, String>?>(null) }
+    if (group != ALL && categories.isNotEmpty() && group !in counts) group = ALL
 
-    // Keyed on `channels` too: a background refresh swaps the list in place.
-    LaunchedEffect(channels, group, query) {
+    LaunchedEffect(query) {
         if (query.isNotBlank()) delay(Defaults.SEARCH_DEBOUNCE_MS)
-        val q = query.trim()
-        shown = withContext(Dispatchers.Default) {
-            channels.filter { (group == ALL || it.group == group) && (q.isEmpty() || it.name.contains(q, ignoreCase = true)) }
-        }
-        // Back to the top only when the user changed the filter, not when a refresh replaced the list.
-        if (lastFilter != group to query) {
-            lastFilter = group to query
+        search = query.trim()
+    }
+    // By source key and category name: the same filter keeps working when a refresh replaces the rows.
+    val filter = ChannelFilter(source.cacheKey(), group.takeIf { it != ALL }, search)
+    val channels = remember(filter) { repo.channels(filter) }.collectAsLazyPagingItems()
+
+    // Back to the top only when the user changed the filter, not when a refresh replaced the list.
+    var lastFilter by remember { mutableStateOf(filter) }
+    LaunchedEffect(filter) {
+        if (filter != lastFilter) {
+            lastFilter = filter
             current = 0
             gridState.scrollToItem(0)
         }
     }
 
-    // On start and on return from the player: show (and on TV focus) the last played channel.
-    LaunchedEffect(playing) {
-        if (playing != null) return@LaunchedEffect
-        if (current < shown.size) gridState.scrollToItem(current)
+    // On start (once the first page is there) and on return from the player: show (and on TV focus) the last played channel.
+    val hasChannels = channels.itemCount > 0
+    LaunchedEffect(refocus, hasChannels) {
+        if (!refocus || !hasChannels) return@LaunchedEffect
+        if (current < channels.itemCount) gridState.scrollToItem(current)
         if (tv) {
             withFrameNanos {}
             runCatching { currentFocus.requestFocus() }
         }
+        refocus = false
     }
 
-    BackHandler(playing != null) { playing = null }
+    BackHandler(playing != null) { playing = null; refocus = true }
 
     // The player is drawn on top instead of replacing the list, so filters, scroll and focus survive.
     Box(Modifier.fillMaxSize()) {
@@ -141,7 +151,8 @@ fun ChannelsScreen(channels: List<Channel>, logos: LogoIndex?, onOpenSettings: (
             }
 
             val grid: @Composable (Modifier) -> Unit = { modifier ->
-                if (shown.isEmpty()) {
+                // Empty only once the database answered, not while the first page loads.
+                if (channels.itemCount == 0 && channels.loadState.append.endOfPaginationReached) {
                     EmptyState(modifier.fillMaxWidth())
                 } else LazyVerticalGrid(
                     GridCells.Adaptive(if (wide) 150.dp else 104.dp),
@@ -151,11 +162,13 @@ fun ChannelsScreen(channels: List<Channel>, logos: LogoIndex?, onOpenSettings: (
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    itemsIndexed(shown) { i, ch ->
+                    // Not-yet-loaded positions are placeholders (null): drawn as blank cards so the grid keeps its size.
+                    items(channels.itemCount) { i ->
+                        val ch = channels[i]
                         ChannelCard(
-                            i + 1, ch, logos?.find(ch),
+                            i + 1, ch ?: BLANK,
                             if (i == current) Modifier.focusRequester(currentFocus) else Modifier,
-                        ) { current = i; playing = shown }
+                        ) { if (ch != null) { current = i; playing = filter } }
                     }
                 }
             }
@@ -175,7 +188,9 @@ fun ChannelsScreen(channels: List<Channel>, logos: LogoIndex?, onOpenSettings: (
             }
         }
 
-        playing?.let { PlayerScreen(it, current, logos, onIndexChange = { i -> current = i }) }
+        playing?.let { f ->
+            PlayerScreen(channels.itemCount, current, { i -> repo.channelAt(f, i) }, onIndexChange = { i -> current = i })
+        }
     }
 }
 
@@ -336,7 +351,7 @@ private fun EmptyState(modifier: Modifier) {
  * Focus follows Google's TV guidance ("big, bold focus"): orange fill, slight scale-up and an orange glow.
  */
 @Composable
-private fun ChannelCard(number: Int, ch: Channel, autoLogo: String?, modifier: Modifier, onClick: () -> Unit) {
+private fun ChannelCard(number: Int, ch: Channel, modifier: Modifier, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(16.dp)
     val interaction = remember { MutableInteractionSource() }
@@ -353,7 +368,7 @@ private fun ChannelCard(number: Int, ch: Channel, autoLogo: String?, modifier: M
         colors = CardDefaults.cardColors(containerColor = if (focused) c.primary else c.surfaceContainer),
         interactionSource = interaction,
     ) {
-        ChannelLogo(ch, autoLogo, Modifier.fillMaxWidth().aspectRatio(16f / 10f))
+        ChannelLogo(ch, Modifier.fillMaxWidth().aspectRatio(16f / 10f))
         Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
             Text(
                 ch.name,

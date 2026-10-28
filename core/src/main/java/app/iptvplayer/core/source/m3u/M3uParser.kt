@@ -2,26 +2,41 @@ package app.iptvplayer.core.source.m3u
 
 import app.iptvplayer.core.model.Channel
 import app.iptvplayer.core.model.NO_GROUP
+import java.io.BufferedReader
+import java.io.Reader
+import java.io.StringReader
 import java.net.URI
 
 private val ATTR = Regex("""([\w-]+)="([^"]*)"""")
 
 /** [baseUrl] = playlist URL; relative logo paths are resolved against it. */
-fun parseM3u(text: String, baseUrl: String? = null): List<Channel> {
-    val out = ArrayList<Channel>()
+fun parseM3u(text: String, baseUrl: String? = null): List<Channel> =
+    ArrayList<Channel>().also { out -> parseM3u(StringReader(text), baseUrl) { out += it } }
+
+/**
+ * Streaming version: reads [reader] line by line and hands out channels one at a time, so memory doesn't grow
+ * with the playlist. The caller closes [reader].
+ */
+fun parseM3u(reader: Reader, baseUrl: String? = null, onChannel: (Channel) -> Unit) {
     var info: String? = null
     var extGroup: String? = null
-    for (raw in text.removePrefix("\uFEFF").lineSequence()) {
-        val line = raw.trim()
+    var first = true
+    for (raw in BufferedReader(reader).lineSequence()) {
+        val line = (if (first) raw.removePrefix("\uFEFF") else raw).trim()
+        first = false
         when {
             line.isEmpty() -> {}
             line.startsWith("#EXTINF", ignoreCase = true) -> { info = line; extGroup = null }
             line.startsWith("#EXTGRP:", ignoreCase = true) -> extGroup = line.substring(8).trim()
             line.startsWith("#") -> {}
-            else -> { out += toChannel(info, extGroup, line, baseUrl); info = null; extGroup = null }
+            else -> {
+                // A broken entry skips only itself.
+                runCatching { toChannel(info, extGroup, line, baseUrl) }.onSuccess(onChannel)
+                info = null
+                extGroup = null
+            }
         }
     }
-    return out
 }
 
 private fun toChannel(info: String?, extGroup: String?, url: String, baseUrl: String?): Channel {
