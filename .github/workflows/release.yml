@@ -32,8 +32,8 @@ jobs:
         if: github.ref_type == 'tag'
         run: |
           v="${GITHUB_REF_NAME#v}"
-          grep -q "versionName = \"$v\"" app/build.gradle.kts || {
-            echo "::error::Tag $GITHUB_REF_NAME does not match versionName in app/build.gradle.kts"; exit 1; }
+          grep -q "versionName = \"$v\"" build.gradle.kts || {
+            echo "::error::Tag $GITHUB_REF_NAME does not match versionName in build.gradle.kts"; exit 1; }
 
       - name: Keystore from secrets
         env:
@@ -48,15 +48,16 @@ jobs:
           FERVO_KEYSTORE_PASSWORD: ${{ secrets.FERVO_KEYSTORE_PASSWORD }}
           FERVO_KEY_ALIAS: ${{ secrets.FERVO_KEY_ALIAS }}
           FERVO_KEY_PASSWORD: ${{ secrets.FERVO_KEY_PASSWORD }}
-        run: ./gradlew testReleaseUnitTest lintRelease assembleRelease bundleRelease --stacktrace
+        # Tests and lint of all modules; until the end of P0 only app-tv (runs on TV and phones) is shipped.
+        run: ./gradlew testReleaseUnitTest lintRelease :app-tv:assembleRelease :app-tv:bundleRelease --stacktrace
 
       - name: Collect files
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then v="${GITHUB_REF_NAME#v}"; else v="${GITHUB_SHA::7}"; fi
           echo "VERSION=$v" >> "$GITHUB_ENV"
           mkdir dist
-          cp app/build/outputs/apk/release/app-release.apk "dist/FervoTV-$v.apk"
-          cp app/build/outputs/bundle/release/app-release.aab "dist/FervoTV-$v.aab"
+          cp app-tv/build/outputs/apk/release/app-tv-release.apk "dist/FervoTV-$v.apk"
+          cp app-tv/build/outputs/bundle/release/app-tv-release.aab "dist/FervoTV-$v.aab"
           # Refuse to ship an unsigned APK (e.g. a secret is missing). Runners have several build-tools: take the newest.
           apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
           "$apksigner" verify --print-certs "dist/FervoTV-$v.apk"
@@ -72,5 +73,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Release notes = this version's section of the in-app changelog ("## 0.2 — date").
-          awk -v v="$VERSION" '/^## /{p = index($0, "## " v " ") == 1; next} p' app/src/main/assets/CHANGELOG.md > notes.md
+          awk -v v="$VERSION" '/^## /{p = index($0, "## " v " ") == 1; next} p' core/src/main/assets/CHANGELOG.md > notes.md
           gh release create "$GITHUB_REF_NAME" dist/* --title "Fervo TV $VERSION" --notes-file notes.md

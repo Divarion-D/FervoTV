@@ -1,39 +1,64 @@
 # Архитектура
 
-> Это описание **текущего** состояния (v0.1). Целевая архитектура — модули `core` / `app-tv` / `app-mobile`,
-> база данных, потоковые парсеры, цепочка движков плеера — описана в
-> [`docs/spec/01-architecture.md`](spec/01-architecture.md) и вводится в фазе P0.
+> Это описание **текущего** состояния (v0.1, после шага P0.1 — разбиение на модули). Остальное из P0 —
+> база данных, потоковые парсеры, интерфейс движка плеера — описано в
+> [`docs/spec/01-architecture.md`](spec/01-architecture.md) и ещё не сделано.
 
-Один модуль `app`, пакет `app.iptvplayer`. Ни DI, ни navigation-библиотеки, ни ViewModel: состояние живёт
-в Compose (`remember`), источник хранится в `SharedPreferences`.
+Три Gradle-модуля:
+
+| Модуль | Что | Зависит от |
+|---|---|---|
+| `core` | Android-библиотека **без Compose**: модели, источники и парсеры, кэш плейлиста, логотипы, HTTP, команды ввода, `Defaults`, `Repository` | — |
+| `app-tv` | приложение (Compose, Media3): экраны, `MainActivity`, ресурсы. Manifest с `LEANBACK_LAUNCHER` и обычным `LAUNCHER` | `core` |
+| `app-mobile` | то же приложение для телефонов: пока **копия UI** `app-tv`, manifest только с обычным `LAUNCHER`, без баннера | `core` |
+
+До конца P0 выпускается **один APK — `app-tv`** (он, как и раньше, ставится и на TV, и на телефоны);
+`app-mobile` собирается и проверяется lint, но в релиз пока не идёт. UI двух приложений разойдётся в P1.
+Оба приложения имеют один `applicationId` (`io.github.divarion_d.fervotv`) и одну подпись: установка одного
+заменяет другое с сохранением данных. Отдельные пакеты — решение владельца при выпуске.
+
+Версия (`versionCode` / `versionName`) и подпись release — общие, в корневом `build.gradle.kts`
+(`subprojects { plugins.withId("com.android.application") … }`), чтобы их нельзя было рассинхронизировать.
+
+Ни DI, ни navigation-библиотеки, ни ViewModel: состояние живёт в Compose (`remember`), источник хранится в `SharedPreferences`.
 
 ## Файлы
 
 ```
-app/src/main/java/app/iptvplayer/
+build.gradle.kts           версии плагинов; общие для app-tv/app-mobile версия, подпись release (secret()), R8
+core/src/main/java/app/iptvplayer/core/
+  Defaults.kt              ВСЕ значения по умолчанию и настраиваемые константы (для обоих приложений)
+  Repository.kt            хранение Source и Settings, load(source), cachedPlaylist(source), logoIndex(...)
+  model/Model.kt           Channel, Source (M3u | Xtream), Settings, PlaylistRefresh, NO_GROUP
+  source/m3u/M3uParser.kt  parseM3u(text) -> List<Channel>
+  source/xtream/Xtream.kt  loadXtream(source) -> List<Channel>
+  source/PlaylistCache.kt  encodePlaylist / decodePlaylist (playlist.tsv), Source.cacheKey()
+  logos/LogoIndex.kt       база логотипов iptv-org: скачивание, кэш, поиск по tvg-id / названию; normName()
+  logos/Backdrop.kt        pickBackdrop(pixels, n): выбор подложки логотипа по пикселям (чистая функция)
+  net/Http.kt              httpGet(url), httpStream(url) { … }: User-Agent, таймауты, редиректы http↔https
+  input/Action.kt          Action, keyAction(keyCode) — таблица «клавиша → команда»
+core/src/main/assets/CHANGELOG.md  журнал изменений: «## версия — дата» + строки «- …»; попадает в оба APK, показывается в приложении
+core/src/test/java/app/iptvplayer/core/
+  source/m3u/M3uParserTest.kt, source/PlaylistCacheTest.kt, logos/LogoIndexTest.kt, logos/BackdropTest.kt
+
+app-tv/src/main/java/app/iptvplayer/       (app-mobile/… — такая же копия)
   MainActivity.kt     App(): выбор экрана — Setup / Настройки / загрузка / ошибка / каналы; загрузка базы логотипов
-  Defaults.kt         ВСЕ значения по умолчанию и настраиваемые константы
-  Model.kt            Channel, Source (M3u | Xtream), Settings, NO_GROUP
-  LogoIndex.kt        база логотипов iptv-org: скачивание, кэш, поиск по tvg-id / названию; normName()
-  M3uParser.kt        parseM3u(text) -> List<Channel>
-  Xtream.kt           loadXtream(source) -> List<Channel>
-  Repository.kt       хранение Source, load(source), httpGet(url), USER_AGENT
-  Input.kt            Action, KeyEvent.toAction(), Modifier.touchActions(), isTv(), initialFocus()
+  Input.kt            Compose-часть ввода: KeyEvent.toAction() (→ keyAction), Modifier.touchActions(), isTv(), initialFocus()
   ui/SetupScreen.kt   ввод источника: SegmentedButton M3U/Xtream, поля с иконками
   ui/SettingsScreen.kt настройки (TopAppBar + SettingItem), «О приложении», экран «Что нового» (ChangelogScreen)
-app/src/main/assets/CHANGELOG.md     журнал изменений: «## версия — дата» + строки «- …»; показывается в приложении
   ui/Theme.kt         AppTheme: цветовая схема Material 3 (сгенерирована, см. «Дизайн»)
   ui/Components.kt    focusRing, BackButton, IconLabel, SettingItem — общие элементы
   ui/ChannelsScreen.kt поиск (M3 search bar), категории (NavigationDrawerItem / FilterChip), сетка ChannelCard
-  ui/ChannelLogo.kt   логотип канала с подложкой, подобранной по пикселям логотипа; инициалы, если логотипа нет
-app/src/main/res/drawable/ic_*.xml   иконки Material Symbols Rounded
+  ui/ChannelLogo.kt   логотип канала (Coil) с подложкой из pickBackdrop; BrokenLogos; инициалы, если логотипа нет
   ui/PlayerScreen.kt  ExoPlayer, оверлей, обработка Action
-app/src/test/java/app/iptvplayer/M3uParserTest.kt
-app/src/test/java/app/iptvplayer/LogoIndexTest.kt
-app/src/test/java/app/iptvplayer/PlaylistCacheTest.kt
-.github/workflows/ci.yml       на каждый push/PR: testDebugUnitTest + lintDebug + assembleDebug (debug APK — артефакт)
-.github/workflows/release.yml  тег v<versionName>: тесты, lint, подписанные APK/AAB, GitHub Release с текстом из CHANGELOG.md
+app-tv/src/main/res/drawable/ic_*.xml   иконки Material Symbols Rounded (banner.xml — только в app-tv)
+.github/workflows/ci.yml       на каждый push/PR: testDebugUnitTest + lintDebug + assembleDebug всех модулей (оба debug APK — артефакт)
+.github/workflows/release.yml  тег v<versionName>: тесты и lint всех модулей, подписанные APK/AAB app-tv, GitHub Release с текстом из CHANGELOG.md
 ```
+
+Пакеты Kotlin: `app.iptvplayer.core.*` в `core`; в приложениях — прежние `app.iptvplayer` и `app.iptvplayer.ui`
+(namespace обоих приложений — `app.iptvplayer`, у `core` — `app.iptvplayer.core`). Изменения в UI пока
+вносятся в обе копии; проверить, что они не разошлись: `diff -r app-tv/src/main/java app-mobile/src/main/java`.
 
 ## Дизайн (Material 3)
 
@@ -51,9 +76,9 @@ app/src/test/java/app/iptvplayer/PlaylistCacheTest.kt
   - IPTV-плееры (Tvizo, Smarters и др.): нейтрально-тёмный фон и один яркий тёплый акцент.
 - **Фокус карточки канала** по гайду TV: заливка `primary`, увеличение до 1,06 и свечение цвета `primary`
   (`zIndex`, чтобы увеличенная карточка рисовалась поверх соседних).
-- **Подложка логотипа** (`ui/ChannelLogo.kt`): одна неподвижная подложка не подходит половине логотипов
+- **Подложка логотипа** (`ui/ChannelLogo.kt` рисует, `core/logos/Backdrop.kt` выбирает): одна неподвижная подложка не подходит половине логотипов
   (чёрный текст пропадает на тёмном, белый — на светлом). Поэтому после загрузки картинка уменьшается до 24×24
-  и по её пикселям выбирается подложка (результат кэшируется по URL):
+  и по её пикселям `pickBackdrop` выбирает подложку (результат кэшируется по URL):
   - логотип со своим фоном (непрозрачен на 90% и больше) — сплошной цвет его краёв, логотип как бы заполняет плитку;
   - тёмный логотип (тёмный в среднем или больше 25% почти чёрных пикселей) — светлый тёплый градиент;
   - светлый или цветной — диагональный градиент, окрашенный в основной цвет логотипа;
@@ -83,15 +108,15 @@ app/src/test/java/app/iptvplayer/PlaylistCacheTest.kt
 
 ## Значения по умолчанию и настройки
 
-- `Defaults.kt` — единственное место для дефолтов и констант: значения настроек (`AUTO_LOGOS`, `LOGO_SOURCE`),
+- `core/Defaults.kt` — единственное место для дефолтов и констант обоих приложений: значения настроек (`AUTO_LOGOS`, `LOGO_SOURCE`),
   сеть (`USER_AGENT`, таймауты, редиректы, срок кэша логотипов), интерфейс (debounce поиска, время показа инфо, порог свайпа).
 - `Settings` (Model.kt) — то, что меняет пользователь; поля по умолчанию берутся из `Defaults`.
   Хранятся в `SharedPreferences("settings")`: `autoLogos`, `logoSource`. Отдельно от источника плейлиста (`"iptv"`).
 - **О приложении**: версия читается из установленного пакета (`PackageManager`), поэтому всегда совпадает с
-  `versionName` / `versionCode` в `app/build.gradle.kts`, а в debug-сборке помечается `· debug`.
+  `versionName` / `versionCode` в корневом `build.gradle.kts`, а в debug-сборке помечается `· debug`.
   `Defaults.AUTHOR` и `Defaults.GITHUB_URL` — автор и ссылка. Если браузера нет (частый случай на TV-приставках),
   ссылка показывается во всплывающем сообщении.
-- **Новая настройка** = поле в `Settings` + дефолт в `Defaults` + чтение/запись в `Repository.settings` + строка в `SettingsScreen`
+- **Новая настройка** = поле в `Settings` + дефолт в `Defaults` + чтение/запись в `Repository.settings` (всё в `core`) + строка в `SettingsScreen` (в обоих приложениях)
   (`SettingItem` с `trailing = { Switch(...) }` для переключателя).
 - Источник логотипов меняется кнопкой «Применить», а не по каждому символу: смена источника перекачивает базу.
 
@@ -120,7 +145,7 @@ App: LaunchedEffect(source) ──▶ Repository.load(source)  [Dispatchers.IO]
   3. кэша нет (первый запуск или новый источник) — экран загрузки с кнопкой «Настройки», при ошибке — экран ошибки.
   `ChannelsScreen` подхватывает новый список и не сбрасывает при этом категорию, поиск и прокрутку
   (прокрутка в начало — только когда пользователь сам меняет фильтр).
-- **Кэш плейлиста** (`PlaylistCache.kt`): `filesDir/playlist.tsv`, а не `cacheDir`, который система может очистить.
+- **Кэш плейлиста** (`core/source/PlaylistCache.kt`): `filesDir/playlist.tsv`, а не `cacheDir`, который система может очистить.
   Первая строка — `#<ключ источника>\t<время сохранения, мс>`, дальше по строке на канал:
   `имя\tURL\tгруппа\tлоготип\ttvg-id` (табы и переводы строк внутри значений заменяются пробелами).
   Ключ — хэш `Source`: другой URL или аккаунт Xtream кэш не подхватит. Пустой ответ сервера считается ошибкой
@@ -187,7 +212,7 @@ GET …&action=get_live_streams     → [{stream_id, name, category_id, stream_i
 URL потока: {server}/live/{U}/{P}/{stream_id}.ts   (или .m3u8, если включён флаг HLS)
 ```
 
-`httpGet` сам обрабатывает редиректы (до 5): `HttpURLConnection` не переходит между http и https.
+`httpGet` (`core/net/Http.kt`) сам обрабатывает редиректы (до 5): `HttpURLConnection` не переходит между http и https.
 
 ## Воспроизведение
 
@@ -199,20 +224,22 @@ URL потока: {server}/live/{U}/{P}/{stream_id}.ts   (или .m3u8, если
 - `ERROR_CODE_BEHIND_LIVE_WINDOW` → `seekToDefaultPosition()` + `prepare()`;
 - остальные ошибки выводятся в оверлее, OK вызывает `prepare()` заново;
 - при уходе приложения в фон (`ON_STOP`) воспроизведение ставится на паузу, при возврате продолжается (`LifecycleStartEffect`);
-- User-Agent — константа `USER_AGENT` в `Repository.kt`, один и тот же для плейлистов и потоков.
+- User-Agent — константа `Defaults.USER_AGENT`, один и тот же для плейлистов и потоков.
 
 ## Ввод: пульт и сенсор
 
 Главная идея: экраны не знают про keycode и pointer-события, они работают с `Action`.
+Команды и таблица клавиш — в `core/input/Action.kt` (`keyAction(keyCode)`, без Compose);
+Compose-обёртки (`KeyEvent.toAction()`, `Modifier.touchActions`, `initialFocus`) — в `Input.kt` каждого приложения.
 
 ```kotlin
 enum class Action { Up, Down, Left, Right, Ok, ChannelUp, ChannelDown, PlayPause, Menu }
 ```
 
 ```
-Пульт / клавиатура ── KeyEvent.toAction() ──┐
-                                            ├──▶ handle(Action)   (PlayerScreen)
-Сенсор ──────────── Modifier.touchActions ─┘
+Пульт / клавиатура ── KeyEvent.toAction() → keyAction() ──┐
+                                                          ├──▶ handle(Action)   (PlayerScreen)
+Сенсор ──────────── Modifier.touchActions ───────────────┘
 Back (пульт, кнопка, жест) ──▶ BackHandler
 ```
 
@@ -223,7 +250,7 @@ Back (пульт, кнопка, жест) ──▶ BackHandler
 
 ### Как добавить новый тип ввода
 
-1. Геймпад или цифровые кнопки — добавить keycode в `KeyEvent.toAction()` (или новое значение в `Action`).
+1. Геймпад или цифровые кнопки — добавить keycode в `keyAction()` в `core` (или новое значение в `Action`).
 2. Новый жест — добавить детектор в `Modifier.touchActions`.
 3. Новое действие в плеере — ветка в `handle` в `PlayerScreen.kt`. `when` по `Action` исчерпывающий, поэтому компилятор укажет все места, которые нужно обновить.
 
@@ -231,9 +258,13 @@ Back (пульт, кнопка, жест) ──▶ BackHandler
 
 ## Манифест
 
-- `LEANBACK_LAUNCHER` + `android:banner` — приложение появляется в лаунчере Android TV.
+`app-tv`:
+- `LEANBACK_LAUNCHER` + `android:banner` — приложение появляется в лаунчере Android TV; обычный `LAUNCHER` — и в лаунчере телефона.
 - `android.software.leanback` и `android.hardware.touchscreen` с `required="false"` — один APK ставится и на TV, и на телефоны.
-- `usesCleartextTraffic="true"` — IPTV почти всегда работает по http.
+
+`app-mobile`: только обычный `LAUNCHER`, без баннера и `uses-feature`.
+
+Оба: `usesCleartextTraffic="true"` — IPTV почти всегда работает по http; одинаковые `configChanges`.
 
 ## Как расширять
 
@@ -246,9 +277,11 @@ Back (пульт, кнопка, жест) ──▶ BackHandler
 
 ## Тесты
 
-`./gradlew testDebugUnitTest`:
+`./gradlew testDebugUnitTest` (все тесты — в `core`, JVM):
 - `M3uParserTest` — атрибуты, запятая в кавычках и в имени, `#EXTGRP`, CRLF/BOM/неизвестные теги, голый список URL,
   fallback на `tvg-name`, `logo`/`tvg-logo` и относительные пути;
-- `LogoIndexTest` — `normName` и порядок поиска (сначала tvg-id, потом название).
+- `LogoIndexTest` — `normName` и порядок поиска (сначала tvg-id, потом название);
+- `PlaylistCacheTest` — кодирование/разбор `playlist.tsv`, ключ источника, `PlaylistRefresh.isDue`;
+- `BackdropTest` — выбор подложки логотипа по пикселям.
 
 Код Xtream, загрузка базы логотипов и UI unit-тестами не покрыты: `org.json` и Compose требуют Android-рантайма. Их проверяют на устройстве.

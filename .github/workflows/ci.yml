@@ -26,6 +26,7 @@ jobs:
       # Caches Gradle and validates the wrapper jar.
       - uses: gradle/actions/setup-gradle@v6
 
+      # All modules: core tests, lint of core/app-tv/app-mobile, both debug APKs.
       - name: Unit tests, lint, debug build
         run: ./gradlew testDebugUnitTest lintDebug assembleDebug --stacktrace
 
@@ -35,12 +36,14 @@ jobs:
         with:
           name: reports
           path: |
-            app/build/reports/
-            app/build/test-results/
+            */build/reports/
+            */build/test-results/
 
-      - name: Debug APK
+      - name: Debug APKs
         uses: actions/upload-artifact@v7
         with:
           name: FervoTV-debug-${{ github.sha }}
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            app-tv/build/outputs/apk/debug/app-tv-debug.apk
+            app-mobile/build/outputs/apk/debug/app-mobile-debug.apk
           retention-days: 14

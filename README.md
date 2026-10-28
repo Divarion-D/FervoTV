@@ -96,7 +96,8 @@
 - ⬜ Linux
 
 ### Сборка и выпуск
-- ✅ Unit-тесты: парсер M3U, поиск логотипов, кэш плейлиста (13 тестов)
+- 🟡 Модули `core` (без UI) / `app-tv` / `app-mobile` (шаг P0.1; UI приложений пока одинаковый, выпускается `app-tv`)
+- ✅ Unit-тесты в `core`: парсер M3U, поиск логотипов, кэш плейлиста, подложка логотипа (14 тестов)
 - ✅ Release-сборка с R8 (~2,5 МБ APK)
 - ✅ Раздел «О приложении»: версия, автор, GitHub, журнал изменений
 - ✅ Подпись release своим ключом; ID пакета `io.github.divarion_d.fervotv`
@@ -104,15 +105,15 @@
 - ✅ Релиз по тегу: подписанные APK и AAB + GitHub Release (`.github/workflows/release.yml`)
 
 ### Выпуск новой версии
-1. `app/build.gradle.kts`: увеличить `versionCode` (на 1) и `versionName` (например `0.2`).
-2. `app/src/main/assets/CHANGELOG.md`: раздел версии сверху — `## 0.2 — ДД.ММ.ГГГГ` со строками `- …`.
+1. `build.gradle.kts` (корневой, общий для обоих приложений): увеличить `versionCode` (на 1) и `versionName` (например `0.2`).
+2. `core/src/main/assets/CHANGELOG.md`: раздел версии сверху — `## 0.2 — ДД.ММ.ГГГГ` со строками `- …`.
    Этот же файл показывается в приложении («Настройки → Что нового») и становится описанием релиза на GitHub.
 3. Отметить сделанное в чеклисте выше, закоммитить, запушить и поставить тег:
    ```bash
    git tag v0.2 && git push origin v0.2
    ```
    GitHub Actions (`release.yml`) проверит, что тег совпадает с `versionName`, прогонит тесты и lint, соберёт
-   подписанные `FervoTV-0.2.apk` и `FervoTV-0.2.aab` и создаст GitHub Release.
+   подписанные `FervoTV-0.2.apk` и `FervoTV-0.2.aab` (из `app-tv`, до конца P0 — один APK для TV и телефонов) и создаст GitHub Release.
 
 ### Ключ подписи
 - Ключ: `~/.android/fervotv-release.jks` (alias `fervotv`), пароли — в `~/.gradle/gradle.properties`
@@ -145,17 +146,22 @@ export JAVA_HOME=~/.local/share/jdk-17     # или системный JDK 17+
 export ANDROID_HOME=~/Android/Sdk
 echo "sdk.dir=$ANDROID_HOME" > local.properties   # один раз
 
-./gradlew testDebugUnitTest lintDebug   # то же, что CI на каждый коммит
-./gradlew assembleDebug       # app/build/outputs/apk/debug/app-debug.apk   (~13 МБ)
-./gradlew assembleRelease     # app/build/outputs/apk/release/app-release.apk (~2,5 МБ, R8)
-./gradlew bundleRelease       # app/build/outputs/bundle/release/app-release.aab — для Google Play
+./gradlew testDebugUnitTest lintDebug   # то же, что CI на каждый коммит (все модули)
+./gradlew assembleDebug       # app-tv/build/outputs/apk/debug/app-tv-debug.apk (~13 МБ) и app-mobile/…/app-mobile-debug.apk
+./gradlew assembleRelease     # app-tv/build/outputs/apk/release/app-tv-release.apk (~2,5 МБ, R8) и app-mobile/…
+./gradlew :app-tv:bundleRelease   # app-tv/build/outputs/bundle/release/app-tv-release.aab — для Google Play
 ```
 
+Модули: `core` — всё, что не UI (модели, парсеры, Xtream, логотипы, кэш, HTTP, команды ввода, `Defaults`);
+`app-tv` и `app-mobile` — приложения (пока с одинаковым UI). До конца P0 выпускается `app-tv`: он ставится и на TV,
+и на телефоны. Подробнее — в [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 Release подписывается автоматически, если настроен ключ (см. «Ключ подписи» выше); без ключа получается
-`app-release-unsigned.apk`.
+`app-tv-release-unsigned.apk`.
 
 Интерфейс сделан в стиле Material 3. Цветовая схема (тёмная, ярко-оранжевая, тона из material-color-utilities) —
-в `app/src/main/java/app/iptvplayer/ui/Theme.kt`, иконки Material Symbols — в `app/src/main/res/drawable/ic_*.xml`.
+в `app-tv/src/main/java/app/iptvplayer/ui/Theme.kt`, иконки Material Symbols — в `app-tv/src/main/res/drawable/ic_*.xml`
+(в `app-mobile` — такие же копии).
 Подробности — в [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#дизайн-material-3).
 
 **Скорость оценивайте только по release-сборке.** Debug-сборка Compose идёт без оптимизаций и в разы медленнее.
@@ -172,7 +178,7 @@ Debug и release подписаны разными ключами, поэтом�
 2. Подключить и проверить:
    ```bash
    ~/Android/Sdk/platform-tools/adb devices          # устройство в статусе "device"
-   ~/Android/Sdk/platform-tools/adb install -r app/build/outputs/apk/debug/app-debug.apk
+   ~/Android/Sdk/platform-tools/adb install -r app-tv/build/outputs/apk/debug/app-tv-debug.apk
    ```
    Для TV по сети: `adb connect <ip-приставки>:5555`.
 3. Логи плеера: `adb logcat | grep -iE "ExoPlayer|iptvplayer"`.
@@ -186,14 +192,14 @@ Debug и release подписаны разными ключами, поэтом�
 3. Сменить источник: «Настройки» (рядом с поиском) → «Источник плейлиста…».
 
 Значения по умолчанию (источник логотипов, User-Agent, таймауты, задержки интерфейса) собраны в одном файле:
-`app/src/main/java/app/iptvplayer/Defaults.kt`.
+`core/src/main/java/app/iptvplayer/core/Defaults.kt`.
 
 Тестовый публичный плейлист (~10 тыс. каналов): `https://iptv-org.github.io/iptv/index.m3u`.
 
 ## Документация
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — устройство приложения, слой ввода (пульт/сенсор), как расширять.
-- [CHANGELOG.md](app/src/main/assets/CHANGELOG.md) — журнал изменений (тот же файл показывается в приложении).
+- [CHANGELOG.md](core/src/main/assets/CHANGELOG.md) — журнал изменений (тот же файл показывается в приложении).
 
 ## Стек
 
