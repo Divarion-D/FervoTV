@@ -17,6 +17,10 @@ object Defaults {
     /** The cached playlist opens instantly either way; this only decides when it's re-downloaded in the background. */
     val PLAYLIST_REFRESH = PlaylistRefresh.ON_START
 
+    /** N for "every N days" and the values offered for it. */
+    const val PLAYLIST_REFRESH_DAYS = 3
+    val PLAYLIST_REFRESH_DAYS_OPTIONS = listOf(2, 3, 5, 7, 10, 14, 30)
+
     // --- About ---
     const val AUTHOR = "Divarion-D"
     const val GITHUB_URL = "https://github.com/Divarion-D/FervoTV"
@@ -47,4 +51,7 @@ object Defaults {
     const val SEARCH_DEBOUNCE_MS = 250L
     const val PLAYER_INFO_HIDE_MS = 4_000L
     const val SWIPE_THRESHOLD_DP = 80
+
+    /** From this many categories the category list gets its own search field. */
+    const val CATEGORY_SEARCH_MIN = 20
 }

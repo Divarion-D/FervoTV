@@ -6,6 +6,9 @@ import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
+/** Non-2xx answer; [code] lets callers tell "access denied" from other failures. */
+class HttpException(val code: Int) : IOException("HTTP $code")
+
 fun httpGet(url: String): String = httpStream(url) { it.bufferedReader().readText() }
 
 /** GET and read the body. Follows redirects manually because HttpURLConnection won't cross http<->https. */
@@ -22,7 +25,7 @@ fun <T> httpStream(url: String, read: (InputStream) -> T): T {
                 u = URL(u, c.getHeaderField("Location") ?: throw IOException("HTTP $code без Location"))
                 return@repeat
             }
-            if (code !in 200..299) throw IOException("HTTP $code")
+            if (code !in 200..299) throw HttpException(code)
             return c.inputStream.use(read)
         } finally {
             c.disconnect()

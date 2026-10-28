@@ -9,6 +9,10 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.io.IOException
 import java.io.StringReader
+import app.iptvplayer.core.model.Source
+import org.junit.Assert.assertThrows
+import java.net.ServerSocket
+import kotlin.concurrent.thread
 
 // Robolectric: android.util.JsonReader is a framework class.
 @RunWith(RobolectricTestRunner::class)
@@ -50,5 +54,30 @@ class XtreamTest {
     @Test(expected = IOException::class)
     fun notAnArrayIsAnError() {
         read("""{"user_info":{"auth":0}}""")
+    }
+
+    /** A wrong login reads as "account rejected" however the panel says it: auth = 0, 401, 403. */
+    @Test
+    fun rejectedAccount() {
+        for ((status, body) in listOf(200 to """{"user_info":{"auth":0}}""", 401 to "", 403 to "denied")) {
+            // One-request HTTP server (the account check fails, so nothing else is asked).
+            val srv = ServerSocket(0)
+            thread {
+                srv.accept().use { c ->
+                    val r = c.getInputStream().bufferedReader()
+                    while (!r.readLine().isNullOrEmpty()) {}
+                    val b = body.toByteArray()
+                    c.getOutputStream().write("HTTP/1.1 $status X\r\nContent-Length: ${b.size}\r\nConnection: close\r\n\r\n".toByteArray() + b)
+                }
+            }
+            try {
+                val e = assertThrows(IOException::class.java) {
+                    loadXtream(Source.Xtream("http://127.0.0.1:${srv.localPort}", "u", "p"), {}, {})
+                }
+                assertEquals(ACCOUNT_REJECTED, e.message)
+            } finally {
+                srv.close()
+            }
+        }
     }
 }

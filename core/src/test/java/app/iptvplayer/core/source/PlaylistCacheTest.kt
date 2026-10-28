@@ -42,11 +42,12 @@ class PlaylistCacheTest {
     fun refreshPolicy() {
         val hour = 3_600_000L
         val now = 100 * 24 * hour
-        assertTrue(PlaylistRefresh.ON_START.isDue(now, now))
-        assertFalse(PlaylistRefresh.MANUAL.isDue(0, now))
-        assertFalse(PlaylistRefresh.DAILY.isDue(now - 23 * hour, now))
-        assertTrue(PlaylistRefresh.DAILY.isDue(now - 24 * hour, now))
-        assertTrue(PlaylistRefresh.HOURS_6.isDue(now - 7 * hour, now))
-        assertFalse(PlaylistRefresh.WEEKLY.isDue(now - 6 * 24 * hour, now))
+        fun due(r: PlaylistRefresh, savedAt: Long) = r.waitMs(savedAt, 0, now, 3)?.let { it <= 0 } ?: false
+        assertTrue(due(PlaylistRefresh.ON_START, now))
+        assertFalse(due(PlaylistRefresh.MANUAL, 0))
+        assertFalse(due(PlaylistRefresh.DAILY, now - 23 * hour))
+        assertTrue(due(PlaylistRefresh.DAILY, now - 24 * hour))
+        assertTrue(due(PlaylistRefresh.HOURS_6, now - 7 * hour))
+        assertFalse(due(PlaylistRefresh.WEEKLY, now - 6 * 24 * hour))
     }
 }

@@ -5,12 +5,15 @@ import android.util.JsonToken
 import app.iptvplayer.core.model.Channel
 import app.iptvplayer.core.model.NO_GROUP
 import app.iptvplayer.core.model.Source
+import app.iptvplayer.core.net.HttpException
 import app.iptvplayer.core.net.httpGet
 import app.iptvplayer.core.net.httpStream
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.net.URLEncoder
+
+internal const val ACCOUNT_REJECTED = "Xtream: аккаунт не принят — проверьте логин и пароль"
 
 /**
  * Live categories (in provider order, via [onCategory]) and channels (via [onChannel], one at a time).
@@ -20,10 +23,15 @@ fun loadXtream(s: Source.Xtream, onCategory: (String) -> Unit, onChannel: (Chann
     val base = s.server.trimEnd('/')
     val api = "$base/player_api.php?username=${enc(s.user)}&password=${enc(s.pass)}"
 
-    // optInt also accepts "1" as a string, which some panels return.
-    if (JSONObject(httpGet(api)).optJSONObject("user_info")?.optInt("auth") != 1) {
-        throw IOException("Xtream: неверный логин или пароль")
+    // Some panels answer a wrong login with 401/403 or an HTML page instead of auth = 0.
+    val auth = try {
+        httpGet(api)
+    } catch (e: HttpException) {
+        if (e.code == 401 || e.code == 403) throw IOException(ACCOUNT_REJECTED) else throw e
     }
+    val info = runCatching { JSONObject(auth) }.getOrNull() ?: throw IOException("Xtream: сервер ответил не как Xtream Codes")
+    // optInt also accepts "1" as a string, which some panels return.
+    if (info.optJSONObject("user_info")?.optInt("auth") != 1) throw IOException(ACCOUNT_REJECTED)
 
     val cats = JSONArray(httpGet("$api&action=get_live_categories")).objects()
         .associate { it.optString("category_id") to it.optString("category_name") }

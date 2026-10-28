@@ -4,6 +4,17 @@ import android.os.Bundle
 import android.widget.Toast
 import app.iptvplayer.core.Repository
 import app.iptvplayer.core.model.Source
+import app.iptvplayer.core.player.ExoEngine
+import app.iptvplayer.core.player.PlayerSession
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.foundation.shape.RoundedCornerShape
+import android.content.Context
+import kotlinx.coroutines.delay
+import app.iptvplayer.ui.DocScreen
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Job
@@ -87,6 +98,19 @@ private fun App(repo: Repository) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var logoJob by remember { mutableStateOf<Job?>(null) }
+    var lastAttempt by remember { mutableLongStateOf(0L) } // last playlist refresh tried in this run
+    // Screens keep their state (filters, scroll, focused row) while another screen is open on top of them.
+    val screens = rememberSaveableStateHolder()
+
+    // One playback session above the screens (spec 01 §6.3); released with the activity.
+    val player = remember { PlayerSession { ExoEngine(ctx.applicationContext) } }
+    DisposableEffect(player) { onDispose { player.release() } }
+
+    // After an update: offer "Что нового" once.
+    val version = remember { installedVersion(ctx) }
+    var changelogOffer by remember { mutableStateOf(false) }
+    var changelogOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { changelogOffer = repo.offerChangelog(version.first, version.second) }
 
     // Channels are shown right away; logos found in the index are stored next to them and fill in when ready.
     suspend fun loadLogos(s: Source) {
@@ -115,6 +139,7 @@ private fun App(repo: Repository) {
      */
     suspend fun refresh(s: Source) {
         refreshing = true
+        lastAttempt = System.currentTimeMillis()
         playlistStatus = "Обновление…"
         try {
             repo.load(s)
@@ -148,6 +173,7 @@ private fun App(repo: Repository) {
         val s = source ?: return@LaunchedEffect
         ready = false
         error = null
+        lastAttempt = 0L
         val savedAt = repo.savedAt(s)
         if (savedAt == null) {
             refresh(s)
@@ -157,7 +183,18 @@ private fun App(repo: Repository) {
         playlistStatus = "Сохранён ${formatTime(savedAt)}"
         // Logo matching starts right away, in parallel with the first frame of the grid.
         startLogos(s)
-        if (settings.playlistRefresh.isDue(savedAt)) refresh(s)
+    }
+
+    // Background refresh on schedule (SRC-005), checked again for as long as the app runs: a TV app can stay open for days.
+    LaunchedEffect(source, ready, settings.playlistRefresh, settings.refreshDays) {
+        val s = source ?: return@LaunchedEffect
+        if (!ready) return@LaunchedEffect
+        while (true) {
+            val savedAt = repo.savedAt(s) ?: return@LaunchedEffect
+            val wait = settings.playlistRefresh.waitMs(savedAt, lastAttempt, System.currentTimeMillis(), settings.refreshDays)
+                ?: return@LaunchedEffect
+            if (wait > 0) delay(wait) else refresh(s)
+        }
     }
 
     // "Обновить плейлист сейчас" in Настройки.
@@ -168,18 +205,26 @@ private fun App(repo: Repository) {
     val err = error
     val src = source
     when {
+        changelogOpen -> DocScreen("Что нового", "CHANGELOG.md", onClose = { changelogOpen = false })
         src == null || editing -> SetupScreen(
             initial = src,
             onCancel = { editing = false },
-            onDone = { repo.source = it; source = it; editing = false; settingsOpen = false },
+            onDone = {
+                repo.source = it; source = it; editing = false; settingsOpen = false
+                // Another playlist: its screens start from scratch.
+                screens.removeState("settings")
+                screens.removeState("channels")
+            },
         )
-        settingsOpen -> SettingsScreen(
-            settings, src.label(), logoStatus, playlistStatus, refreshing,
-            onChange = { repo.settings = it; settings = it },
-            onEditSource = { editing = true },
-            onRefreshNow = { refreshRequest++ },
-            onClose = { settingsOpen = false },
-        )
+        settingsOpen -> screens.SaveableStateProvider("settings") {
+            SettingsScreen(
+                settings, src.label(), logoStatus, playlistStatus, refreshing,
+                onChange = { repo.settings = it; settings = it },
+                onEditSource = { editing = true },
+                onRefreshNow = { refreshRequest++ },
+                onClose = { settingsOpen = false; screens.removeState("settings") },
+            )
+        }
         err != null -> Column(
             Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
@@ -212,8 +257,36 @@ private fun App(repo: Repository) {
                 IconLabel(R.drawable.ic_settings, "Настройки")
             }
         }
-        else -> ChannelsScreen(repo, src, onOpenSettings = { settingsOpen = true })
+        else -> screens.SaveableStateProvider("channels") {
+            ChannelsScreen(repo, src, player, onOpenSettings = { settingsOpen = true })
+        }
     }
+
+    if (changelogOffer) {
+        val shape = RoundedCornerShape(50)
+        AlertDialog(
+            onDismissRequest = { changelogOffer = false },
+            icon = { Icon(painterResource(R.drawable.ic_history), contentDescription = null) },
+            title = { Text("Fervo TV обновлён") },
+            text = { Text("Версия ${version.first}. Посмотреть, что изменилось?") },
+            confirmButton = {
+                TextButton(
+                    onClick = { changelogOffer = false; changelogOpen = true },
+                    Modifier.initialFocus().focusRing(shape),
+                ) { Text("Что нового") }
+            },
+            dismissButton = {
+                TextButton(onClick = { changelogOffer = false }, Modifier.focusRing(shape)) { Text("Позже") }
+            },
+        )
+    }
+}
+
+/** (versionName, was updated rather than freshly installed). */
+private fun installedVersion(ctx: Context): Pair<String, Boolean> {
+    @Suppress("DEPRECATION") // getPackageInfo(String, PackageInfoFlags) is API 33+
+    val info = ctx.packageManager.getPackageInfo(ctx.packageName, 0)
+    return info.versionName.orEmpty() to (info.lastUpdateTime != info.firstInstallTime)
 }
 
 /** Human-readable reason instead of raw Java exception text. */

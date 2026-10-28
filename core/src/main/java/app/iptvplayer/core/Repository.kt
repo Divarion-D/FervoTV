@@ -25,6 +25,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileNotFoundException
 import java.io.IOException
 import kotlin.coroutines.coroutineContext
 
@@ -66,14 +67,26 @@ class Repository(private val ctx: Context, db: AppDb = AppDb.get(ctx)) {
             playlistRefresh = settingsPrefs.getString("playlistRefresh", null)
                 ?.let { name -> PlaylistRefresh.entries.find { it.name == name } }
                 ?: Defaults.PLAYLIST_REFRESH,
+            refreshDays = settingsPrefs.getInt("refreshDays", Defaults.PLAYLIST_REFRESH_DAYS),
         )
         set(v) {
             settingsPrefs.edit()
                 .putBoolean("autoLogos", v.autoLogos)
                 .putString("logoSource", v.logoSource)
                 .putString("playlistRefresh", v.playlistRefresh.name)
+                .putInt("refreshDays", v.refreshDays)
                 .apply()
         }
+
+    /**
+     * Should "Что нового" be offered for [version]? Once per new version, and only after an update ([updated]:
+     * the package was replaced, not freshly installed). Remembers [version] as seen.
+     */
+    fun offerChangelog(version: String, updated: Boolean): Boolean {
+        val offer = changelogDue(settingsPrefs.getString("seenVersion", null), version, updated)
+        settingsPrefs.edit().putString("seenVersion", version).apply()
+        return offer
+    }
 
     /**
      * When the saved channels of [s] were downloaded; null if nothing is saved for this source.
@@ -92,8 +105,14 @@ class Repository(private val ctx: Context, db: AppDb = AppDb.get(ctx)) {
                 val add = { ch: Channel -> job.ensureActive(); import.channel(ch) }
                 when (s) {
                     is Source.M3u -> if (s.url.startsWith("content://")) {
-                        val input = ctx.contentResolver.openInputStream(Uri.parse(s.url))
-                            ?: throw IOException("Не удалось открыть файл")
+                        // Permission revoked, file moved or USB drive removed: the user has to pick it again.
+                        val input = try {
+                            ctx.contentResolver.openInputStream(Uri.parse(s.url))
+                        } catch (e: SecurityException) {
+                            null
+                        } catch (e: FileNotFoundException) {
+                            null
+                        } ?: throw IOException(FILE_LOST)
                         input.reader().use { parseM3u(it, s.url, add) }
                     } else {
                         httpStream(s.url) { input -> input.reader().use { parseM3u(it, s.url, add) } }
@@ -121,6 +140,13 @@ class Repository(private val ctx: Context, db: AppDb = AppDb.get(ctx)) {
         store.applyAutoLogos(key) { ch -> job.ensureActive(); index?.find(ch) }
     }
 }
+
+internal const val FILE_LOST = "Нет доступа к файлу плейлиста (его переместили, удалили или отключили накопитель). " +
+    "Выберите файл заново: «Источник» → «Выбрать файл»"
+
+/** [seen] = the version the user last ran (null: none recorded, e.g. updated from 0.1, which didn't record it). */
+internal fun changelogDue(seen: String?, current: String, updated: Boolean): Boolean =
+    if (seen == null) updated else seen != current
 
 /**
  * v0.1 kept the last playlist in `filesDir/playlist.tsv`. Moves it into the database (keeping its source key and

@@ -76,6 +76,13 @@ import app.iptvplayer.core.db.ChannelFilter
 import app.iptvplayer.core.model.Channel
 import app.iptvplayer.core.model.Source
 import app.iptvplayer.core.source.cacheKey
+import app.iptvplayer.core.db.matchesWords
+import app.iptvplayer.core.player.PlayerSession
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.focusGroup
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.focus.focusRestorer
 import app.iptvplayer.isTv
 import androidx.paging.compose.collectAsLazyPagingItems
 import kotlinx.coroutines.delay
@@ -83,21 +90,32 @@ import kotlinx.coroutines.delay
 private const val ALL = "Все"
 private val BLANK = Channel("", "", "")
 
+/** Saveable state (category, queries, position) survives Настройки and «Что нового» opened over it (see App). */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun ChannelsScreen(repo: Repository, source: Source, onOpenSettings: () -> Unit) {
+fun ChannelsScreen(repo: Repository, source: Source, player: PlayerSession, onOpenSettings: () -> Unit) {
     val tv = LocalContext.current.isTv()
     // Straight from the database: a background refresh updates counts and the grid in place.
     val categories by remember(source) { repo.categories(source) }.collectAsState(initial = emptyList())
     val counts = remember(categories) { categories.associate { it.name to it.count } + (ALL to categories.sumOf { it.count }) }
-    val groups = remember(categories) { listOf(ALL) + categories.map { it.name } }
-    var group by remember { mutableStateOf(ALL) }
-    var query by remember { mutableStateOf("") }
-    var search by remember { mutableStateOf("") } // query after the input delay
+    var group by rememberSaveable { mutableStateOf(ALL) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var search by remember { mutableStateOf(query.trim()) } // query after the input delay
+    // Category search: only for long category lists (LIVE-002).
+    var groupQuery by rememberSaveable { mutableStateOf("") }
+    val searchGroups = categories.size >= Defaults.CATEGORY_SEARCH_MIN
+    val groups = remember(categories, groupQuery, searchGroups) {
+        listOf(ALL) + categories.map { it.name }.filter { !searchGroups || matchesWords(it, groupQuery) }
+    }
     var playing by remember { mutableStateOf<ChannelFilter?>(null) }
-    var current by remember { mutableIntStateOf(0) } // index in the filtered list to return focus to
-    var refocus by remember { mutableStateOf(true) } // on start and on return from the player
+    var current by rememberSaveable { mutableIntStateOf(0) } // index in the filtered list to return focus to
+    var refocus by remember { mutableStateOf(true) } // on start, on return from the player and from Настройки
+    var fromSettings by rememberSaveable { mutableStateOf(false) }
     val gridState = rememberLazyGridState()
     val currentFocus = remember { FocusRequester() }
+    val searchFocus = remember { FocusRequester() }
+    val groupSearchFocus = remember { FocusRequester() }
+    val settingsFocus = remember { FocusRequester() }
 
     // A background playlist refresh can drop the selected category.
     if (group != ALL && categories.isNotEmpty() && group !in counts) group = ALL
@@ -123,7 +141,17 @@ fun ChannelsScreen(repo: Repository, source: Source, onOpenSettings: () -> Unit)
     // On start (once the first page is there) and on return from the player: show (and on TV focus) the last played channel.
     val hasChannels = channels.itemCount > 0
     LaunchedEffect(refocus, hasChannels) {
-        if (!refocus || !hasChannels) return@LaunchedEffect
+        if (!refocus) return@LaunchedEffect
+        if (fromSettings) { // back on the button Настройки were opened with
+            fromSettings = false
+            refocus = false
+            if (tv) {
+                withFrameNanos {}
+                runCatching { settingsFocus.requestFocus() }
+            }
+            return@LaunchedEffect
+        }
+        if (!hasChannels) return@LaunchedEffect
         if (current < channels.itemCount) gridState.scrollToItem(current)
         if (tv) {
             withFrameNanos {}
@@ -132,6 +160,19 @@ fun ChannelsScreen(repo: Repository, source: Source, onOpenSettings: () -> Unit)
         refocus = false
     }
 
+    // Back in the list first clears a search (channels, then categories) and puts the focus on its field.
+    fun focusOnTv(fr: FocusRequester) {
+        if (tv) runCatching { fr.requestFocus() }
+    }
+    BackHandler(playing == null && (query.isNotEmpty() || groupQuery.isNotEmpty())) {
+        if (query.isNotEmpty()) {
+            query = ""
+            focusOnTv(searchFocus)
+        } else {
+            groupQuery = ""
+            focusOnTv(groupSearchFocus)
+        }
+    }
     BackHandler(playing != null) { playing = null; refocus = true }
 
     // The player is drawn on top instead of replacing the list, so filters, scroll and focus survive.
@@ -141,11 +182,11 @@ fun ChannelsScreen(repo: Repository, source: Source, onOpenSettings: () -> Unit)
 
             val header: @Composable () -> Unit = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    SearchField(query, { query = it }, Modifier.weight(1f))
+                    SearchField(query, { query = it }, "Поиск каналов", searchFocus, Modifier.weight(1f))
                     Spacer(Modifier.width(12.dp))
                     FilledTonalIconButton(
-                        onClick = onOpenSettings,
-                        modifier = Modifier.focusRing(CircleShape).size(48.dp),
+                        onClick = { fromSettings = true; onOpenSettings() },
+                        modifier = Modifier.focusRing(CircleShape).focusRequester(settingsFocus).size(48.dp),
                     ) { Icon(painterResource(R.drawable.ic_settings), contentDescription = "Настройки") }
                 }
             }
@@ -156,7 +197,8 @@ fun ChannelsScreen(repo: Repository, source: Source, onOpenSettings: () -> Unit)
                     EmptyState(modifier.fillMaxWidth())
                 } else LazyVerticalGrid(
                     GridCells.Adaptive(if (wide) 150.dp else 104.dp),
-                    modifier,
+                    // Coming back from the categories (▶) lands on the channel the focus left from (UI-005).
+                    modifier.focusRestorer().focusGroup(),
                     gridState,
                     contentPadding = PaddingValues(vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -173,8 +215,12 @@ fun ChannelsScreen(repo: Repository, source: Source, onOpenSettings: () -> Unit)
                 }
             }
 
+            val groupSearch: (@Composable (Modifier) -> Unit)? = if (searchGroups) {
+                { m -> SearchField(groupQuery, { groupQuery = it }, "Поиск категорий", groupSearchFocus, m) }
+            } else null
+
             if (wide) Row {
-                CategoryPanel(groups, counts, group, { group = it }, Modifier.width(280.dp).fillMaxHeight())
+                CategoryPanel(groups, counts, group, { group = it }, groupSearch, Modifier.width(280.dp).fillMaxHeight())
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
                     header()
@@ -183,13 +229,13 @@ fun ChannelsScreen(repo: Repository, source: Source, onOpenSettings: () -> Unit)
                 }
             } else Column {
                 header()
-                CategoryChips(groups, group) { group = it }
+                CategoryChips(groups, group, groupSearch) { group = it }
                 grid(Modifier.weight(1f))
             }
         }
 
         playing?.let { f ->
-            PlayerScreen(channels.itemCount, current, { i -> repo.channelAt(f, i) }, onIndexChange = { i -> current = i })
+            PlayerScreen(player, channels.itemCount, current, { i -> repo.channelAt(f, i) }, onIndexChange = { i -> current = i })
         }
     }
 }
@@ -199,11 +245,10 @@ fun ChannelsScreen(repo: Repository, source: Source, onOpenSettings: () -> Unit)
  * Otherwise on TV just moving focus over it pops the keyboard and traps the remote.
  */
 @Composable
-private fun SearchField(query: String, onQuery: (String) -> Unit, modifier: Modifier) {
+private fun SearchField(query: String, onQuery: (String) -> Unit, hint: String, pillFocus: FocusRequester, modifier: Modifier) {
     val c = MaterialTheme.colorScheme
     var editing by remember { mutableStateOf(false) }
     var wasEditing by remember { mutableStateOf(false) }
-    val pillFocus = remember { FocusRequester() }
     BackHandler(editing) { editing = false }
 
     if (editing) {
@@ -216,7 +261,7 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, modifier: Modi
                 .focusRing(CircleShape)
                 .focusRequester(fieldFocus)
                 .onFocusChanged { if (it.isFocused) hadFocus = true else if (hadFocus) editing = false },
-            placeholder = { Text("Поиск каналов") },
+            placeholder = { Text(hint) },
             singleLine = true,
             leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },
             trailingIcon = if (query.isEmpty()) null else {
@@ -247,7 +292,7 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, modifier: Modi
                 Icon(painterResource(R.drawable.ic_search), contentDescription = null, tint = c.onSurfaceVariant)
                 Spacer(Modifier.width(16.dp))
                 Text(
-                    query.ifEmpty { "Поиск каналов" },
+                    query.ifEmpty { hint },
                     Modifier.weight(1f),
                     color = if (query.isEmpty()) c.onSurfaceVariant else c.onSurface,
                     style = MaterialTheme.typography.bodyLarge,
@@ -269,17 +314,23 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, modifier: Modi
 }
 
 /** Wide screens / TV: categories as a navigation-drawer-style panel with channel counts. */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun CategoryPanel(
     groups: List<String>,
     counts: Map<String, Int>,
     selected: String,
     onSelect: (String) -> Unit,
+    search: (@Composable (Modifier) -> Unit)?,
     modifier: Modifier,
 ) {
     val c = MaterialTheme.colorScheme
     Surface(modifier, shape = RoundedCornerShape(24.dp), color = c.surfaceContainerLow) {
-        LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        LazyColumn(
+            Modifier.focusRestorer().focusGroup(), // ◀ from the grid comes back to the category it left
+            contentPadding = PaddingValues(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             item {
                 Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(painterResource(R.drawable.ic_live_tv), contentDescription = null, tint = c.primary)
@@ -287,14 +338,23 @@ private fun CategoryPanel(
                     Text("Категории", style = MaterialTheme.typography.titleMedium)
                 }
             }
+            if (search != null) item { search(Modifier.fillMaxWidth().padding(bottom = 8.dp)) }
             items(groups) { g ->
+                var focused by remember { mutableStateOf(false) }
                 NavigationDrawerItem(
-                    label = { Text(g, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    // Full name without cutting: a long one scrolls while focused or selected (LIVE-001).
+                    label = {
+                        Text(
+                            g, maxLines = 1,
+                            modifier = if (focused || g == selected) Modifier.basicMarquee() else Modifier,
+                            overflow = if (focused || g == selected) TextOverflow.Clip else TextOverflow.Ellipsis,
+                        )
+                    },
                     selected = g == selected,
                     onClick = { onSelect(g) },
                     icon = { Icon(painterResource(if (g == ALL) R.drawable.ic_tv else R.drawable.ic_category), contentDescription = null) },
                     badge = { Text("${counts[g] ?: 0}", style = MaterialTheme.typography.labelMedium) },
-                    modifier = Modifier.focusRing(CircleShape),
+                    modifier = Modifier.onFocusChanged { focused = it.isFocused }.focusRing(CircleShape),
                     colors = NavigationDrawerItemDefaults.colors(
                         selectedContainerColor = c.primary,
                         selectedTextColor = c.onPrimary,
@@ -309,11 +369,18 @@ private fun CategoryPanel(
 
 /** Narrow screens: categories as M3 filter chips. */
 @Composable
-private fun CategoryChips(groups: List<String>, selected: String, onSelect: (String) -> Unit) {
+private fun CategoryChips(
+    groups: List<String>,
+    selected: String,
+    search: (@Composable (Modifier) -> Unit)?,
+    onSelect: (String) -> Unit,
+) {
     LazyRow(
         contentPadding = PaddingValues(vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (search != null) item { search(Modifier.width(220.dp)) }
         items(groups) { g ->
             val isSelected = g == selected
             FilterChip(

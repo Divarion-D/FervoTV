@@ -1,8 +1,6 @@
 package app.iptvplayer.ui
 
 import android.app.Activity
-import android.view.ViewGroup
-import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
@@ -33,7 +31,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -43,86 +40,47 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LifecycleStartEffect
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MimeTypes
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.ui.PlayerView
 import app.iptvplayer.core.Defaults
 import app.iptvplayer.core.input.Action
 import app.iptvplayer.core.model.Channel
+import app.iptvplayer.core.player.PlayItem
+import app.iptvplayer.core.player.PlayerSession
+import android.view.SurfaceView
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableStateOf
 import app.iptvplayer.toAction
 import app.iptvplayer.touchActions
 import kotlinx.coroutines.delay
 
 /**
  * Plays position [startIndex] of a filtered channel list of [count] channels; [channelAt] reads a position from the
- * database. Channel up/down goes round the list.
+ * database. Channel up/down goes round the list. Playback goes through [player], never an engine directly.
  */
-@OptIn(UnstableApi::class)
 @Composable
-fun PlayerScreen(count: Int, startIndex: Int, channelAt: suspend (Int) -> Channel?, onIndexChange: (Int) -> Unit) {
-    val ctx = LocalContext.current
+fun PlayerScreen(
+    player: PlayerSession,
+    count: Int,
+    startIndex: Int,
+    channelAt: suspend (Int) -> Channel?,
+    onIndexChange: (Int) -> Unit,
+) {
     var index by remember { mutableIntStateOf(startIndex) }
     var ch by remember { mutableStateOf<Channel?>(null) }
     val total by rememberUpdatedState(count) // a background refresh can change it
     var showInfo by remember { mutableStateOf(true) }
-    var buffering by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    val exo = remember {
-        val http = DefaultHttpDataSource.Factory()
-            .setUserAgent(Defaults.USER_AGENT)
-            .setAllowCrossProtocolRedirects(true)
-        ExoPlayer.Builder(ctx)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(ctx, http)))
-            .build()
-    }
-
-    DisposableEffect(exo) {
-        exo.addListener(object : Player.Listener {
-            override fun onPlaybackStateChanged(state: Int) {
-                buffering = state == Player.STATE_BUFFERING
-            }
-
-            override fun onPlayerError(e: PlaybackException) {
-                val item = exo.currentMediaItem
-                when {
-                    e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> {
-                        exo.seekToDefaultPosition()
-                        exo.prepare()
-                    }
-                    // Type is guessed from the URL extension; extensionless HLS links fail as progressive,
-                    // so retry once as HLS before reporting.
-                    e.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED &&
-                        item != null && item.localConfiguration?.mimeType == null -> {
-                        exo.setMediaItem(item.buildUpon().setMimeType(MimeTypes.APPLICATION_M3U8).build())
-                        exo.prepare()
-                    }
-                    else -> error = e.errorCodeName.removePrefix("ERROR_CODE_")
-                }
-            }
-        })
-        onDispose { exo.release() }
-    }
+    val state by player.state.collectAsState()
+    val error = state.error?.detail
 
     LaunchedEffect(index) {
-        error = null
         showInfo = true
         onIndexChange(index)
         val next = channelAt(index) ?: return@LaunchedEffect
         ch = next
-        exo.setMediaItem(MediaItem.fromUri(next.url))
-        exo.prepare()
+        player.open(PlayItem(next.url, live = true))
     }
     LaunchedEffect(index, showInfo) {
         if (showInfo) {
@@ -130,23 +88,23 @@ fun PlayerScreen(count: Int, startIndex: Int, channelAt: suspend (Int) -> Channe
             showInfo = false
         }
     }
-    LifecycleStartEffect(exo) {
-        exo.play()
-        onStopOrDispose { exo.pause() }
+    // Background: live is released, back in front it starts again at the current moment (PLR-002).
+    LifecycleStartEffect(player) {
+        player.foreground()
+        onStopOrDispose { player.background() }
     }
+    DisposableEffect(player) { onDispose { player.close() } }
 
     // Reads state holders only, so it is safe to keep across recompositions (see touchActions).
     val handle: (Action) -> Unit = remember {
         { a ->
             when (a) {
+                // Always, also while a stream is still starting: the newer index cancels the older load.
                 Action.Up, Action.ChannelUp -> if (total > 0) index = (index + 1).mod(total)
                 Action.Down, Action.ChannelDown -> if (total > 0) index = (index - 1).mod(total)
-                Action.Ok -> if (error != null) {
-                    error = null
-                    exo.prepare()
-                } else showInfo = !showInfo
+                Action.Ok -> if (player.state.value.error != null) player.retry() else showInfo = !showInfo
                 Action.Menu -> showInfo = !showInfo
-                Action.PlayPause -> if (exo.isPlaying) exo.pause() else exo.play()
+                Action.PlayPause -> player.togglePause()
                 Action.Left, Action.Right -> {} // reserved: channel list / audio tracks
             }
         }
@@ -163,20 +121,21 @@ fun PlayerScreen(count: Int, startIndex: Int, channelAt: suspend (Int) -> Channe
             .onKeyEvent { e -> e.toAction()?.also(handle) != null }
             .focusable()
     ) {
+        // The picture keeps its aspect ratio, black bars around it.
         AndroidView(
             factory = {
-                PlayerView(it).apply {
-                    useController = false
-                    player = exo
-                    keepScreenOn = true
+                SurfaceView(it).apply {
+                    keepScreenOn = true // the screen doesn't dim while the player is open
                     isFocusable = false
-                    descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                    player.setVideoView(this)
                 }
             },
-            modifier = Modifier.fillMaxSize(),
+            modifier = (if (state.aspect > 0f) Modifier.aspectRatio(state.aspect) else Modifier.fillMaxSize())
+                .align(Alignment.Center),
+            onRelease = { player.setVideoView(null) },
         )
         Box(Modifier.matchParentSize().touchActions(handle))
-        if (buffering && error == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
+        if (state.buffering && error == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
         if (shown != null && (showInfo || error != null)) {
             InfoBar(shown, index + 1, total, error, Modifier.align(Alignment.BottomStart))
         }

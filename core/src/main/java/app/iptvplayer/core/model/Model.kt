@@ -27,19 +27,47 @@ data class Settings(
     val autoLogos: Boolean = Defaults.AUTO_LOGOS,
     val logoSource: String = Defaults.LOGO_SOURCE,
     val playlistRefresh: PlaylistRefresh = Defaults.PLAYLIST_REFRESH,
+    /** N for [PlaylistRefresh.EVERY_N_DAYS]. */
+    val refreshDays: Int = Defaults.PLAYLIST_REFRESH_DAYS,
 )
 
 /** When to re-download the playlist. The cached copy always opens first; the refresh runs in the background. */
-enum class PlaylistRefresh(val label: String, private val intervalMs: Long?) {
-    ON_START("При каждом запуске", 0L),
-    HOURS_6("Каждые 6 часов", 6 * HOUR_MS),
-    DAILY("Раз в день", 24 * HOUR_MS),
-    WEEKLY("Раз в неделю", 7 * 24 * HOUR_MS),
-    MANUAL("Только вручную", null);
+enum class PlaylistRefresh(private val title: String) {
+    ON_START("При каждом запуске"),
+    HOURS_6("Каждые 6 часов"),
+    DAILY("Раз в день"),
+    WEEKLY("Раз в неделю"),
+    EVERY_N_DAYS("Каждые N дней"),
+    MANUAL("Только вручную");
 
-    /** Is a playlist cached at [savedAt] due for a refresh? */
-    fun isDue(savedAt: Long, now: Long = System.currentTimeMillis()): Boolean =
-        intervalMs != null && now - savedAt >= intervalMs
+    /** "Каждые 3 дня" for [EVERY_N_DAYS], the plain title otherwise. */
+    fun label(days: Int): String =
+        if (this == EVERY_N_DAYS) "Каждые $days ${plural(days, "день", "дня", "дней")}" else title
+
+    /**
+     * How long to wait before the next refresh of a playlist saved at [savedAt]; 0 or less = now, null = not by time.
+     * [lastAttempt] is the last refresh tried in this run (0 = none yet): a failed one waits a full interval too,
+     * and "on start" means once per run.
+     */
+    fun waitMs(savedAt: Long, lastAttempt: Long, now: Long, days: Int): Long? {
+        val interval = when (this) {
+            ON_START -> return if (lastAttempt == 0L) 0 else null
+            HOURS_6 -> 6 * HOUR_MS
+            DAILY -> 24 * HOUR_MS
+            WEEKLY -> 7 * 24 * HOUR_MS
+            EVERY_N_DAYS -> days * 24 * HOUR_MS
+            MANUAL -> return null
+        }
+        return interval - (now - maxOf(savedAt, lastAttempt))
+    }
+}
+
+/** Russian plural: 1 день, 2 дня, 5 дней, 21 день. */
+fun plural(n: Int, one: String, few: String, many: String): String = when {
+    n % 100 in 11..14 -> many
+    n % 10 == 1 -> one
+    n % 10 in 2..4 -> few
+    else -> many
 }
 
 private const val HOUR_MS = 3_600_000L

@@ -1,4 +1,4 @@
-// Everything that isn't UI: models, sources, parsers, database, logo matching, input commands, settings, Defaults. No Compose.
+// Everything that isn't UI: models, sources, parsers, database, logo matching, playback engine, input commands, settings, Defaults. No Compose.
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
@@ -35,6 +35,13 @@ dependencies {
     implementation("androidx.room:room-paging:$room")
     ksp("androidx.room:room-compiler:$room")
     api("androidx.paging:paging-common:3.3.5") // screens get PagingData<Channel>
+
+    // Playback engine (player/ExoEngine.kt): the apps see only the PlaybackEngine interface.
+    val media3 = "1.5.1"
+    implementation("androidx.media3:media3-exoplayer:$media3")
+    implementation("androidx.media3:media3-exoplayer-hls:$media3")
+
+    implementation("com.google.zxing:core:3.5.3") // QR codes (Qr.kt); R8 keeps only the encoder
 
     testImplementation("junit:junit:4.13.2")
     // Room/SQLite and android.util.JsonReader on the JVM, no device needed.

@@ -38,6 +38,12 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import app.iptvplayer.R
+import app.iptvplayer.core.qrModules
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import kotlin.math.floor
 
 /**
  * Unmistakable focus mark for the remote: M3's own focus state layer is too subtle from a sofa.
@@ -123,4 +129,20 @@ fun SettingItem(
             .clip(shape)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = ripple(), onClick = onClick),
     )
+}
+
+/** QR code on white with a quiet zone, whole-pixel modules so there are no seams between them. */
+@Composable
+fun QrCode(text: String, modifier: Modifier) {
+    val modules = remember(text) { qrModules(text) }
+    Canvas(modifier.background(Color.White)) {
+        val n = modules.size + 8 // 4 modules of quiet zone on each side
+        val cell = floor(minOf(size.width, size.height) / n)
+        val origin = Offset((size.width - cell * modules.size) / 2, (size.height - cell * modules.size) / 2)
+        modules.forEachIndexed { y, row ->
+            row.forEachIndexed { x, dark ->
+                if (dark) drawRect(Color.Black, origin + Offset(x * cell, y * cell), Size(cell, cell))
+            }
+        }
+    }
 }

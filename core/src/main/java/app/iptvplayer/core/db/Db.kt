@@ -159,3 +159,9 @@ abstract class AppDb : RoomDatabase() {
 fun searchText(s: String): String = buildString(s.length) {
     for (c in s.lowercase()) append(if (c == 'ё') 'е' else if (c.isLetterOrDigit()) c else ' ')
 }
+
+/** The same match as the channel search, for short in-memory lists (categories): every query word starts a word of [text]. */
+fun matchesWords(text: String, query: String): Boolean {
+    val words = searchText(text).split(' ').filter { it.isNotEmpty() }
+    return searchText(query).split(' ').filter { it.isNotEmpty() }.all { q -> words.any { it.startsWith(q) } }
+}

@@ -34,9 +34,4 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("io.coil-kt:coil-compose:2.7.0") // channel logos: memory + disk cache
     implementation("androidx.paging:paging-compose:3.3.5") // channel grid straight from the database
-
-    val media3 = "1.5.1"
-    implementation("androidx.media3:media3-exoplayer:$media3")
-    implementation("androidx.media3:media3-exoplayer-hls:$media3")
-    implementation("androidx.media3:media3-ui:$media3")
 }
