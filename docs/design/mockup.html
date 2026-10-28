@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="ru" class="t-dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fervo TV — макет</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Токены — docs/spec/33-design.md, раздел 2. Тёмная схема = Theme.kt, светлая — новая (UI-017). */
+:root, .t-dark {
+  --primary:#FF8C1A; --on-primary:#3E1D00; --primary-container:#6F3800;
+  --tertiary:#7FD0FF; --error:#FFB4AB; --error-container:#93000A; --on-error-container:#FFDAD6;
+  --surface:#161310; --on-surface:#EAE1DC; --on-surface-variant:#D6C3B7;
+  --outline:#9F8D82; --outline-variant:#52443B;
+  --sc-lowest:#110D0B; --sc-low:#1F1B18; --sc:#231F1C; --sc-high:#2E2926; --sc-highest:#393431;
+  --secondary-container:#4A2A10;
+  --focus:#FF8C1A; --on-focus:#3E1D00; --focus-pressed:#F08006; --focus-ring:#FF8C1A;
+  --now:var(--primary); --now-track:rgba(234,225,220,.16);
+  --live:#B7211E; --on-live:#fff; --success:#8ED885; --warning:#FCBC03;
+  --page:#0d0b09; --page-text:#EAE1DC; --page-muted:#a8988d; --frame-shadow:0 20px 60px rgba(0,0,0,.55);
+  color-scheme: dark;
+}
+.t-light {
+  --primary:#924C00; --on-primary:#fff; --primary-container:#FFDCC4;
+  --tertiary:#00658B; --error:#BA1A1A; --error-container:#FFDAD6; --on-error-container:#93000A;
+  --surface:#FFF8F5; --on-surface:#1F1B18; --on-surface-variant:#52443B;
+  --outline:#84746A; --outline-variant:#D6C3B7;
+  --sc-lowest:#FFFFFF; --sc-low:#FCF2ED; --sc:#F6ECE7; --sc-high:#F0E6E1; --sc-highest:#EAE1DC;
+  --secondary-container:#FFDCC4;
+  --focus:#FF8C1A; --on-focus:#3E1D00; --focus-pressed:#F08006; --focus-ring:#924C00;
+  --now:var(--primary); --now-track:rgba(31,27,24,.12);
+  --live:#B7211E; --on-live:#fff; --success:#256C27; --warning:#795900;
+  --page:#efe7e2; --page-text:#1F1B18; --page-muted:#6b5d54; --frame-shadow:0 20px 50px rgba(60,40,20,.18);
+  color-scheme: light;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+html, body { background:var(--page); color:var(--page-text); }
+body { font-family:Roboto, "Roboto Flex", system-ui, -apple-system, "Segoe UI", sans-serif; font-size:16px; line-height:1.5; -webkit-font-smoothing:antialiased; }
+.num, .clock, time { font-variant-numeric:tabular-nums; font-feature-settings:"tnum"; }
+svg.i { width:24px; height:24px; flex:none; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+svg.i.s20 { width:20px; height:20px; } svg.i.s16 { width:16px; height:16px; }
+
+/* ---------- Страница ---------- */
+.page { max-width:1320px; margin:0 auto; padding:32px 16px 64px; }
+.page-head { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-end; justify-content:space-between; margin-bottom:24px; }
+.page-head h1 { font-size:32px; line-height:40px; font-weight:500; letter-spacing:-.01em; }
+.page-head h1 span { color:var(--primary); }
+.page-head p { color:var(--page-muted); max-width:720px; font-size:15px; }
+.toggle { display:inline-flex; background:var(--sc-high); border-radius:999px; padding:4px; gap:4px; }
+.toggle button { font:500 14px/20px inherit; font-family:inherit; border:0; background:transparent; color:var(--on-surface); padding:8px 16px; min-height:40px; border-radius:999px; cursor:pointer; }
+.toggle button[aria-pressed="true"] { background:var(--focus); color:var(--on-focus); }
+.toggle button:focus-visible { outline:3px solid var(--focus-ring); outline-offset:2px; }
+h2.sec { font-size:22px; line-height:28px; font-weight:500; margin:48px 0 6px; }
+p.sec-note { color:var(--page-muted); font-size:15px; margin-bottom:16px; max-width:820px; }
+figure { margin:0 0 32px; }
+figcaption { color:var(--page-muted); font-size:14px; line-height:20px; margin-top:10px; max-width:900px; }
+figcaption b { color:var(--page-text); font-weight:500; }
+
+/* ---------- Масштабируемые кадры ---------- */
+.frame-wrap { position:relative; width:100%; overflow:hidden; border-radius:14px; box-shadow:var(--frame-shadow); }
+.frame-wrap.tvw { aspect-ratio:16/9; }
+.frame { position:absolute; left:0; top:0; transform-origin:0 0; background:var(--surface); color:var(--on-surface); overflow:hidden; }
+.tv { width:960px; height:540px; font-size:16px; }
+.phones { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 390px)); gap:32px; justify-content:start; }
+.frame-wrap.phw { aspect-ratio:390/844; border-radius:36px; border:6px solid #000; }
+.phone { width:390px; height:844px; }
+
+/* ---------- Токены (полоса) ---------- */
+.tokens { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:16px; }
+.panel { background:var(--sc-low); color:var(--on-surface); border-radius:24px; padding:20px; }
+.panel h3 { font-size:16px; font-weight:500; margin-bottom:12px; }
+.sw-grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; }
+.sw { border-radius:12px; height:64px; padding:8px; font-size:11px; line-height:14px; display:flex; flex-direction:column; justify-content:flex-end; border:1px solid var(--outline-variant); }
+.sw b { font-weight:500; font-size:12px; }
+.type-row { display:flex; align-items:baseline; gap:12px; border-bottom:1px solid var(--outline-variant); padding:6px 0; }
+.type-row:last-child { border:0; }
+.type-row .tk { width:96px; flex:none; font-size:12px; color:var(--on-surface-variant); font-variant-numeric:tabular-nums; }
+
+/* ---------- Общие детали интерфейса ---------- */
+.abs { position:absolute; }
+.logo { position:relative; display:inline-flex; align-items:center; justify-content:center; flex:none; border-radius:8px; overflow:hidden; font-weight:500; letter-spacing:.02em; }
+.logo b { position:relative; font-weight:500; }
+.logo .mk { position:absolute; opacity:.9; }
+.mk-ring { width:46%; aspect-ratio:1; border:3px solid currentColor; border-radius:50%; opacity:.35 !important; }
+.mk-tri { width:44%; aspect-ratio:1; background:currentColor; clip-path:polygon(50% 0, 100% 100%, 0 100%); opacity:.28 !important; }
+.mk-dia { width:34%; aspect-ratio:1; background:currentColor; transform:rotate(45deg); opacity:.25 !important; }
+.mk-bar { width:56%; height:16%; background:currentColor; border-radius:99px; opacity:.3 !important; bottom:18%; }
+.noimg b { color:var(--primary); }
+.bar { position:relative; height:2px; background:var(--now-track); border-radius:1px; }
+.bar > i { position:absolute; left:0; top:0; bottom:0; background:var(--now); border-radius:1px; }
+.bar.b4 { height:4px; border-radius:2px; } .bar.b4 > i { border-radius:2px; }
+.badge { display:inline-flex; align-items:center; height:20px; padding:0 6px; border-radius:4px; font-size:12px; line-height:16px; font-weight:500; }
+.b-live { background:var(--live); color:var(--on-live); letter-spacing:.04em; }
+.b-q { border:1px solid var(--outline); color:var(--on-surface-variant); height:18px; padding:0 4px; font-size:11px; }
+.b-scrim { background:rgba(0,0,0,.6); color:#fff; }
+.muted { color:var(--on-surface-variant); }
+.key { display:inline-flex; align-items:center; height:22px; min-width:28px; justify-content:center; padding:0 7px; border:1px solid var(--outline); border-radius:6px; font-size:12px; font-weight:500; color:var(--on-surface); }
+.chip { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 14px; border-radius:999px; background:var(--sc-high); font-size:14px; font-weight:500; white-space:nowrap; }
+.chip.sel { color:var(--primary); }
+.chip.foc { background:var(--focus); color:var(--on-focus); }
+
+/* Картинки «видео» — нарисованы градиентами, без фото */
+.pic { position:absolute; inset:0; overflow:hidden; background:linear-gradient(180deg,#1d2547 0%,#5b3a6e 38%,#c4637a 58%,#f0a25e 70%,#2a1f2e 70.5%,#17141c 100%); }
+.pic::before { content:""; position:absolute; left:64%; top:40%; width:9%; aspect-ratio:1; border-radius:50%; background:radial-gradient(circle,#ffe2a1 0 55%, rgba(255,210,140,.0) 72%); }
+.pic::after { content:""; position:absolute; left:-5%; right:-5%; bottom:0; height:42%; background:#16121b; clip-path:polygon(0 60%,12% 30%,22% 52%,35% 18%,48% 46%,60% 28%,74% 55%,86% 22%,100% 48%,100% 100%,0 100%); }
+.pic.sea { background:linear-gradient(180deg,#0b2236 0%,#123b56 45%,#1d6a7d 62%,#0e3448 63%,#082233 100%); }
+.pic.sea::before { left:20%; top:20%; width:8%; background:radial-gradient(circle,#d6f3ff 0 45%, rgba(200,240,255,0) 70%); }
+.pic.sea::after { height:30%; background:#071a27; clip-path:polygon(0 70%,10% 55%,25% 62%,40% 45%,55% 60%,70% 50%,85% 64%,100% 52%,100% 100%,0 100%); }
+.vscrim { position:absolute; left:0; right:0; bottom:0; height:55%; background:linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,.72)); }
+
+/* ---------- TV: боковое меню, верхняя панель, подсказки ---------- */
+.rail { position:absolute; left:0; top:0; bottom:0; width:80px; background:var(--sc-low); display:flex; flex-direction:column; align-items:center; padding:24px 0; gap:6px; }
+.rail .it { position:relative; width:56px; height:40px; border-radius:999px; display:flex; align-items:center; justify-content:center; color:var(--on-surface-variant); }
+.rail .it.cur { color:var(--primary); }
+.rail .it.cur::before { content:""; position:absolute; left:-12px; top:8px; width:3px; height:24px; border-radius:2px; background:var(--now); }
+.rail .it.foc { background:var(--focus); color:var(--on-focus); }
+.rail .sp { flex:1; }
+.avatar { width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg,#7FD0FF,#2c6c8c); display:flex; align-items:center; justify-content:center; color:#00344A; font-size:13px; font-weight:500; }
+.topbar { position:absolute; left:96px; right:48px; top:24px; height:40px; display:flex; align-items:center; gap:12px; }
+.topbar .ttl { font-size:18px; line-height:24px; font-weight:500; white-space:nowrap; }
+.topbar .ttl span { color:var(--on-surface-variant); font-weight:400; }
+.topbar .grow { flex:1; }
+.clock { display:flex; align-items:baseline; gap:8px; white-space:nowrap; }
+.clock b { font-size:22px; line-height:28px; font-weight:500; }
+.clock small { font-size:14px; color:var(--on-surface-variant); }
+.hints { position:absolute; left:96px; top:492px; height:24px; display:flex; align-items:center; gap:24px; font-size:14px; color:var(--on-surface-variant); }
+.hints span { display:inline-flex; align-items:center; gap:8px; }
+.task { position:absolute; right:48px; top:488px; height:32px; padding:0 14px; border-radius:999px; background:var(--sc-highest); display:flex; align-items:center; gap:8px; font-size:14px; overflow:hidden; box-shadow:0 2px 6px rgba(0,0,0,.35); }
+.task::after { content:""; position:absolute; left:0; bottom:0; height:2px; width:42%; background:var(--now); }
+
+/* ---------- TV «Эфир» ---------- */
+.cats { position:absolute; left:96px; top:76px; width:176px; height:412px; background:var(--sc-low); border-radius:24px; padding:12px 8px; }
+.cats h4 { font-size:14px; font-weight:500; color:var(--on-surface-variant); padding:4px 10px 8px; }
+.cat { position:relative; display:flex; align-items:center; gap:8px; height:36px; padding:0 10px; border-radius:12px; font-size:14px; }
+.cat .c { margin-left:auto; color:var(--on-surface-variant); font-size:12px; font-weight:500; }
+.cat.sel { background:var(--sc-high); color:var(--primary); font-weight:500; }
+.cat.sel::before { content:""; position:absolute; left:0; top:8px; width:3px; height:20px; border-radius:2px; background:var(--now); }
+.cat.sel .c { color:var(--primary); }
+.list { position:absolute; left:288px; top:76px; width:336px; height:412px; overflow:hidden; }
+.row { position:relative; display:flex; align-items:center; gap:12px; height:56px; margin-bottom:4px; padding:0 10px 0 0; border-radius:12px; }
+.row .n { width:36px; text-align:right; font-size:16px; font-weight:500; color:var(--on-surface-variant); flex:none; }
+.row .tx { flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; height:100%; position:relative; padding-bottom:4px; }
+.row .nm { font-size:18px; line-height:24px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.row .pg, .mrow .pg { display:flex; gap:4px; font-size:14px; line-height:20px; color:var(--on-surface-variant); white-space:nowrap; }
+.pg .pt { overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.pg .pr { flex:none; }
+.row .bar { position:absolute; left:0; right:0; bottom:6px; }
+.row .ic { display:flex; gap:6px; align-items:center; color:var(--on-surface-variant); flex:none; }
+.row .ic .arc { color:var(--tertiary); }
+.row .ic .fav { color:var(--primary); }
+.row.sel::before { content:""; position:absolute; left:0; top:12px; width:3px; height:32px; border-radius:2px; background:var(--now); }
+.row.foc { background:var(--focus); color:var(--on-focus); }
+.row.foc .n, .row.foc .pg, .row.foc .ic, .row.foc .ic .arc, .row.foc .ic .fav { color:var(--on-focus); }
+.row.foc .b-q { border-color:var(--on-focus); color:var(--on-focus); }
+.row.foc .bar { background:rgba(62,29,0,.25); } .row.foc .bar > i { background:var(--on-focus); }
+.row.foc::before { background:var(--on-focus); }
+.prev { position:absolute; left:640px; top:76px; width:272px; }
+.video { position:relative; border-radius:12px; overflow:hidden; background:var(--sc-lowest); }
+.video .tl { position:absolute; left:8px; top:8px; } .video .tr { position:absolute; right:8px; top:8px; }
+.video .bl { position:absolute; left:10px; right:10px; bottom:8px; display:flex; align-items:center; gap:8px; color:#fff; font-size:14px; font-weight:500; }
+.details { margin-top:12px; height:247px; background:var(--sc-low); border-radius:24px; padding:16px; overflow:hidden; }
+.details h3 { font-size:22px; line-height:28px; font-weight:500; }
+.details .meta { font-size:14px; line-height:20px; color:var(--on-surface-variant); margin:4px 0 8px; }
+.details .desc { font-size:14px; line-height:20px; color:var(--on-surface-variant); margin-top:10px; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.details .nx-h { font-size:12px; font-weight:500; color:var(--on-surface-variant); margin:12px 0 2px; letter-spacing:.03em; }
+.details .nx { display:flex; gap:12px; font-size:14px; line-height:22px; }
+.details .nx time { width:40px; color:var(--on-surface-variant); font-weight:500; }
+
+/* ---------- TV «Телегид» ---------- */
+.gtop { position:absolute; left:96px; right:48px; top:72px; height:96px; display:flex; gap:16px; }
+.gtop .video { width:171px; height:96px; flex:none; }
+.gtop .gd { flex:1; min-width:0; }
+.gtop h3 { font-size:22px; line-height:28px; font-weight:500; display:flex; align-items:center; gap:10px; }
+.gtop .meta { font-size:14px; color:var(--on-surface-variant); }
+.gtop .desc { font-size:14px; line-height:20px; color:var(--on-surface-variant); margin-top:4px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.arcb { display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:500; color:var(--tertiary); }
+.scale { position:absolute; left:304px; width:608px; top:176px; height:20px; font-size:14px; color:var(--on-surface-variant); }
+.scale span { position:absolute; top:0; transform:translateX(-1px); padding-left:6px; border-left:1px solid var(--outline-variant); line-height:20px; }
+.scale .nowpill { position:absolute; top:-2px; border:0; transform:translateX(-50%); background:var(--focus); color:var(--on-focus); font-size:12px; font-weight:500; height:22px; line-height:22px; padding:0 8px; border-radius:999px; z-index:3; }
+.grid { position:absolute; left:96px; width:816px; top:200px; height:288px; overflow:hidden; }
+.grow-row { position:absolute; left:0; right:0; height:40px; }
+.chan { position:absolute; left:0; width:200px; height:40px; display:flex; align-items:center; gap:8px; padding-left:6px; font-size:14px; font-weight:500; }
+.chan .n { width:24px; text-align:right; color:var(--on-surface-variant); }
+.chan.sel::before { content:""; position:absolute; left:0; top:8px; width:3px; height:24px; border-radius:2px; background:var(--now); }
+.chan .arc { color:var(--tertiary); margin-left:auto; margin-right:8px; }
+.cells { position:absolute; left:208px; width:608px; top:0; height:40px; }
+.cell { position:absolute; top:0; height:40px; border-radius:8px; padding:0 10px; display:flex; align-items:center; gap:6px; font-size:14px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; background:var(--sc); }
+.cell span { overflow:hidden; text-overflow:ellipsis; }
+.cell.past { background:var(--sc-low); color:var(--on-surface-variant); font-weight:400; }
+.cell.now { background:var(--sc-high); }
+.cell.now::after { content:""; position:absolute; left:0; bottom:0; height:2px; width:var(--p); background:var(--now); }
+.cell.nodata { background:transparent; border:1px dashed var(--outline-variant); color:var(--on-surface-variant); font-weight:400; }
+.cell.foc { background:var(--focus); color:var(--on-focus); }
+.cell.foc::after { background:var(--on-focus); }
+.cell .arc { color:var(--tertiary); flex:none; }
+.nowline { position:absolute; top:200px; height:288px; width:2px; background:var(--now); z-index:2; }
+
+/* ---------- TV «Настройки» ---------- */
+.slist { position:absolute; left:96px; top:76px; width:520px; }
+.srow { display:flex; align-items:center; gap:16px; height:56px; padding:0 16px; border-radius:12px; margin-bottom:4px; }
+.srow .ic { color:var(--on-surface-variant); }
+.srow .tx { flex:1; min-width:0; }
+.srow .t { font-size:16px; line-height:22px; }
+.srow .v { font-size:14px; line-height:18px; color:var(--on-surface-variant); }
+.srow .val { font-size:14px; font-weight:500; color:var(--on-surface-variant); display:flex; align-items:center; gap:6px; }
+.srow .val b { color:var(--on-surface); font-weight:500; }
+.srow.foc { background:var(--focus); color:var(--on-focus); }
+.srow.foc .ic, .srow.foc .v { color:var(--on-focus); }
+.sw-t { width:52px; height:32px; border-radius:999px; position:relative; background:var(--sc-highest); border:2px solid var(--outline); flex:none; }
+.sw-t::after { content:""; position:absolute; top:6px; left:6px; width:16px; height:16px; border-radius:50%; background:var(--outline); }
+.sw-t.on { background:var(--primary); border-color:var(--primary); }
+.sw-t.on::after { left:auto; right:4px; top:2px; width:24px; height:24px; background:var(--on-primary); }
+.srow.foc .sw-t.on { background:var(--on-focus); border-color:var(--on-focus); }
+.srow.foc .sw-t.on::after { background:var(--focus); }
+.expl { position:absolute; left:632px; top:76px; width:280px; height:412px; background:var(--sc-low); border-radius:24px; padding:20px; }
+.expl h3 { font-size:22px; line-height:28px; font-weight:500; margin-bottom:8px; }
+.expl p { font-size:14px; line-height:20px; color:var(--on-surface-variant); margin-bottom:14px; }
+.opt { display:flex; align-items:center; gap:10px; font-size:14px; line-height:20px; padding:6px 0; }
+.opt .rd { width:18px; height:18px; border-radius:50%; border:2px solid var(--outline); flex:none; }
+.opt .rd.on { border-color:var(--primary); box-shadow:inset 0 0 0 3px var(--sc-low), inset 0 0 0 9px var(--primary); }
+.opt em { font-style:normal; color:var(--primary); font-size:12px; font-weight:500; margin-left:auto; }
+
+/* ---------- TV плеер ---------- */
+.pclock { position:absolute; right:48px; top:24px; color:#fff; text-shadow:0 1px 8px rgba(0,0,0,.6); }
+.pclock small { color:rgba(255,255,255,.75); }
+.pscrim { position:absolute; left:0; right:0; bottom:0; height:300px; background:linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,.85) 55%); }
+.info { position:absolute; left:48px; right:48px; top:300px; display:flex; gap:20px; color:#fff; }
+.info .tx { flex:1; min-width:0; }
+.info .l1 { display:flex; align-items:baseline; gap:12px; }
+.info .chn { font-size:22px; font-weight:500; color:var(--primary); }
+.info .nm { font-size:28px; line-height:36px; font-weight:500; }
+.info .cat { display:inline; height:auto; padding:0; font-size:14px; color:rgba(255,255,255,.7); }
+.info .now { display:flex; align-items:baseline; gap:12px; margin-top:6px; }
+.info .now b { font-size:22px; line-height:28px; font-weight:500; }
+.info .now span { font-size:14px; color:rgba(255,255,255,.75); }
+.info .bar { margin:8px 0 6px; background:rgba(255,255,255,.2); }
+.info .pn { font-size:14px; color:rgba(255,255,255,.7); display:flex; gap:24px; }
+.info .pn time { color:rgba(255,255,255,.9); font-weight:500; }
+.ctrls { position:absolute; left:180px; top:440px; display:flex; gap:12px; }
+.cb { position:relative; width:40px; height:40px; border-radius:50%; background:rgba(46,41,38,.8); color:#fff; display:flex; align-items:center; justify-content:center; }
+.cb.foc { background:var(--focus); color:var(--on-focus); }
+.cb .lbl { position:absolute; top:44px; left:50%; transform:translateX(-50%); font-size:12px; font-weight:500; color:#fff; white-space:nowrap; }
+.pstat { position:absolute; right:48px; top:300px; display:flex; gap:8px; }
+
+/* ---------- Телефон ---------- */
+.sbar { height:32px; display:flex; align-items:center; justify-content:space-between; padding:0 24px; font-size:14px; font-weight:500; }
+.sbar i { display:inline-block; width:18px; height:10px; border:1.5px solid currentColor; border-radius:3px; margin-left:6px; position:relative; }
+.sbar i::after { content:""; position:absolute; inset:1px 5px 1px 1px; background:currentColor; border-radius:1px; }
+.appbar { height:64px; display:flex; align-items:center; padding:0 4px 0 16px; gap:4px; }
+.appbar h2 { font-size:22px; line-height:28px; font-weight:400; flex:1; }
+.ib { width:48px; height:48px; display:flex; align-items:center; justify-content:center; border-radius:50%; color:var(--on-surface-variant); }
+.pvideo { position:relative; height:219px; }
+.nowline-m { padding:10px 16px 8px; }
+.nowline-m .t { font-size:14px; line-height:20px; display:flex; justify-content:space-between; gap:8px; }
+.nowline-m .t span { color:var(--on-surface-variant); white-space:nowrap; }
+.nowline-m .bar { margin-top:6px; }
+.chips-m { display:flex; gap:8px; padding:4px 16px 8px; overflow:hidden; }
+.chips-m .chip { font-size:14px; height:32px; padding:0 12px; border:1px solid var(--outline-variant); background:transparent; }
+.chips-m .chip.sel { background:var(--secondary-container); border-color:transparent; color:var(--on-surface); }
+.chips-m .chip.sel svg { color:var(--primary); }
+.cgrid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; padding:4px 16px; }
+.card { position:relative; }
+.card .logo { width:100%; aspect-ratio:16/10; height:auto; border-radius:16px 16px 0 0; font-size:20px; }
+.card .cbar { height:2px; background:var(--now-track); position:relative; }
+.card .cbar i { position:absolute; left:0; top:0; bottom:0; background:var(--now); }
+.card .cap { background:var(--sc); border-radius:0 0 16px 16px; padding:6px 10px 8px; }
+.card .cap .nm { font-size:14px; line-height:20px; font-weight:500; display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; }
+.card .cap .pg { font-size:11px; line-height:16px; color:var(--on-surface-variant); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.card.sel .cbar i { width:100% !important; }
+.bnav { position:absolute; left:0; right:0; bottom:0; height:80px; background:var(--sc); display:flex; justify-content:space-around; align-items:flex-start; padding-top:12px; }
+.bn { display:flex; flex-direction:column; align-items:center; gap:4px; font-size:12px; font-weight:500; color:var(--on-surface-variant); width:64px; }
+.bn .pill { width:56px; height:32px; border-radius:999px; display:flex; align-items:center; justify-content:center; }
+.bn.cur { color:var(--on-surface); } .bn.cur .pill { background:var(--secondary-container); color:var(--primary); }
+.mrow { position:relative; display:flex; align-items:center; gap:12px; height:72px; padding:0 16px; }
+.mrow .n { width:28px; text-align:right; font-weight:500; color:var(--on-surface-variant); flex:none; }
+.mrow .tx { flex:1; min-width:0; }
+.mrow .nm { font-size:16px; line-height:24px; font-weight:500; }
+.mrow .bar { margin-top:6px; }
+.mrow.sel::before { content:""; position:absolute; left:0; top:20px; width:3px; height:32px; border-radius:0 2px 2px 0; background:var(--now); }
+.mrow.sel .nm { color:var(--primary); }
+.ovl { position:absolute; inset:0; background:rgba(0,0,0,.45); color:#fff; }
+.ovl .top { position:absolute; left:4px; right:4px; top:4px; display:flex; align-items:center; gap:4px; }
+.ovl .top .ib { color:#fff; }
+.ovl .top b { flex:1; font-size:16px; font-weight:500; }
+.ovl .mid { position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); display:flex; justify-content:center; gap:40px; align-items:center; }
+.ovl .mid .ib { color:#fff; width:56px; height:56px; }
+.ovl .mid .big { background:rgba(255,255,255,.18); }
+.ovl .bot { position:absolute; left:12px; right:12px; bottom:10px; display:flex; justify-content:space-between; align-items:center; }
+.tbtn { display:inline-flex; align-items:center; gap:8px; height:40px; padding:0 16px; border-radius:999px; background:var(--sc-high); font-size:14px; font-weight:500; white-space:nowrap; }
+.tbtn svg { color:var(--primary); }
+.sub-h { font-size:12px; font-weight:500; color:var(--on-surface-variant); letter-spacing:.03em; padding:0 16px; margin:14px 0 4px; }
+.nx-m { display:flex; gap:12px; padding:2px 16px; font-size:14px; line-height:22px; }
+.nx-m time { width:40px; color:var(--on-surface-variant); font-weight:500; }
+
+/* Демонстрация состояний */
+.states { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+.state { background:var(--surface); border-radius:16px; padding:12px; position:relative; }
+.state .lbl { font-size:12px; color:var(--on-surface-variant); margin-bottom:8px; font-weight:500; }
+.state .row { margin:0; }
+.state .row.press { background:var(--focus-pressed); color:var(--on-focus); }
+.state .row.press .n, .state .row.press .pg { color:var(--on-focus); }
+.state .row.press .bar { background:rgba(62,29,0,.25); } .state .row.press .bar > i { background:var(--on-focus); }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11l8-6 8 6v8a1 1 0 0 1-1 1h-4v-5h-6v5H5a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-live" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2.5"/><path d="M8 21h8M12 2.5L9.5 5M12 2.5L14.5 5" /></symbol>
+    <symbol id="i-guide" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 10h18M3 15h18M9 10v10M15 4v6"/></symbol>
+    <symbol id="i-movie" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 3v18M16 3v18M4 8h4M4 12h4M4 16h4M16 8h4M16 12h4M16 16h4"/></symbol>
+    <symbol id="i-series" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="12" rx="2.5"/><path d="M6 5h12M9 2.5h6"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" fill="currentColor"/></symbol>
+    <symbol id="i-heart-o" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></symbol>
+    <symbol id="i-archive" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4"/><path d="M12 8v4l3 2"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></symbol>
+    <symbol id="i-recent" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></symbol>
+    <symbol id="i-tv" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2.5"/><path d="M8 20h8"/></symbol>
+    <symbol id="i-cat" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><circle cx="16.5" cy="16.5" r="3.5"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></symbol>
+    <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
+    <symbol id="i-cc" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10.5 10.2a2 2 0 1 0 0 3.6M17 10.2a2 2 0 1 0 0 3.6"/></symbol>
+    <symbol id="i-aspect" viewBox="0 0 24 24"><path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4"/></symbol>
+    <symbol id="i-prevch" viewBox="0 0 24 24"><path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 6 6"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="M10 6l6 6-6 6"/></symbol>
+    <symbol id="i-chevl" viewBox="0 0 24 24"><path d="M14 6l-6 6 6 6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 4L4 7l3 3M4 7h13M17 20l3-3-3-3M20 17H7"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" stroke-width="3"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M6 6l8 6-8 6zM18 6v12" fill="currentColor"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M18 6l-8 6 8 6zM6 6v12" fill="currentColor"/></symbol>
+    <symbol id="i-pip" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><rect x="12" y="11" width="6" height="5" rx="1" fill="currentColor"/></symbol>
+    <symbol id="i-full" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+    <symbol id="i-sort" viewBox="0 0 24 24"><path d="M4 7h16M7 12h10M10 17h4"/></symbol>
+    <symbol id="i-match" viewBox="0 0 24 24"><path d="M9 15l6-6M8 9.5L6 11.5a3.5 3.5 0 0 0 5 5l2-2M16 14.5l2-2a3.5 3.5 0 0 0-5-5l-2 2"/></symbol>
+    <symbol id="i-preview" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10 9.5v5l4-2.5z" fill="currentColor"/></symbol>
+    <symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13" r="7.5"/><path d="M12 9v4M9.5 2.5h5"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v4h-4"/></symbol>
+    <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6 4h12v16l-6-4-6 4z"/></symbol>
+  </defs>
+</svg>
+
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1>Fervo TV · <span>дизайн-система</span></h1>
+      <p>Иллюстрация к <code>docs/spec/33-design.md</code>. TV-кадры — 960×540 логических dp и масштабируются под ширину окна, телефон — 390×844. Каналы, передачи и «логотипы» выдуманы; вместо логотипов — инициалы на подложке.</p>
+    </div>
+    <div class="toggle" role="group" aria-label="Тема телефонных кадров и страницы">
+      <button type="button" data-theme="t-dark" aria-pressed="true">Тёмная</button>
+      <button type="button" data-theme="t-light" aria-pressed="false">Светлая</button>
+    </div>
+  </div>
+
+  <h2 class="sec">Токены</h2>
+  <p class="sec-note">Палитра от исходного <b>#FF8C1A</b> (material-color-utilities 0.3.0). Оранжевый — только «здесь» (фокус) и «сейчас» (эфир, прогресс, линия времени); голубой — архив и прошлое. Переключатель темы меняет эту полосу и телефонные кадры; TV-кадры всегда тёмные.</p>
+  <div class="tokens">
+    <div class="panel">
+      <h3>Цвет</h3>
+      <div class="sw-grid" id="swatches"></div>
+    </div>
+    <div class="panel">
+      <h3>Типографика TV (Roboto, цифры табличные)</h3>
+      <div class="type-row"><span class="tk">tv.display 48</span><span class="num" style="font-size:48px;line-height:56px;font-weight:500">21:47</span></div>
+      <div class="type-row"><span class="tk">tv.headline 28</span><span style="font-size:28px;line-height:36px;font-weight:500">Город 7</span></div>
+      <div class="type-row"><span class="tk">tv.title 22</span><span style="font-size:22px;line-height:28px;font-weight:500">Вечерний сеанс</span></div>
+      <div class="type-row"><span class="tk">tv.titleSmall 18</span><span style="font-size:18px;line-height:24px;font-weight:500">Название канала</span></div>
+      <div class="type-row"><span class="tk">tv.body 16</span><span style="font-size:16px;line-height:24px">Текущая передача в строке</span></div>
+      <div class="type-row"><span class="tk">tv.bodySmall 14</span><span class="num" style="font-size:14px;line-height:20px;color:var(--on-surface-variant)">19:00–20:30 · ещё 42 мин</span></div>
+      <div class="type-row"><span class="tk">tv.badge 12</span><span><span class="badge b-live">ЭФИР</span> <span class="badge b-q">HD</span></span></div>
+    </div>
+    <div class="panel t-dark" style="background:var(--sc-low);color:var(--on-surface)">
+      <h3>Состояния строки (TV)</h3>
+      <div class="states" id="states"></div>
+    </div>
+  </div>
+
+  <h2 class="sec">Телевизор</h2>
+  <figure>
+    <div class="frame-wrap tvw"><div class="frame tv t-dark" id="tv-live"></div></div>
+    <figcaption><b>TV · «Эфир».</b> Слева свёрнутое боковое меню (текущий раздел — тлеющая черта и оранжевый значок), колонка категорий (выбранная — черта и оранжевый текст на тоне выше), список каналов строками и окно предпросмотра со сведениями о передаче. Фокус на строке «Город 7»: заливка целиком, тёмный текст, прогресс перекрашен. Внизу — подсказки кнопок и индикатор фоновой задачи. Безопасные поля 48/24 dp.</figcaption>
+  </figure>
+  <figure>
+    <div class="frame-wrap tvw"><div class="frame tv t-dark" id="tv-guide"></div></div>
+    <figcaption><b>TV · «Телегид».</b> Над сеткой — окно видео и описание передачи под курсором; инструменты — чипами в верхней панели. Масштаб 150 dp на час, линия «сейчас» на трети ширины, над ней — время. Прошедшие ячейки — тон ниже, с архивом — голубой значок; текущие — с чертой прогресса; пустой промежуток — пунктир «Нет данных». Фокус — заливка ячейки.</figcaption>
+  </figure>
+  <figure>
+    <div class="frame-wrap tvw"><div class="frame tv t-dark" id="tv-settings"></div></div>
+    <figcaption><b>TV · «Настройки › Эфир».</b> Строки без подложки, значения «‹ ›» меняются ◀▶ прямо в строке, «›» — только у строк с отдельной страницей. Справа — панель пояснения к строке в фокусе с вариантами и отметкой «рекомендуется». Переключатель в строке в фокусе перекрашивается, чтобы не пропасть на оранжевом.</figcaption>
+  </figure>
+  <figure>
+    <div class="frame-wrap tvw"><div class="frame tv t-dark" id="tv-player"></div></div>
+    <figcaption><b>TV · плеер.</b> Часы всегда справа сверху. Инфо-плашка на одном градиенте: номер оранжевым, название, передачи «до / сейчас / далее» с прогрессом. Ряд кнопок панели (P3): в фокусе «Субтитры» — заливка и подпись.</figcaption>
+  </figure>
+
+  <h2 class="sec">Телефон</h2>
+  <p class="sec-note">Переключите тему вверху страницы: в светлой схеме текстовый акцент — тон 40 (#924C00), а заливка фокуса и тлеющая черта остаются фирменно-оранжевыми.</p>
+  <div class="phones">
+    <figure>
+      <div class="frame-wrap phw"><div class="frame phone" id="ph-live"></div></div>
+      <figcaption><b>Телефон · «Эфир».</b> По тапу канал играет в окне сверху (тап по окну — во весь экран), под ним — текущая передача. Категории — чипами; каналы — карточками в 3 колонки с чертой прогресса под логотипом. Нижняя навигация.</figcaption>
+    </figure>
+    <figure>
+      <div class="frame-wrap phw"><div class="frame phone" id="ph-player"></div></div>
+      <figcaption><b>Телефон · «Плеер»</b> (вертикально). Видео сверху с панелью по тапу, ниже — сведения, кнопки, «Далее» и каналы категории; играющий отмечен чертой. Цели касания — от 48 dp.</figcaption>
+    </figure>
+  </div>
+</div>
+
+<script>
+const I = (id, cls = '') => `<svg class="i ${cls}" aria-hidden="true"><use href="#i-${id}"/></svg>`;
+const CH = [
+  { n: 1, name: 'Полюс', init: 'П', plate: '#203247', ink: '#8fd0ff', mk: 'ring', prog: 'Утренний обзор', left: 24, p: 68, cat: 'Новости' },
+  { n: 2, name: 'Лабиринт', init: 'ЛБ', plate: '#F0E6E1', ink: '#2a2523', mk: 'dia', prog: 'Тайны глубин', left: 8, p: 91, fav: 1, hd: 1, arc: 1, cat: 'Познание' },
+  { n: 3, name: 'Город 7', init: 'Г7', plate: '#C8372D', ink: '#ffffff', mk: 'bar', prog: 'Вечерний сеанс', left: 42, p: 53, arc: 1, hd: 1, cat: 'Кино' },
+  { n: 4, name: 'Океаника', init: 'ОК', plate: '#173a3b', ink: '#5fd3c7', mk: 'tri', prog: 'Подводный мир', left: 15, p: 75, cat: 'Познание' },
+  { n: 5, name: 'Арена Спорт', init: 'АС', plate: '#1d4a25', ink: '#c8f5c0', mk: 'ring', prog: 'Футбол. Обзор тура', left: 63, p: 30, hd: 1, cat: 'Спорт' },
+  { n: 6, name: 'Остров', init: 'ОС', plate: null, prog: 'Мультсборник', left: 12, p: 80, cat: 'Детям' },
+  { n: 7, name: 'Ретроскоп', init: 'РС', plate: '#2f2640', ink: '#cdb1ff', mk: 'dia', prog: 'Старое кино: «Мост»', left: 71, p: 21, arc: 1, cat: 'Кино' },
+  { n: 8, name: 'Вектор', init: 'ВК', plate: '#F0E6E1', ink: '#a3241c', mk: 'tri', prog: 'Новости часа', left: 5, p: 92, cat: 'Новости' },
+  { n: 9, name: 'Терра', init: 'ТР', plate: '#2b3a1c', ink: '#d4e79a', mk: 'bar', prog: 'Дороги Севера', left: 33, p: 45, cat: 'Познание' },
+];
+const logo = (c, w, h, fs) => c.plate
+  ? `<span class="logo" style="width:${w}px;height:${h}px;background:${c.plate};color:${c.ink};font-size:${fs}px"><i class="mk mk-${c.mk}"></i><b>${c.init}</b></span>`
+  : `<span class="logo noimg" style="width:${w}px;height:${h}px;background:var(--sc-highest);font-size:${fs}px"><b>${c.init}</b></span>`;
+const bar = (p, cls = '') => `<div class="bar ${cls}"><i style="width:${p}%"></i></div>`;
+const clock = `<div class="clock"><b>21:47</b><small>ср, 28 окт</small></div>`;
+const rail = cur => `<nav class="rail">${[['search'], ['home'], ['live'], ['guide'], ['movie'], ['series']].map(([k]) =>
+  `<div class="it ${k === cur ? 'cur' : ''}">${I(k)}</div>`).join('')}
+  <div class="sp"></div><div class="it ${cur === 'more' ? 'cur' : ''}">${I('more')}</div><div class="it"><span class="avatar">Д</span></div></nav>`;
+const hints = list => `<div class="hints">${list.map(([k, t]) => `<span><span class="key">${k}</span>${t}</span>`).join('')}</div>`;
+
+/* Цвета */
+const SW = [['surface', '--surface', 'on'], ['sc-low', '--sc-low'], ['sc', '--sc'], ['sc-high', '--sc-high'], ['sc-highest', '--sc-highest'],
+  ['onSurface', '--on-surface', 'dark'], ['onSurfaceVar.', '--on-surface-variant', 'dark'], ['primary', '--primary', 'dark'], ['focus', '--focus', 'focus'],
+  ['tertiary · архив', '--tertiary', 'dark'], ['live', '--live', 'live'], ['success', '--success', 'dark'], ['warning', '--warning', 'dark'], ['error', '--error', 'dark'],
+  ['outline', '--outline', 'dark'], ['outlineVar.', '--outline-variant']];
+function paintSwatches() {
+  const cs = getComputedStyle(document.documentElement);
+  document.getElementById('swatches').innerHTML = SW.map(([n, v, k]) => {
+    const fg = k === 'dark' ? 'var(--surface)' : k === 'focus' ? 'var(--on-focus)' : k === 'live' ? '#fff' : 'var(--on-surface)';
+    return `<div class="sw" style="background:var(${v});color:${fg}"><b>${n}</b>${cs.getPropertyValue(v).trim()}</div>`;
+  }).join('');
+}
+
+/* Состояния */
+const sRow = (c, cls) => `<div class="row ${cls}"><span class="n num">${c.n}</span>${logo(c, 64, 40, 15)}<div class="tx"><div class="nm">${c.name}</div><div class="pg"><span class="pt">${c.prog}</span><span class="pr num">· ещё ${c.left} мин</span></div>${bar(c.p)}</div></div>`;
+document.getElementById('states').innerHTML =
+  [['Обычное', ''], ['Выбрано (играет)', 'sel'], ['В фокусе', 'foc'], ['Нажато', 'foc press']]
+    .map(([l, cls]) => `<div class="state"><div class="lbl">${l}</div>${sRow(CH[2], cls)}</div>`).join('');
+
+/* TV «Эфир» */
+const tvRow = (c, cls = '') => `<div class="row ${cls}"><span class="n num">${c.n}</span>${logo(c, 64, 40, 15)}
+  <div class="tx"><div class="nm">${c.name}</div><div class="pg"><span class="pt">${c.prog}</span><span class="pr num">· ещё ${c.left} мин</span></div>${bar(c.p)}</div>
+  <div class="ic">${c.fav ? I('heart', 's16 fav') : ''}${c.arc ? I('archive', 's16 arc') : ''}${c.hd ? '<span class="badge b-q">HD</span>' : ''}</div></div>`;
+document.getElementById('tv-live').innerHTML = `${rail('live')}
+  <header class="topbar"><div class="ttl">Эфир <span>· Все каналы</span></div><div class="grow"></div>
+    <span class="chip">${I('list', 's20')}Список</span><span class="chip">${I('swap', 's20')}Дом · Xtream ${I('down', 's16')}</span>${clock}</header>
+  <section class="cats"><h4>Категории</h4>
+    ${[['star', 'Избранное', 12], ['recent', 'Недавние', 30], ['tv', 'Все каналы', 215, 'sel'], ['cat', 'Новости', 24], ['cat', 'Кино', 31], ['cat', 'Познание', 22], ['cat', 'Спорт', 18], ['cat', 'Детям', 15], ['cat', 'Музыка', 9]]
+      .map(([ic, t, n, s]) => `<div class="cat ${s || ''}">${I(ic, 's20')}<span>${t}</span><span class="c num">${n}</span></div>`).join('')}
+  </section>
+  <section class="list">${CH.slice(0, 7).map((c, i) => tvRow(c, i === 2 ? 'foc sel' : '')).join('')}</section>
+  <section class="prev">
+    <div class="video" style="height:153px"><div class="pic"></div><div class="vscrim"></div>
+      <span class="badge b-live tl">ЭФИР</span><span class="badge b-scrim tr num">1080p · 50</span>
+      <div class="bl">${logo(CH[2], 40, 25, 11)}<span class="num">3</span><span>Город 7</span></div></div>
+    <div class="details"><h3>Вечерний сеанс</h3><div class="meta num">19:00–20:30 · 1 ч 30 мин · ещё 42 мин</div>${bar(53, 'b4')}
+      <div class="desc">Семейная комедия о том, как три поколения одной семьи пытаются вместе провести выходные на даче и не поссориться.</div>
+      <div class="nx-h">ДАЛЕЕ</div><div class="nx"><time>20:30</time><span>Новости</span></div><div class="nx"><time>21:00</time><span>Ночной джаз</span></div></div>
+  </section>
+  ${hints([['OK', 'Смотреть'], ['◀', 'Категории'], ['▶', 'Расписание'], ['долгий OK', 'Действия']])}
+  <div class="task">${I('refresh', 's16')}Обновление телегида · <span class="num">42 %</span></div>`;
+
+/* TV «Телегид»: 150 dp/ч = 2,5 dp/мин, начало окна 20:26, «сейчас» 21:47 → 202,5 dp */
+const T0 = 20 * 60 + 26, NOW = 21 * 60 + 47, PX = 2.5;
+const m = s => { const [h, mm] = s.split(':').map(Number); return (h < 12 ? h + 24 : h) * 60 + mm; };
+const G = [
+  [CH[0], [['19:00', '20:30', 'Утро страны'], ['20:30', '22:00', 'Документальный цикл «Горы»'], ['22:00', '23:00', 'Итоги дня'], ['23:00', '01:00', 'Ночной эфир']]],
+  [CH[1], [['20:00', '21:00', 'Загадки истории', 'arc'], ['21:00', '21:55', 'Тайны глубин', 'foc'], ['21:55', '23:30', 'Кино на ночь'], ['23:30', '01:00', 'Наука после полуночи']]],
+  [CH[2], [['19:00', '20:30', 'Вечерний сеанс', 'arc'], ['20:30', '21:00', 'Новости', 'arc'], ['21:00', '22:30', 'Ночной джаз'], ['22:30', '00:30', 'Большой фильм']], 'sel'],
+  [CH[3], [['20:00', '21:30', 'Нет данных', 'nodata'], ['21:30', '22:30', 'Подводный мир'], ['22:30', '23:45', 'Рифы Тихого океана'], ['23:45', '01:00', 'Глубина']]],
+  [CH[4], [['20:15', '21:20', 'Хоккей. Предматчевая студия'], ['21:20', '23:50', 'Футбол. Обзор тура'], ['23:50', '01:00', 'Лучшие голы']]],
+  [CH[5], [['20:00', '21:15', 'Мультсборник'], ['21:15', '22:00', 'Сказка на ночь'], ['22:00', '01:00', 'Перерыв в вещании']]],
+  [CH[6], [['20:10', '21:40', 'Старое кино: «Мост»', 'arc'], ['21:40', '23:20', 'Ретро-концерт'], ['23:20', '01:00', 'Хроника века']]],
+];
+const scale = ['20:30', '21:00', '21:30', '22:00', '22:30', '23:00', '23:30', '00:00']
+  .filter(t => Math.abs(m(t) - NOW) * PX > 50).map(t => `<span class="num" style="left:${(m(t) - T0) * PX}px">${t}</span>`).join('');
+const gRows = G.map(([c, progs, sel], r) => `<div class="grow-row" style="top:${r * 44}px">
+  <div class="chan ${sel || ''}"><span class="n num">${c.n}</span>${logo(c, 48, 30, 12)}<span>${c.name}</span>${c.arc ? I('archive', 's16 arc') : ''}</div>
+  <div class="cells">${progs.map(([a, b, t, f]) => {
+    const s = m(a), e = m(b), x = Math.max(0, (s - T0) * PX), w = (e - T0) * PX - x - 2;
+    if (w <= 8 || x >= 608) return '';
+    let cls = f === 'nodata' ? 'nodata' : e <= NOW ? 'past' : s <= NOW ? 'now' : '';
+    if (f === 'foc') cls += ' foc';
+    const p = Math.round((NOW - s) / (e - s) * 100);
+    return `<div class="cell ${cls}" style="left:${x}px;width:${Math.min(w, 608 - x)}px;--p:${p}%">${f === 'arc' ? I('archive', 's16 arc') : ''}<span>${t}</span></div>`;
+  }).join('')}</div></div>`).join('');
+document.getElementById('tv-guide').innerHTML = `${rail('guide')}
+  <header class="topbar"><div class="ttl">Телегид</div>
+    <div class="grow"></div><span class="chip">Сегодня ${I('down', 's16')}</span><span class="chip sel">${I('recent', 's16')}Сейчас</span><span class="chip">Все каналы ${I('down', 's16')}</span>
+    <span class="chip" title="Порядок">${I('sort', 's16')}</span><span class="chip" title="Поиск">${I('search', 's16')}</span><span class="chip" title="Сопоставить">${I('match', 's16')}</span><div class="clock"><b>21:47</b></div></header>
+  <div class="gtop"><div class="video"><div class="pic sea"></div><span class="badge b-live tl">ЭФИР</span></div>
+    <div class="gd"><h3>Тайны глубин <span class="arcb">${I('archive', 's16')}архив 7 дней</span></h3>
+      <div class="meta num">Лабиринт · 21:00–21:55 · 55 мин · ещё 8 мин</div>
+      <div class="desc">Как устроены экосистемы на глубине больше километра и почему там до сих пор находят новые виды. Цикл из шести серий, серия четвёртая.</div></div></div>
+  <div class="scale">${scale}<span class="nowpill num" style="left:${(NOW - T0) * PX}px">21:47</span></div>
+  <div class="grid">${gRows}</div>
+  <div class="nowline" style="left:${304 + (NOW - T0) * PX - 1}px"></div>
+  ${hints([['◀', 'Каналы'], ['OK', 'Смотреть канал'], ['долгий OK', 'Меню передачи'], ['CH±', 'Страница']])}`;
+
+/* TV «Настройки» */
+const SR = [
+  ['preview', 'Превью в окне', 'Канал играет рядом со списком', 'sw on', 'foc'],
+  ['sound', 'Звук превью', 'Выключен', 'sw'],
+  ['timer', 'Задержка превью', 'Сколько ждать перед запуском', 'val 600 мс'],
+  ['list', 'Открывать раздел', 'Каким видом', 'val Список'],
+  ['bookmark', 'Запоминать категорию и канал', 'После перезапуска', 'sw on'],
+  ['cat', 'Управление категориями', 'Скрыть, переименовать, порядок', 'page'],
+];
+document.getElementById('tv-settings').innerHTML = `${rail('more')}
+  <header class="topbar"><div class="ttl">Настройки <span>› Эфир</span></div><div class="grow"></div>${clock}</header>
+  <section class="slist">${SR.map(([ic, t, v, k, f]) => {
+    const tr = k.startsWith('sw') ? `<span class="sw-t ${k.includes('on') ? 'on' : ''}"></span>`
+      : k === 'page' ? I('chev', 's20') : `<span class="val">${I('chevl', 's16')}<b>${k.slice(4)}</b>${I('chev', 's16')}</span>`;
+    return `<div class="srow ${f || ''}">${I(ic, 'ic')}<div class="tx"><div class="t">${t}</div><div class="v">${v}</div></div>${tr}</div>`;
+  }).join('')}</section>
+  <aside class="expl"><h3>Превью в окне</h3>
+    <p>Когда фокус задерживается на канале, он начинает играть в окне справа от списка. OK разворачивает его во весь экран без перезапуска потока.</p>
+    <p>Выключите, если аккаунт разрешает только одно подключение или приставка слабая — в окне будет логотип канала.</p>
+    <div class="opt"><span class="rd on"></span>Включено<em>рекомендуется</em></div>
+    <div class="opt"><span class="rd"></span>Выключено</div></aside>
+  ${hints([['OK', 'Переключить'], ['◀ ▶', 'Значение'], ['Back', 'К группам']])}`;
+
+/* TV плеер */
+document.getElementById('tv-player').innerHTML = `<div class="pic"></div><div class="pscrim"></div>
+  <div class="clock pclock"><b>21:47</b><small>ср, 28 окт</small></div>
+  <div class="pstat"><span class="badge b-live">ЭФИР</span><span class="badge b-scrim num">1080p · 50</span></div>
+  <div class="info">${logo(CH[2], 112, 70, 24)}
+    <div class="tx"><div class="l1"><span class="chn num">3</span><span class="nm">Город 7</span><span class="cat">Кино</span></div>
+      <div class="now"><b>Вечерний сеанс</b><span class="num">19:00–20:30 · ещё 42 мин</span></div>
+      ${bar(53, 'b4')}
+      <div class="pn"><span>до: <time class="num">17:30</time> Новости</span><span>далее: <time class="num">20:30</time> Новости · <time class="num">21:00</time> Ночной джаз</span></div></div></div>
+  <div class="ctrls">${[['sound'], ['cc', 'Субтитры'], ['aspect'], ['heart-o'], ['prevch'], ['info'], ['more']]
+    .map(([k, l]) => `<div class="cb ${l ? 'foc' : ''}">${I(k, 's20')}${l ? `<span class="lbl">${l}</span>` : ''}</div>`).join('')}</div>`;
+
+/* Телефон «Эфир» */
+const card = (c, sel) => `<div class="card ${sel ? 'sel' : ''}">${logo(c, 0, 0, 18).replace('width:0px;height:0px;', '')}<div class="cbar"><i style="width:${c.p}%"></i></div>
+  <div class="cap"><div class="nm">${c.name}</div><div class="pg"><span class="num">${c.n}</span> · ${c.prog}</div></div></div>`;
+const sbar = `<div class="sbar"><span class="num">21:47</span><span>LTE<i></i></span></div>`;
+document.getElementById('ph-live').innerHTML = `${sbar}
+  <div class="appbar"><h2>Эфир</h2><span class="ib">${I('search')}</span><span class="ib">${I('list')}</span><span class="ib">${I('more')}</span></div>
+  <div class="pvideo"><div class="pic"></div><div class="vscrim"></div><span class="badge b-live" style="position:absolute;left:12px;top:12px">ЭФИР</span>
+    <div style="position:absolute;left:12px;right:4px;bottom:4px;display:flex;align-items:center;gap:8px;color:#fff;font-weight:500">${logo(CH[2], 40, 25, 11)}<span class="num">3</span><span style="flex:1">Город 7</span><span class="ib" style="color:#fff">${I('full')}</span></div></div>
+  <div class="nowline-m"><div class="t"><b style="font-weight:500">Вечерний сеанс</b><span class="num">ещё 42 мин</span></div>${bar(53)}</div>
+  <div class="chips-m"><span class="chip">${I('star', 's16')}Избранное</span><span class="chip sel">${I('check', 's16')}Все</span><span class="chip">Новости</span><span class="chip">Кино</span><span class="chip">Спорт</span></div>
+  <div class="cgrid">${CH.map((c, i) => card(c, i === 2)).join('')}</div>
+  <nav class="bnav">${[['home', 'Главная'], ['live', 'Эфир', 1], ['guide', 'Телегид'], ['movie', 'Фильмы'], ['more', 'Ещё']]
+    .map(([k, t, cur]) => `<div class="bn ${cur ? 'cur' : ''}"><span class="pill">${I(k)}</span>${t}</div>`).join('')}</nav>`;
+
+/* Телефон «Плеер» */
+const mRow = (c, sel) => `<div class="mrow ${sel ? 'sel' : ''}"><span class="n num">${c.n}</span>${logo(c, 56, 35, 13)}
+  <div class="tx"><div class="nm">${c.name}</div><div class="pg"><span class="pt">${c.prog}</span><span class="pr num">· ещё ${c.left} мин</span></div>${bar(c.p)}</div></div>`;
+document.getElementById('ph-player').innerHTML = `${sbar}
+  <div class="pvideo"><div class="pic sea"></div>
+    <div class="ovl"><div class="top"><span class="ib">${I('back')}</span><b><span class="num">3</span> Город 7</b><span class="ib">${I('pip')}</span><span class="ib">${I('full')}</span></div>
+      <div class="mid"><span class="ib">${I('prev')}</span><span class="ib big">${I('pause')}</span><span class="ib">${I('next')}</span></div>
+      <div class="bot"><span class="badge b-live">ЭФИР</span><span class="badge b-scrim num">1080p · 50</span></div></div></div>
+  <div style="display:flex;align-items:center;gap:12px;padding:14px 16px 4px">${logo(CH[2], 56, 35, 13)}<div style="flex:1"><div style="font-weight:500"><span class="num" style="color:var(--primary)">3</span> Город 7</div><div class="muted" style="font-size:14px">Кино</div></div><span class="ib" style="color:var(--primary)">${I('heart')}</span></div>
+  <div style="padding:4px 16px"><div style="font-size:22px;line-height:28px">Вечерний сеанс</div><div class="muted num" style="font-size:14px;margin:2px 0 8px">19:00–20:30 · ещё 42 мин</div>${bar(53, 'b4')}</div>
+  <div style="display:flex;gap:8px;padding:14px 16px 0;overflow:hidden"><span class="tbtn">${I('sound', 's20')}Звук</span><span class="tbtn">${I('cc', 's20')}Субтитры</span><span class="tbtn">${I('guide', 's20')}Гид</span></div>
+  <div class="sub-h">ДАЛЕЕ</div><div class="nx-m"><time class="num">20:30</time><span>Новости</span></div><div class="nx-m"><time class="num">21:00</time><span>Ночной джаз</span></div>
+  <div class="sub-h">КИНО · 31 КАНАЛ</div>
+  ${[CH[2], CH[6], CH[3], CH[8]].map((c, i) => mRow(c, i === 0)).join('')}`;
+
+/* Масштаб кадров под ширину */
+function fit() {
+  document.querySelectorAll('.frame-wrap').forEach(w => {
+    const f = w.firstElementChild; const base = f.classList.contains('tv') ? 960 : 390;
+    f.style.transform = `scale(${w.clientWidth / base})`;
+  });
+}
+new ResizeObserver(fit).observe(document.body); fit();
+
+/* Тема */
+function setTheme(t) {
+  document.documentElement.className = t;
+  document.querySelectorAll('.toggle button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.theme === t)));
+  try { localStorage.setItem('fervo-mockup-theme', t); } catch (e) {}
+  paintSwatches();
+}
+document.querySelectorAll('.toggle button').forEach(b => b.addEventListener('click', () => setTheme(b.dataset.theme)));
+let saved = null; try { saved = localStorage.getItem('fervo-mockup-theme'); } catch (e) {}
+setTheme(saved === 't-light' ? 't-light' : 't-dark');
+</script>
+</body>
+</html>

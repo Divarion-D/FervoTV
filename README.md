@@ -30,6 +30,8 @@
 Полная функциональная спецификация — в [`docs/spec/`](docs/spec/): 221 функция с критериями приёмки,
 целевая архитектура (`core` + `app-tv` + `app-mobile`) и дорожная карта
 [`docs/spec/90-roadmap.md`](docs/spec/90-roadmap.md).
+Облик, токены, компоненты и каркасы экранов — дизайн-система [`docs/spec/33-design.md`](docs/spec/33-design.md),
+иллюстрация в палитре — [`docs/design/mockup.html`](docs/design/mockup.html) (открыть в браузере).
 
 | Фаза | Что входит | Функций |
 |---|---|---|
