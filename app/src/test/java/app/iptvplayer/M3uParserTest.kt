@@ -31,7 +31,7 @@ class M3uParserTest {
 
     @Test
     fun crlfBomAndUnknownTags() {
-        val list = parseM3u("﻿#EXTM3U\r\n#EXTINF:-1,A\r\n#EXTVLCOPT:http-user-agent=x\r\nhttp://a\r\n\r\n")
+        val list = parseM3u("\uFEFF#EXTM3U\r\n#EXTINF:-1,A\r\n#EXTVLCOPT:http-user-agent=x\r\nhttp://a\r\n\r\n")
         assertEquals(listOf(Channel("A", "http://a", NO_GROUP)), list)
     }
 

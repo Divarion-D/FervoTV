@@ -26,6 +26,9 @@ app/src/main/res/drawable/ic_*.xml   иконки Material Symbols Rounded
   ui/PlayerScreen.kt  ExoPlayer, оверлей, обработка Action
 app/src/test/java/app/iptvplayer/M3uParserTest.kt
 app/src/test/java/app/iptvplayer/LogoIndexTest.kt
+app/src/test/java/app/iptvplayer/PlaylistCacheTest.kt
+.github/workflows/ci.yml       на каждый push/PR: testDebugUnitTest + lintDebug + assembleDebug (debug APK — артефакт)
+.github/workflows/release.yml  тег v<versionName>: тесты, lint, подписанные APK/AAB, GitHub Release с текстом из CHANGELOG.md
 ```
 
 ## Дизайн (Material 3)

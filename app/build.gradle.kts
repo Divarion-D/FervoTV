@@ -4,20 +4,38 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose") version "2.1.0"
 }
 
+/**
+ * Release signing secrets: env vars on CI (FERVO_KEYSTORE, ...), ~/.gradle/gradle.properties locally (fervo.keystore, ...).
+ * Never stored in the repo. Without them the release build is simply unsigned.
+ */
+fun secret(env: String, prop: String): String? =
+    providers.environmentVariable(env).orElse(providers.gradleProperty(prop)).orNull
+
 android {
     namespace = "app.iptvplayer"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "app.iptvplayer"
+        applicationId = "io.github.divarion_d.fervotv"
         minSdk = 21
         targetSdk = 35
         versionCode = 1
         versionName = "0.1"
     }
 
+    signingConfigs {
+        val keystore = secret("FERVO_KEYSTORE", "fervo.keystore")
+        if (keystore != null) create("release") {
+            storeFile = file(keystore)
+            storePassword = secret("FERVO_KEYSTORE_PASSWORD", "fervo.keystorePassword")
+            keyAlias = secret("FERVO_KEY_ALIAS", "fervo.keyAlias")
+            keyPassword = secret("FERVO_KEY_PASSWORD", "fervo.keyPassword")
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))

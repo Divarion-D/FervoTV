@@ -9,7 +9,7 @@ fun parseM3u(text: String, baseUrl: String? = null): List<Channel> {
     val out = ArrayList<Channel>()
     var info: String? = null
     var extGroup: String? = null
-    for (raw in text.removePrefix("﻿").lineSequence()) {
+    for (raw in text.removePrefix("\uFEFF").lineSequence()) {
         val line = raw.trim()
         when {
             line.isEmpty() -> {}

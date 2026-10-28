@@ -1,5 +1,7 @@
 # Fervo TV
 
+[![CI](https://github.com/Divarion-D/FervoTV/actions/workflows/ci.yml/badge.svg)](https://github.com/Divarion-D/FervoTV/actions/workflows/ci.yml)
+
 Нативный IPTV-плеер для Android: телефоны, планшеты, Android TV и приставки — один APK.
 Управление и пальцами, и пультом.
 
@@ -72,16 +74,32 @@
 - ⬜ Linux
 
 ### Сборка и выпуск
-- ✅ Unit-тесты: парсер M3U, поиск логотипов (9 тестов)
-- ✅ Release-сборка с R8 (~2,3 МБ)
+- ✅ Unit-тесты: парсер M3U, поиск логотипов, кэш плейлиста (13 тестов)
+- ✅ Release-сборка с R8 (~2,5 МБ APK)
 - ✅ Раздел «О приложении»: версия, автор, GitHub, журнал изменений
-- ⬜ Подпись release (keystore, `signingConfig`)
+- ✅ Подпись release своим ключом; ID пакета `io.github.divarion_d.fervotv`
+- ✅ CI: тесты + lint + debug-сборка на каждый коммит (`.github/workflows/ci.yml`)
+- ✅ Релиз по тегу: подписанные APK и AAB + GitHub Release (`.github/workflows/release.yml`)
 
 ### Выпуск новой версии
 1. `app/build.gradle.kts`: увеличить `versionCode` (на 1) и `versionName` (например `0.2`).
-2. `app/src/main/assets/CHANGELOG.md`: добавить сверху раздел `## 0.2 — ДД.ММ.ГГГГ` со строками `- …`.
-   Этот же файл показывается в приложении («Настройки → Что нового»), отдельно ничего обновлять не нужно.
-3. Отметить сделанное в чеклисте выше, закоммитить, поставить тег `v0.2`.
+2. `app/src/main/assets/CHANGELOG.md`: раздел версии сверху — `## 0.2 — ДД.ММ.ГГГГ` со строками `- …`.
+   Этот же файл показывается в приложении («Настройки → Что нового») и становится описанием релиза на GitHub.
+3. Отметить сделанное в чеклисте выше, закоммитить, запушить и поставить тег:
+   ```bash
+   git tag v0.2 && git push origin v0.2
+   ```
+   GitHub Actions (`release.yml`) проверит, что тег совпадает с `versionName`, прогонит тесты и lint, соберёт
+   подписанные `FervoTV-0.2.apk` и `FervoTV-0.2.aab` и создаст GitHub Release.
+
+### Ключ подписи
+- Ключ: `~/.android/fervotv-release.jks` (alias `fervotv`), пароли — в `~/.gradle/gradle.properties`
+  (`fervo.keystore`, `fervo.keystorePassword`, `fervo.keyAlias`, `fervo.keyPassword`). В репозиторий не попадают.
+- На CI те же значения лежат в секретах репозитория: `FERVO_KEYSTORE_BASE64` (файл .jks в base64),
+  `FERVO_KEYSTORE_PASSWORD`, `FERVO_KEY_ALIAS`, `FERVO_KEY_PASSWORD`.
+- **Сделайте резервную копию ключа и паролей** (например, в менеджер паролей). Если ключ потерять,
+  обновления приложения больше не установятся поверх уже установленного — только удаление и установка заново.
+- Отпечаток сертификата (SHA-256): `A6:5F:7A:24:25:FA:8F:9F:83:0C:4D:AE:CC:DD:6A:C7:DB:A7:39:C9:5B:19:7A:5F:20:35:B5:DB:62:EA:D0:A2`.
 
 ## Управление в плеере
 
@@ -105,28 +123,25 @@ export JAVA_HOME=~/.local/share/jdk-17     # или системный JDK 17+
 export ANDROID_HOME=~/Android/Sdk
 echo "sdk.dir=$ANDROID_HOME" > local.properties   # один раз
 
-./gradlew testDebugUnitTest   # тесты парсера M3U
+./gradlew testDebugUnitTest lintDebug   # то же, что CI на каждый коммит
 ./gradlew assembleDebug       # app/build/outputs/apk/debug/app-debug.apk   (~13 МБ)
-./gradlew assembleRelease     # app/build/outputs/apk/release/app-release-unsigned.apk (~2,3 МБ, R8)
+./gradlew assembleRelease     # app/build/outputs/apk/release/app-release.apk (~2,5 МБ, R8)
+./gradlew bundleRelease       # app/build/outputs/bundle/release/app-release.aab — для Google Play
 ```
+
+Release подписывается автоматически, если настроен ключ (см. «Ключ подписи» выше); без ключа получается
+`app-release-unsigned.apk`.
 
 Интерфейс сделан в стиле Material 3. Цветовая схема (тёмная, ярко-оранжевая, тона из material-color-utilities) —
 в `app/src/main/java/app/iptvplayer/ui/Theme.kt`, иконки Material Symbols — в `app/src/main/res/drawable/ic_*.xml`.
 Подробности — в [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#дизайн-material-3).
 
-Release-сборка не подписана. Чтобы её установить, нужно добавить `signingConfig` с ключом (keystore).
-
 **Скорость оценивайте только по release-сборке.** Debug-сборка Compose идёт без оптимизаций и в разы медленнее.
 Замер на TECNO CH6i: запуск 1,4–1,9 с (debug) против 0,6–0,7 с (release); логотипы появляются через 1,5–2,3 с
-после окна (debug) против 0,35–0,4 с (release). Для локальной проверки release можно подписать отладочным ключом:
+после окна (debug) против 0,35–0,4 с (release).
 
-```bash
-BT=~/Android/Sdk/build-tools/35.0.0        # нужен java в PATH
-$BT/zipalign -f 4 app/build/outputs/apk/release/app-release-unsigned.apk /tmp/rel-aligned.apk
-$BT/apksigner sign --ks ~/.android/debug.keystore --ks-pass pass:android \
-  --ks-key-alias androiddebugkey --key-pass pass:android --out /tmp/rel.apk /tmp/rel-aligned.apk
-adb install -r /tmp/rel.apk
-```
+Debug и release подписаны разными ключами, поэтому поставить одну поверх другой нельзя:
+перед сменой нужно удалить приложение (`adb uninstall io.github.divarion_d.fervotv`).
 
 ## Установка на устройство
 
