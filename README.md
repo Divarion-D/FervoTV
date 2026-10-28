@@ -167,6 +167,19 @@
 
 Нужны JDK 17 и Android SDK (platform 35, build-tools 35). Gradle ставить не нужно — в проекте есть wrapper.
 
+Проще всего — через `make` (`make` без аргументов покажет все цели):
+
+```bash
+make check        # как CI на каждый коммит: тесты + lint + debug-сборка
+make test         # все unit-тесты;  make test-fast — только ядро
+make dist         # подписанные dist/FervoTV-<версия>.apk и .aab + проверка подписи
+make ci-release   # как release.yml: тесты и lint release, затем dist
+make install run  # собрать, поставить release на телефон по adb и запустить (APP=mobile — мобильное)
+```
+
+Пути к JDK и SDK по умолчанию — `~/.local/share/jdk-17` и `~/Android/Sdk`, переопределяются переменными
+`JAVA_HOME` и `ANDROID_HOME`. То же самое вручную через Gradle:
+
 ```bash
 export JAVA_HOME=~/.local/share/jdk-17     # или системный JDK 17+
 export ANDROID_HOME=~/Android/Sdk
