@@ -1,6 +1,17 @@
 package app.iptvplayer
 
 import android.os.Bundle
+import android.widget.Toast
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -69,6 +80,12 @@ private fun App(repo: Repository) {
     var settingsOpen by remember { mutableStateOf(false) }
     var logos by remember { mutableStateOf<LogoIndex?>(null) }
     var logoStatus by remember { mutableStateOf("") }
+    var refreshing by remember { mutableStateOf(false) }
+    var playlistStatus by remember { mutableStateOf("") }
+    var refreshRequest by remember { mutableIntStateOf(0) }
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var logoJob by remember { mutableStateOf<Job?>(null) }
 
     // Channels are shown right away; logos from the index fill in when it's ready.
     suspend fun loadLogos(list: List<Channel>) {
@@ -89,27 +106,68 @@ private fun App(repo: Repository) {
         }
     }
 
-    // Logo settings changed: re-match against the already loaded channels.
-    LaunchedEffect(settings.autoLogos, settings.logoSource) {
-        channels?.let { loadLogos(it) }
+    // One logo job at a time: a newer channel list cancels matching for the older one.
+    fun startLogos(list: List<Channel>) {
+        logoJob?.cancel()
+        logoJob = scope.launch { loadLogos(list) }
     }
 
-    // Outside the branches below so opening/cancelling the source editor doesn't reload the playlist.
-    LaunchedEffect(source, attempt) {
-        val s = source ?: return@LaunchedEffect
-        channels = null
-        error = null
+    /**
+     * Downloads the playlist. With a cached list on screen a failure only reports (the cache stays usable offline);
+     * without one it shows the error screen.
+     */
+    suspend fun refresh(s: Source) {
+        refreshing = true
+        playlistStatus = "Обновление…"
         val list = try {
             repo.load(s)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            error = e.message ?: e.toString()
+            val msg = errorText(e)
+            if (channels == null) {
+                error = msg
+            } else {
+                playlistStatus = "Не удалось обновить: $msg"
+                Toast.makeText(ctx, "Не удалось обновить плейлист — показан сохранённый список", Toast.LENGTH_LONG).show()
+            }
+            return
+        } finally {
+            refreshing = false
+        }
+        playlistStatus = "Обновлён ${formatTime(System.currentTimeMillis())}"
+        if (list != channels) {
+            channels = list
+            startLogos(list)
+        }
+    }
+
+    // Logo settings changed: re-match against the already loaded channels.
+    LaunchedEffect(settings.autoLogos, settings.logoSource) {
+        channels?.let { startLogos(it) }
+    }
+
+    // Cache first, network second: the app opens instantly and still works without internet.
+    // Outside the branches below so opening/cancelling the source editor doesn't reload the playlist.
+    LaunchedEffect(source, attempt) {
+        val s = source ?: return@LaunchedEffect
+        channels = null
+        error = null
+        val cached = repo.cachedPlaylist(s)
+        if (cached == null) {
+            refresh(s)
             return@LaunchedEffect
         }
-        channels = list
-        // Straight away, in parallel with the first frame of the grid — not in an effect that waits for it (~0.8 s).
-        loadLogos(list)
+        channels = cached.channels
+        playlistStatus = "Сохранён ${formatTime(cached.savedAt)}"
+        // Logo matching starts right away, in parallel with the first frame of the grid.
+        startLogos(cached.channels)
+        if (settings.playlistRefresh.isDue(cached.savedAt)) refresh(s)
+    }
+
+    // "Обновить плейлист сейчас" in Настройки.
+    LaunchedEffect(refreshRequest) {
+        if (refreshRequest > 0) source?.let { refresh(it) }
     }
 
     val list = channels
@@ -122,9 +180,10 @@ private fun App(repo: Repository) {
             onDone = { repo.source = it; source = it; editing = false; settingsOpen = false },
         )
         settingsOpen -> SettingsScreen(
-            settings, src.label(), logoStatus,
+            settings, src.label(), logoStatus, playlistStatus, refreshing,
             onChange = { repo.settings = it; settings = it },
             onEditSource = { editing = true },
+            onRefreshNow = { refreshRequest++ },
             onClose = { settingsOpen = false },
         )
         err != null -> Column(
@@ -154,10 +213,24 @@ private fun App(repo: Repository) {
         ) {
             CircularProgressIndicator()
             Text("Загрузка плейлиста…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // No cache yet (first start) and a slow/dead source: let the user switch the playlist instead of waiting.
+            OutlinedButton(onClick = { settingsOpen = true }, Modifier.initialFocus().focusRing(CircleShape)) {
+                IconLabel(R.drawable.ic_settings, "Настройки")
+            }
         }
         else -> ChannelsScreen(list, logos, onOpenSettings = { settingsOpen = true })
     }
 }
+
+/** Human-readable reason instead of raw Java exception text. */
+private fun errorText(e: Exception): String = when (e) {
+    is UnknownHostException -> "Нет подключения к интернету или сервер не найден"
+    is SocketTimeoutException -> "Сервер не отвечает"
+    is ConnectException -> "Не удалось подключиться к серверу"
+    else -> e.message ?: e.toString()
+}
+
+private fun formatTime(ms: Long): String = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(ms))
 
 private fun Source.label(): String = when (this) {
     is Source.M3u -> if (url.startsWith("content://")) "Локальный файл" else url

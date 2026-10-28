@@ -40,7 +40,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
 import app.iptvplayer.Defaults
+import app.iptvplayer.PlaylistRefresh
 import app.iptvplayer.R
 import app.iptvplayer.Settings
 import app.iptvplayer.initialFocus
@@ -52,11 +55,15 @@ fun SettingsScreen(
     settings: Settings,
     sourceLabel: String,
     logoStatus: String,
+    playlistStatus: String,
+    refreshing: Boolean,
     onChange: (Settings) -> Unit,
     onEditSource: () -> Unit,
+    onRefreshNow: () -> Unit,
     onClose: () -> Unit,
 ) {
     var changelogOpen by remember { mutableStateOf(false) }
+    var refreshDialog by remember { mutableStateOf(false) }
     if (changelogOpen) {
         ChangelogScreen(onClose = { changelogOpen = false })
         return
@@ -86,9 +93,27 @@ fun SettingsScreen(
         ) {
             SectionTitle("Плейлист")
             SettingItem(
-                R.drawable.ic_playlist_play, "Источник плейлиста", sourceLabel,
-                Modifier.initialFocus(), onClick = onEditSource,
-            )
+                R.drawable.ic_refresh, "Обновить плейлист сейчас", playlistStatus.ifEmpty { null },
+                Modifier.initialFocus(),
+                trailing = if (refreshing) {
+                    { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) }
+                } else null,
+            ) { if (!refreshing) onRefreshNow() }
+            SettingItem(R.drawable.ic_playlist_play, "Источник плейлиста", sourceLabel, onClick = onEditSource)
+            SettingItem(
+                R.drawable.ic_schedule, "Автообновление",
+                "${settings.playlistRefresh.label} · сохранённый список открывается сразу, без ожидания сети",
+            ) { refreshDialog = true }
+            if (refreshDialog) {
+                ChoiceDialog(
+                    title = "Обновлять плейлист",
+                    options = PlaylistRefresh.entries,
+                    selected = settings.playlistRefresh,
+                    label = { it.label },
+                    onSelect = { onChange(settings.copy(playlistRefresh = it)); refreshDialog = false },
+                    onDismiss = { refreshDialog = false },
+                )
+            }
 
             SectionTitle("Логотипы каналов")
             SettingItem(

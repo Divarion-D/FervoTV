@@ -93,14 +93,23 @@ fun ChannelsScreen(channels: List<Channel>, logos: LogoIndex?, onOpenSettings: (
     val gridState = rememberLazyGridState()
     val currentFocus = remember { FocusRequester() }
 
-    LaunchedEffect(group, query) {
+    // A background playlist refresh can drop the selected category.
+    if (group != ALL && group !in counts) group = ALL
+    var lastFilter by remember { mutableStateOf<Pair<String, String>?>(null) }
+
+    // Keyed on `channels` too: a background refresh swaps the list in place.
+    LaunchedEffect(channels, group, query) {
         if (query.isNotBlank()) delay(Defaults.SEARCH_DEBOUNCE_MS)
         val q = query.trim()
         shown = withContext(Dispatchers.Default) {
             channels.filter { (group == ALL || it.group == group) && (q.isEmpty() || it.name.contains(q, ignoreCase = true)) }
         }
-        current = 0
-        gridState.scrollToItem(0)
+        // Back to the top only when the user changed the filter, not when a refresh replaced the list.
+        if (lastFilter != group to query) {
+            lastFilter = group to query
+            current = 0
+            gridState.scrollToItem(0)
+        }
     }
 
     // On start and on return from the player: show (and on TV focus) the last played channel.

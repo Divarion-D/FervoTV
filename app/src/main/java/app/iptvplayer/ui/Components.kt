@@ -4,9 +4,18 @@ import androidx.annotation.DrawableRes
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.Alignment
+import app.iptvplayer.initialFocus
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -55,6 +64,42 @@ fun IconLabel(@DrawableRes icon: Int, text: String) {
     Spacer(Modifier.width(ButtonDefaults.IconSpacing))
     Text(text)
 }
+
+/** Pick one of [options] (M3 dialog with radio rows). Whole rows are the click/focus targets, for remote and touch. */
+@Composable
+fun <T> ChoiceDialog(
+    title: String,
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    onSelect: (T) -> Unit,
+    onDismiss: () -> Unit,
+) = AlertDialog(
+    onDismissRequest = onDismiss,
+    title = { Text(title) },
+    text = {
+        Column {
+            for (option in options) {
+                val shape = RoundedCornerShape(12.dp)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .then(if (option == selected) Modifier.initialFocus() else Modifier)
+                        .focusRing(shape)
+                        .clip(shape)
+                        .clickable { onSelect(option) }
+                        .padding(horizontal = 8.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(selected = option == selected, onClick = null)
+                    Spacer(Modifier.width(12.dp))
+                    Text(label(option))
+                }
+            }
+        }
+    },
+    confirmButton = { TextButton(onClick = onDismiss, modifier = Modifier.focusRing(RoundedCornerShape(50))) { Text("Отмена") } },
+)
 
 /** Settings-style row: the whole row is the click/focus target, so remote and touch behave the same. */
 @Composable

@@ -20,6 +20,22 @@ sealed interface Source {
 data class Settings(
     val autoLogos: Boolean = Defaults.AUTO_LOGOS,
     val logoSource: String = Defaults.LOGO_SOURCE,
+    val playlistRefresh: PlaylistRefresh = Defaults.PLAYLIST_REFRESH,
 )
+
+/** When to re-download the playlist. The cached copy always opens first; the refresh runs in the background. */
+enum class PlaylistRefresh(val label: String, private val intervalMs: Long?) {
+    ON_START("При каждом запуске", 0L),
+    HOURS_6("Каждые 6 часов", 6 * HOUR_MS),
+    DAILY("Раз в день", 24 * HOUR_MS),
+    WEEKLY("Раз в неделю", 7 * 24 * HOUR_MS),
+    MANUAL("Только вручную", null);
+
+    /** Is a playlist cached at [savedAt] due for a refresh? */
+    fun isDue(savedAt: Long, now: Long = System.currentTimeMillis()): Boolean =
+        intervalMs != null && now - savedAt >= intervalMs
+}
+
+private const val HOUR_MS = 3_600_000L
 
 const val NO_GROUP = "Без категории"

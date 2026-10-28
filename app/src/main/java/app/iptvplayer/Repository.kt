@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
@@ -39,16 +40,29 @@ class Repository(private val ctx: Context) {
         get() = Settings(
             autoLogos = settingsPrefs.getBoolean("autoLogos", Defaults.AUTO_LOGOS),
             logoSource = settingsPrefs.getString("logoSource", null) ?: Defaults.LOGO_SOURCE,
+            playlistRefresh = settingsPrefs.getString("playlistRefresh", null)
+                ?.let { name -> PlaylistRefresh.entries.find { it.name == name } }
+                ?: Defaults.PLAYLIST_REFRESH,
         )
         set(v) {
             settingsPrefs.edit()
                 .putBoolean("autoLogos", v.autoLogos)
                 .putString("logoSource", v.logoSource)
+                .putString("playlistRefresh", v.playlistRefresh.name)
                 .apply()
         }
 
+    // filesDir, not cacheDir: the system may wipe cacheDir, and this copy is what works offline.
+    private val playlistFile = File(ctx.filesDir, "playlist.tsv")
+
+    /** The last successfully loaded playlist of [s], or null if there is none for this source. */
+    suspend fun cachedPlaylist(s: Source): CachedPlaylist? = withContext(Dispatchers.IO) {
+        runCatching { if (playlistFile.exists()) decodePlaylist(s.cacheKey(), playlistFile.readText()) else null }.getOrNull()
+    }
+
+    /** Downloads (or reads) the playlist and replaces the cached copy. */
     suspend fun load(s: Source): List<Channel> = withContext(Dispatchers.IO) {
-        when (s) {
+        val list = when (s) {
             is Source.M3u -> parseM3u(
                 if (s.url.startsWith("content://")) {
                     ctx.contentResolver.openInputStream(Uri.parse(s.url))
@@ -59,6 +73,12 @@ class Repository(private val ctx: Context) {
             )
             is Source.Xtream -> loadXtream(s)
         }
+        // Almost always a broken/blocked response rather than a real empty playlist: don't let it replace a good cache.
+        if (list.isEmpty()) throw IOException("Плейлист пуст")
+        val tmp = File(playlistFile.path + ".tmp")
+        tmp.writeText(encodePlaylist(s.cacheKey(), System.currentTimeMillis(), list))
+        tmp.renameTo(playlistFile)
+        list
     }
 
     suspend fun logoIndex(source: String, channels: List<Channel>): LogoIndex = LogoIndex.load(ctx, source, channels)

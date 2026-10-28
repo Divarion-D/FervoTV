@@ -12,6 +12,9 @@ object Defaults {
     /** iptv-org API base: must serve channels.json and logos.json (https://github.com/iptv-org/api). */
     const val LOGO_SOURCE = "https://iptv-org.github.io/api"
 
+    /** The cached playlist opens instantly either way; this only decides when it's re-downloaded in the background. */
+    val PLAYLIST_REFRESH = PlaylistRefresh.ON_START
+
     // --- About ---
     const val AUTHOR = "Divarion-D"
     const val GITHUB_URL = "https://github.com/Divarion-D/FervoTV"
