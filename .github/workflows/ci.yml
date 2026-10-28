@@ -5,6 +5,7 @@ on:
   push:
     branches: ["**"] # tags are handled by release.yml
   pull_request:
+  workflow_dispatch: # manual run from the Actions tab
 
 concurrency:
   group: ci-${{ github.ref }}
