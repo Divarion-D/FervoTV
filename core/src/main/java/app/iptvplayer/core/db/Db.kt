@@ -1,23 +1,29 @@
 package app.iptvplayer.core.db
 
 import android.content.Context
-import androidx.paging.PagingSource
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.Fts4
 import androidx.room.Index
 import androidx.room.Insert
+import androidx.room.InvalidationTracker
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RawQuery
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.SupportSQLiteQuery
 import app.iptvplayer.core.model.Channel
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
 
 /**
  * One row per import of a playlist source. [savedAt] is null while the import is still running: its channels are
@@ -29,6 +35,8 @@ data class SourceRow(
     /** [app.iptvplayer.core.source.cacheKey]: another URL or account doesn't see these channels. */
     val sourceKey: String,
     val savedAt: Long?,
+    /** XMLTV addresses from the playlist header (SRC-008), "\n"-separated. */
+    @ColumnInfo(defaultValue = "") val epgUrls: String = "",
 )
 
 /** Provider category; [position] = provider order (Xtream) or first appearance (M3U). */
@@ -38,9 +46,14 @@ data class CategoryRow(
     val sourceId: Long,
     val name: String,
     val position: Int,
+    /** Stable key of user edits ([CategoryState]): `Source.userKey()` + "|" + name. */
+    @ColumnInfo(defaultValue = "") val ckey: String,
 )
 
-@Entity(tableName = "channel", indices = [Index("sourceId", "position"), Index("sourceId", "categoryId", "position")])
+@Entity(
+    tableName = "channel",
+    indices = [Index("sourceId", "position"), Index("sourceId", "categoryId", "position"), Index("sourceId", "ckey")],
+)
 data class ChannelRow(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val sourceId: Long,
@@ -52,6 +65,12 @@ data class ChannelRow(
     val logo: String?,
     val tvgId: String?,
     val autoLogo: String? = null,
+    /** [Channel.key]: what user data is attached to; the row itself is recreated by every import. */
+    @ColumnInfo(defaultValue = "") val ckey: String,
+    val number: Int? = null,
+    @ColumnInfo(defaultValue = "0") val archiveDays: Int = 0,
+    /** The guide channel ([EpgChannel.id]) bound by [app.iptvplayer.core.epg.EpgIndex]; kept up to date by [EpgStore]. */
+    val epgId: Long? = null,
 )
 
 /**
@@ -66,7 +85,8 @@ data class ChannelFts(
     val name: String,
 )
 
-data class CategoryCount(val name: String, val count: Int)
+/** A provider category: [name] is the provider's (what filters use), [title] the user's name for it, if renamed. */
+data class CategoryCount(val name: String, val count: Int, val title: String = name, val hidden: Boolean = false)
 
 @Dao
 abstract class PlaylistDao {
@@ -75,8 +95,11 @@ abstract class PlaylistDao {
     @Insert abstract fun insertChannels(list: List<ChannelRow>): List<Long>
     @Insert abstract fun insertFts(list: List<ChannelFts>)
 
-    @Query("UPDATE source SET savedAt = :savedAt WHERE id = :id")
-    abstract fun complete(id: Long, savedAt: Long)
+    @Query("UPDATE source SET savedAt = :savedAt, epgUrls = :epgUrls WHERE id = :id")
+    abstract fun complete(id: Long, savedAt: Long, epgUrls: String)
+
+    @Query("SELECT epgUrls FROM source WHERE sourceKey = :key AND savedAt IS NOT NULL")
+    abstract suspend fun epgUrls(key: String): String?
 
     @Query("SELECT savedAt FROM source WHERE sourceKey = :key AND savedAt IS NOT NULL")
     abstract suspend fun savedAt(key: String): Long?
@@ -110,18 +133,27 @@ abstract class PlaylistDao {
         deleteSourceRow(id)
     }
 
-    /** Non-empty categories of the saved source in order, with channel counts. */
+    /**
+     * Categories of the saved source with counts of visible channels: the user's order (moved ones first), then the
+     * provider's. Without [withHidden], hidden and (by hiding their channels) emptied ones are left out.
+     */
     @Query(
-        """SELECT cat.name AS name, COUNT(*) AS count FROM category cat
+        """SELECT cat.name AS name, COALESCE(cs.name, cat.name) AS title, COALESCE(cs.hidden, 0) AS hidden,
+        SUM(COALESCE(st.hidden, 0) = 0) AS count
+        FROM category cat
         JOIN channel ch ON ch.sourceId = cat.sourceId AND ch.categoryId = cat.id
+        LEFT JOIN channel_state st ON st.ckey = ch.ckey
+        LEFT JOIN category_state cs ON cs.ckey = cat.ckey
         WHERE cat.sourceId = (SELECT id FROM source WHERE sourceKey = :key AND savedAt IS NOT NULL)
-        GROUP BY cat.id ORDER BY cat.position"""
+        GROUP BY cat.id HAVING :withHidden OR (COALESCE(cs.hidden, 0) = 0 AND SUM(COALESCE(st.hidden, 0) = 0) > 0)
+        ORDER BY cs.position IS NULL, cs.position, cat.position"""
     )
-    abstract fun categories(key: String): Flow<List<CategoryCount>>
+    abstract fun categories(key: String, withHidden: Boolean): Flow<List<CategoryCount>>
 
-    /** Keyset pages over a source in id order, for passes over every channel (logo matching). */
+    /** Keyset pages over a source in id order, for passes over every channel (logo and guide matching). */
     @Query(
-        """SELECT ch.id, ch.name, ch.url, cat.name AS `group`, ch.logo, ch.tvgId, ch.autoLogo
+        """SELECT ch.id, ch.name, ch.url, cat.name AS `group`, ch.logo, ch.tvgId, ch.autoLogo, ch.ckey AS `key`,
+        ch.number, ch.archiveDays
         FROM channel ch JOIN category cat ON cat.id = ch.categoryId
         WHERE ch.sourceId = :sourceId AND ch.id > :after ORDER BY ch.id LIMIT :limit"""
     )
@@ -130,28 +162,73 @@ abstract class PlaylistDao {
     @Query("UPDATE channel SET autoLogo = :url WHERE id = :id")
     abstract fun setAutoLogo(id: Long, url: String?)
 
-    // Filtered lists (category + search) are built by ChannelFilter.query().
-    @RawQuery(observedEntities = [SourceRow::class, CategoryRow::class, ChannelRow::class])
-    abstract fun pagingSource(q: SupportSQLiteQuery): PagingSource<Int, Channel>
+    // Filtered lists are built by ChannelFilter.query() (PlaylistStore.kt).
+    @RawQuery
+    abstract fun items(q: SupportSQLiteQuery): List<ItemRow>
 
     @RawQuery
-    abstract suspend fun channel(q: SupportSQLiteQuery): Channel?
+    abstract fun count(q: SupportSQLiteQuery): Int
 }
+
+/** A row of a channel list query; [shift] = the channel's or its guide source's time shift, null = the global one. */
+data class ItemRow(
+    @Embedded val channel: Channel,
+    val displayNumber: Int,
+    val favorite: Boolean,
+    val hidden: Boolean,
+    val epgId: Long?,
+    val shift: Int?,
+)
 
 /**
  * Schema changes bump [version] and add a Migration; the schema of every version is exported to `core/schemas/`.
  * Data of P0 is a cache of the source, but later versions add user data to the same file, so no destructive fallback.
  */
-@Database(entities = [SourceRow::class, CategoryRow::class, ChannelRow::class, ChannelFts::class], version = 1)
+@Database(
+    entities = [
+        SourceRow::class, CategoryRow::class, ChannelRow::class, ChannelFts::class,
+        ChannelState::class, CategoryState::class, ChannelOrder::class, CollectionRow::class, CollectionChannel::class,
+        Recent::class, EpgSource::class, EpgChannel::class, ProgrammeRow::class, StagedProgramme::class,
+    ],
+    version = 2,
+)
 abstract class AppDb : RoomDatabase() {
     abstract fun playlist(): PlaylistDao
+    abstract fun user(): UserDao
+    abstract fun epg(): EpgDao
 
     companion object {
         @Volatile private var instance: AppDb? = null
 
         fun get(ctx: Context): AppDb = instance ?: synchronized(this) {
-            instance ?: Room.databaseBuilder(ctx.applicationContext, AppDb::class.java, "fervo.db").build().also { instance = it }
+            instance ?: Room.databaseBuilder(ctx.applicationContext, AppDb::class.java, "fervo.db")
+                .addMigrations(MIGRATION_1_2)
+                .build().also { instance = it }
         }
+    }
+}
+
+/** Emits once at once and then after every committed change of [tables] (several changes may come as one). */
+internal fun AppDb.changes(vararg tables: String): Flow<Unit> = callbackFlow {
+    val observer = object : InvalidationTracker.Observer(arrayOf(*tables)) {
+        override fun onInvalidated(tables: Set<String>) {
+            trySend(Unit)
+        }
+    }
+    invalidationTracker.addObserver(observer)
+    send(Unit)
+    awaitClose { invalidationTracker.removeObserver(observer) }
+}.conflate()
+
+/**
+ * v1 → v2 (P1): user data and the guide. Saved channels stay: their new columns get what can be known without the
+ * source (key = URL; for Xtream the right key comes with the next refresh, and v1 had no user data to lose).
+ */
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        MIGRATION_1_2_SQL.forEach(db::execSQL)
+        db.execSQL("UPDATE category SET ckey = (SELECT sourceKey FROM source WHERE source.id = category.sourceId) || '|' || name")
+        db.execSQL("UPDATE channel SET ckey = url")
     }
 }
 
@@ -165,3 +242,26 @@ fun matchesWords(text: String, query: String): Boolean {
     val words = searchText(text).split(' ').filter { it.isNotEmpty() }
     return searchText(query).split(' ').filter { it.isNotEmpty() }.all { q -> words.any { it.startsWith(q) } }
 }
+/** Copied from the exported schema `core/schemas/…/2.json`; checked by MigrationTest. */
+private val MIGRATION_1_2_SQL = listOf(
+    "ALTER TABLE `source` ADD COLUMN `epgUrls` TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE `category` ADD COLUMN `ckey` TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE `channel` ADD COLUMN `ckey` TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE `channel` ADD COLUMN `number` INTEGER",
+    "ALTER TABLE `channel` ADD COLUMN `archiveDays` INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE `channel` ADD COLUMN `epgId` INTEGER",
+    "CREATE INDEX IF NOT EXISTS `index_channel_sourceId_ckey` ON `channel` (`sourceId`, `ckey`)",
+    "CREATE TABLE IF NOT EXISTS `channel_state` (`ckey` TEXT NOT NULL, `name` TEXT, `hidden` INTEGER NOT NULL DEFAULT 0, `favorite` INTEGER, `epg` TEXT, `epgShift` INTEGER, `logo` TEXT, PRIMARY KEY(`ckey`))",
+    "CREATE TABLE IF NOT EXISTS `category_state` (`ckey` TEXT NOT NULL, `name` TEXT, `hidden` INTEGER NOT NULL DEFAULT 0, `position` INTEGER, PRIMARY KEY(`ckey`))",
+    "CREATE TABLE IF NOT EXISTS `channel_order` (`list` TEXT NOT NULL, `ckey` TEXT NOT NULL, `position` INTEGER NOT NULL, PRIMARY KEY(`list`, `ckey`))",
+    "CREATE TABLE IF NOT EXISTS `collection` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `position` INTEGER NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS `collection_channel` (`collectionId` INTEGER NOT NULL, `ckey` TEXT NOT NULL, `position` INTEGER NOT NULL, PRIMARY KEY(`collectionId`, `ckey`))",
+    "CREATE TABLE IF NOT EXISTS `recent` (`ckey` TEXT NOT NULL, `watchedAt` INTEGER NOT NULL, PRIMARY KEY(`ckey`))",
+    "CREATE INDEX IF NOT EXISTS `index_recent_watchedAt` ON `recent` (`watchedAt`)",
+    "CREATE TABLE IF NOT EXISTS `epg_source` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `url` TEXT NOT NULL, `userAgent` TEXT, `refresh` TEXT NOT NULL, `refreshDays` INTEGER NOT NULL, `shift` INTEGER, `position` INTEGER NOT NULL, `savedAt` INTEGER, `attemptAt` INTEGER, `status` TEXT)",
+    "CREATE TABLE IF NOT EXISTS `epg_channel` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `sourceId` INTEGER NOT NULL, `xmltvId` TEXT NOT NULL, `names` TEXT NOT NULL, `icon` TEXT)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS `index_epg_channel_sourceId_xmltvId` ON `epg_channel` (`sourceId`, `xmltvId`)",
+    "CREATE TABLE IF NOT EXISTS `programme` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `channelId` INTEGER NOT NULL, `start` INTEGER NOT NULL, `stop` INTEGER NOT NULL, `title` TEXT NOT NULL, `description` TEXT)",
+    "CREATE INDEX IF NOT EXISTS `index_programme_channelId_start` ON `programme` (`channelId`, `start`)",
+    "CREATE TABLE IF NOT EXISTS `programme_stage` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `channel` TEXT NOT NULL, `start` INTEGER NOT NULL, `stop` INTEGER NOT NULL, `title` TEXT NOT NULL, `description` TEXT)",
+)

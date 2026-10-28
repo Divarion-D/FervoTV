@@ -10,6 +10,7 @@ import org.robolectric.RobolectricTestRunner
 import java.io.IOException
 import java.io.StringReader
 import app.iptvplayer.core.model.Source
+import app.iptvplayer.core.source.userKey
 import org.junit.Assert.assertThrows
 import java.net.ServerSocket
 import kotlin.concurrent.thread
@@ -20,7 +21,7 @@ class XtreamTest {
     private val cats = mapOf("1" to "Новости", "2" to "")
 
     private fun read(json: String, ext: String = "ts") = ArrayList<Channel>().also { out ->
-        readLiveStreams(JsonReader(StringReader(json)), cats, "http://h/live/u/p", ext) { out += it }
+        readLiveStreams(JsonReader(StringReader(json)), cats, "http://h/live/u/p", ext, "http://h|u") { out += it }
     }
 
     @Test
@@ -32,9 +33,9 @@ class XtreamTest {
         ]"""
         assertEquals(
             listOf(
-                Channel("Первый", "http://h/live/u/p/101.ts", "Новости", "http://i/1.png", "one.ru"),
-                Channel("Без группы", "http://h/live/u/p/102.ts", NO_GROUP),
-                Channel("Пустая категория", "http://h/live/u/p/103.ts", NO_GROUP),
+                Channel("Первый", "http://h/live/u/p/101.ts", "Новости", "http://i/1.png", "one.ru", key = "http://h|u|101", number = 1),
+                Channel("Без группы", "http://h/live/u/p/102.ts", NO_GROUP, key = "http://h|u|102"),
+                Channel("Пустая категория", "http://h/live/u/p/103.ts", NO_GROUP, key = "http://h|u|103"),
             ),
             read(json),
         )
@@ -48,7 +49,7 @@ class XtreamTest {
     @Test
     fun brokenEntriesSkipOnlyThemselves() {
         val json = """[null, 5, {"name":"Нет id"}, {"name":{"x":1},"stream_id":[1]}, {"name":"B","stream_id":8,"category_id":1}]"""
-        assertEquals(listOf(Channel("B", "http://h/live/u/p/8.ts", "Новости")), read(json))
+        assertEquals(listOf(Channel("B", "http://h/live/u/p/8.ts", "Новости", key = "http://h|u|8")), read(json))
     }
 
     @Test(expected = IOException::class)
@@ -79,5 +80,42 @@ class XtreamTest {
                 srv.close()
             }
         }
+    }
+
+    @Test
+    fun numberAndArchive() {
+        val json = """[{"num":"12","name":"A","stream_id":7,"tv_archive":1,"tv_archive_duration":"5"},
+            {"num":0,"name":"B","stream_id":8,"tv_archive":"0","tv_archive_duration":3}]"""
+        val (a, b) = read(json)
+        assertEquals(12 to 5, a.number to a.archiveDays)
+        assertEquals(null to 0, b.number to b.archiveDays)
+    }
+
+    /** EPG-002: short EPG with base64 texts and unix times; entries without times skipped. */
+    @Test
+    fun shortEpg() {
+        fun b64(s: String) = android.util.Base64.encodeToString(s.toByteArray(), android.util.Base64.NO_WRAP)
+        val json = """{"epg_listings":[
+            {"id":"1","title":"${b64("Новости")}","description":"${b64("Главное за день")}","start":"2026-10-28 18:00:00",
+             "start_timestamp":"1793199600","stop_timestamp":"1793203200"},
+            {"title":"${b64("Без времени")}"},
+            {"title":"${b64("Кино")}","description":"","start_timestamp":1793203200,"stop_timestamp":1793210400}
+        ]}"""
+        assertEquals(
+            listOf(
+                app.iptvplayer.core.model.Programme(1_793_199_600_000, 1_793_203_200_000, "Новости", "Главное за день"),
+                app.iptvplayer.core.model.Programme(1_793_203_200_000, 1_793_210_400_000, "Кино", null),
+            ),
+            readShortEpg(JsonReader(StringReader(json))),
+        )
+        assertEquals(emptyList<Any>(), readShortEpg(JsonReader(StringReader("""{"epg_listings":[]}"""))))
+    }
+
+    @Test
+    fun keysSurvivePasswordAndHlsChanges() {
+        val a = Source.Xtream("http://h/", "u", "p1")
+        val b = Source.Xtream("http://h", "u", "p2", hls = true)
+        assertEquals(a.userKey(), b.userKey())
+        assertEquals("http://h/xmltv.php?username=u&password=p1", xtreamXmltvUrl(a))
     }
 }

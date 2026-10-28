@@ -1,7 +1,8 @@
 # Архитектура
 
 > Это описание **текущего** состояния (после шагов P0.1 — разбиение на модули, P0.2 — база данных и потоковый
-> импорт, P0.3 — интерфейс движка воспроизведения и остальные функции P0, P0.4 — замеры прокрутки сетки и тайм-аут буферизации). Целевая архитектура —
+> импорт, P0.3 — интерфейс движка воспроизведения и остальные функции P0, P0.4 — замеры прокрутки сетки и тайм-аут буферизации,
+> P1.1 — слой данных P1: телегид, номера каналов, пользовательские данные каналов; экраны P1 — следующие шаги). Целевая архитектура —
 > [`docs/spec/01-architecture.md`](spec/01-architecture.md).
 
 Три Gradle-модуля:
@@ -31,17 +32,31 @@
 build.gradle.kts           версии плагинов; общие для app-tv/app-mobile версия, подпись release (secret()), R8
 core/src/main/java/app/iptvplayer/core/
   Defaults.kt              ВСЕ значения по умолчанию и настраиваемые константы (для обоих приложений)
-  Repository.kt            хранение Source и Settings; savedAt / load (импорт в БД) / categories / channels / channelAt /
-                           matchLogos; migrateLegacyCache (playlist.tsv → БД); offerChangelog (предложение «Что нового»)
-  model/Model.kt           Channel (+ autoLogo, id), Source (M3u | Xtream), Settings, PlaylistRefresh (waitMs — расписание), plural(), NO_GROUP
+  Repository.kt            единственный вход для приложений: Source и Settings (prefs), lastGroup; load (импорт в БД),
+                           списки и строки каналов, телегид (источники, загрузка, привязка, «сейчас/далее», сетка),
+                           пользовательские данные; matchLogos; migrateLegacyCache; offerChangelog
+  model/Model.kt           Channel (+ key, number, archiveDays, autoLogo, id), Programme, ChannelItem, Airing, GuideRow,
+                           Source (M3u | Xtream), Settings, ChannelSort, PlaylistRefresh (waitMs — расписание), plural(), NO_GROUP
   player/Playback.kt       PlaybackEngine (интерфейс движка), PlayItem, PlaybackState, PlaybackError, PlayerSession (сеанс над экранами)
   player/ExoEngine.kt      реализация на Media3 ExoPlayer; recovery() — HLS-повтор и возврат к эфиру, errorKind() — категория ошибки
   Qr.kt                    qrModules(text): QR-код (ZXing, только кодировщик) как матрица модулей
-  db/Db.kt                 Room: таблицы source / category / channel / channel_fts (FTS4), PlaylistDao, AppDb, searchText(), matchesWords()
-  db/PlaylistStore.kt      импорт пачками, ChannelFilter, выдача: категории со счётчиками, Paging, канал по номеру
-  source/m3u/M3uParser.kt  parseM3u(reader, baseUrl) { channel } — построчно; parseM3u(text) -> List<Channel> для тестов
-  source/xtream/Xtream.kt  loadXtream(source, onCategory, onChannel): список каналов читается JsonReader-ом по элементу
-  source/PlaylistCache.kt  чтение старого playlist.tsv (только для переноса в БД), Source.cacheKey()
+  db/Db.kt                 Room: AppDb (версия 2, MIGRATION_1_2), таблицы плейлиста source / category / channel / channel_fts,
+                           PlaylistDao, ItemRow, changes() (поток изменений таблиц), searchText(), matchesWords()
+  db/PlaylistStore.kt      импорт пачками; ChannelFilter (ChannelGroup, сортировка, Visibility) → SQL; выдача: категории,
+                           список групп, строки с «сейчас/далее», строки сетки, канал по позиции / номеру / ключу;
+                           ListSource — свой PagingSource (LIMIT/OFFSET + программа страницы); minuteTicks()
+  db/EpgStore.kt           телегид: таблицы epg_source / epg_channel / programme / programme_stage, EpgDao; импорт XMLTV,
+                           привязка каналов (rebind), автосопоставление, короткий EPG Xtream, запросы программы
+  db/UserStore.kt          пользовательские данные: channel_state / category_state / channel_order / collection /
+                           collection_channel / recent, UserDao; избранное, скрытие, имена, порядок, подборки, недавние, сброс
+  epg/Xmltv.kt             parseXmltv(input, wants, onChannel, onProgramme) — XmlPullParser потоково; unpacked() — gzip
+                           по сигнатуре; parseXmltvTime() — время XMLTV с часовым поясом
+  epg/EpgMatch.kt          EpgIndex (точная привязка), autoMatch / suggestEpg (похожесть названий) — чистая логика
+  epg/Guide.kt             nonOverlapping(), guideCells() — передачи строки сетки без наложений и пропусков
+  source/m3u/M3uParser.kt  parseM3u(reader, baseUrl, onEpgUrls) { channel } — построчно; parseM3u(text) -> List<Channel> для тестов
+  source/xtream/Xtream.kt  loadXtream(source, onCategory, onChannel): список каналов читается JsonReader-ом по элементу;
+                           xtreamXmltvUrl(), loadShortEpg() (get_short_epg)
+  source/PlaylistCache.kt  чтение старого playlist.tsv (только для переноса в БД), Source.cacheKey(), Source.userKey()
   logos/LogoIndex.kt       база логотипов iptv-org: скачивание, кэш, поиск по tvg-id / названию; normName()
   logos/Backdrop.kt        pickBackdrop(pixels, n): выбор подложки логотипа по пикселям (чистая функция)
   net/Http.kt              httpGet(url), httpStream(url) { … }: User-Agent, таймауты, редиректы http↔https; HttpException(code)
@@ -51,9 +66,10 @@ core/src/main/assets/CHANGELOG.md  журнал изменений: «## вер�
 core/src/main/assets/LICENSES.md   библиотеки, сервисы и текст Apache 2.0 — экран «Лицензии»
 core/src/test/java/app/iptvplayer/core/
   source/m3u/M3uParserTest.kt, source/m3u/M3uStreamTest.kt, source/xtream/XtreamTest.kt, source/PlaylistCacheTest.kt,
-  db/PlaylistStoreTest.kt, logos/LogoIndexTest.kt, logos/BackdropTest.kt, player/PlayerSessionTest.kt (+ FakeEngine),
+  db/PlaylistStoreTest.kt, db/EpgStoreTest.kt, db/UserStoreTest.kt, db/MigrationTest.kt, epg/XmltvTest.kt, epg/EpgMatchTest.kt,
+  logos/LogoIndexTest.kt, logos/BackdropTest.kt, player/PlayerSessionTest.kt (+ FakeEngine),
   player/ExoRecoveryTest.kt, input/KeyActionTest.kt, model/PlaylistRefreshTest.kt, MiscTest.kt;
-  TestUtil.kt (SyntheticM3u, usedHeap), source/LegacyCache.kt (запись/чтение playlist.tsv целиком — для фикстур)
+  TestUtil.kt (SyntheticM3u, SyntheticXmltv, gzipped, usedHeap, loadPage), source/LegacyCache.kt (playlist.tsv для фикстур)
 
 app-tv/src/main/java/app/iptvplayer/       (app-mobile/… — такая же копия)
   MainActivity.kt     App(): выбор экрана — Что нового / Setup / Настройки / загрузка / ошибка / каналы; расписание обновления;
@@ -174,10 +190,16 @@ app-tv/src/main/res/drawable/ic_*.xml   иконки Material Symbols Rounded (b
 
 ## Значения по умолчанию и настройки
 
-- `core/Defaults.kt` — единственное место для дефолтов и констант обоих приложений: значения настроек (`AUTO_LOGOS`, `LOGO_SOURCE`),
-  сеть (`USER_AGENT`, таймауты, редиректы, срок кэша логотипов), база (`IMPORT_BATCH_SIZE`, `CHANNEL_PAGE_SIZE`), интерфейс (debounce поиска, время показа инфо, порог свайпа).
+- `core/Defaults.kt` — единственное место для дефолтов и констант обоих приложений: значения настроек (`AUTO_LOGOS`, `LOGO_SOURCE`,
+  `EPG_DAYS` = 7 из `EPG_DAYS_RANGE` 1–14, `EPG_SHIFT` = 0 с шагом `EPG_SHIFT_STEP` 15 мин до ±`EPG_SHIFT_MAX` 14 ч, `EPG_REFRESH` = раз в день
+  для нового источника телегида, `CHANNEL_SORT`), сеть (`USER_AGENT`, таймауты, редиректы, срок кэша логотипов), база
+  (`IMPORT_BATCH_SIZE`, `CHANNEL_PAGE_SIZE`, `EPG_BATCH_SIZE`, `EPG_PAST_MS` — сколько прошлого хранится у каналов без архива,
+  `RECENT_CHANNELS`), сопоставление телегида (`EPG_MATCH_SURE` / `_MARGIN` / `_MIN` / `_SUGGESTIONS`), короткий EPG
+  (`SHORT_EPG_LIMIT`, `SHORT_EPG_AHEAD_MS`), интерфейс (debounce поиска, время показа инфо, порог свайпа).
 - `Settings` (Model.kt) — то, что меняет пользователь; поля по умолчанию берутся из `Defaults`.
-  Хранятся в `SharedPreferences("settings")`: `autoLogos`, `logoSource`. Отдельно от источника плейлиста (`"iptv"`).
+  Хранятся в `SharedPreferences("settings")`: `autoLogos`, `logoSource`, `playlistRefresh`, `refreshDays`, `epgDays`, `epgShift`
+  (общий сдвиг телегида, мин), `channelSort`; там же `lastGroup` (LIVE-017, `Repository.lastGroup`). Отдельно от источника
+  плейлиста (`"iptv"`). Настройки источников телегида (User-Agent, расписание, сдвиг, порядок) — в строке `epg_source` базы.
 - **О приложении**: версия читается из установленного пакета (`PackageManager`), поэтому всегда совпадает с
   `versionName` / `versionCode` в корневом `build.gradle.kts`, а в debug-сборке помечается `· debug`.
   `Defaults.AUTHOR` и `Defaults.GITHUB_URL` — автор и ссылка. Если браузера нет (частый случай на TV-приставках),
@@ -223,15 +245,53 @@ ChannelsScreen ◀── categories(source) (счётчики) + channels(Channe
 
 ### База данных (`core/db/`)
 
-Room 2.6 (SQLite), файл `fervo.db`, версия схемы 1, схема экспортируется в `core/schemas/` (каждое изменение схемы —
-новая версия и миграция; разрушающего сброса нет: в эту же базу позже придут пользовательские данные).
+Room 2.6 (SQLite), файл `fervo.db`, версия схемы **2**, схема каждой версии экспортируется в `core/schemas/` (каждое
+изменение схемы — новая версия и миграция; разрушающего сброса нет: в базе пользовательские данные).
+
+Кэш источника (пересоздаётся каждым импортом):
 
 | Таблица | Столбцы | Индексы |
 |---|---|---|
-| `source` | `id`, `sourceKey` (= `Source.cacheKey()`), `savedAt` (null — импорт ещё идёт) | `sourceKey` |
-| `category` | `id`, `sourceId`, `name`, `position` (порядок провайдера / первого появления) | `(sourceId, name)` unique |
-| `channel` | `id`, `sourceId`, `categoryId`, `position`, `name`, `url`, `logo`, `tvgId`, `autoLogo` | `(sourceId, position)`, `(sourceId, categoryId, position)` |
+| `source` | `id`, `sourceKey` (= `Source.cacheKey()`), `savedAt` (null — импорт ещё идёт), `epgUrls` (адреса XMLTV из заголовка M3U, через `\n`) | `sourceKey` |
+| `category` | `id`, `sourceId`, `name`, `position` (порядок провайдера / первого появления), `ckey` (= `Source.userKey()` + `\|` + имя) | `(sourceId, name)` unique |
+| `channel` | `id`, `sourceId`, `categoryId`, `position`, `name`, `url`, `logo`, `tvgId`, `autoLogo`, `ckey` (устойчивый ключ), `number` (`tvg-chno` / Xtream `num`), `archiveDays`, `epgId` (привязанный канал телегида) | `(sourceId, position)`, `(sourceId, categoryId, position)`, `(sourceId, ckey)` |
 | `channel_fts` | FTS4, `rowid` = `channel.id`, `name` = `searchText(name)` | — |
+
+Пользовательские данные (импорт их не трогает; всё — по устойчивым ключам, не по `id` строк):
+
+| Таблица | Столбцы | Для чего |
+|---|---|---|
+| `channel_state` | `ckey` PK, `name`, `hidden`, `favorite` (место в избранном, null — нет), `epg` (ручная привязка: XMLTV id), `epgShift` (мин), `logo` | LIVE-008, 012, EPG-004/005/007; строка без значений удаляется |
+| `category_state` | `ckey` PK, `name`, `hidden`, `position` | LIVE-012, 013 (порядок категорий) |
+| `channel_order` | (`list` = `category.ckey`, `ckey`) PK, `position` | LIVE-013: свой порядок каналов в категории |
+| `collection`, `collection_channel` | `id`, `name`, `position`; (`collectionId`, `ckey`) PK, `position` | LIVE-014: подборки из любых каналов |
+| `recent` | `ckey` PK, `watchedAt` (индекс) | LIVE-010 «Недавние», LIVE-017 последний, LIVE-018 предыдущий канал; хранится `RECENT_CHANNELS` |
+
+Телегид:
+
+| Таблица | Столбцы | Индексы |
+|---|---|---|
+| `epg_source` | `id`, `url`, `userAgent`, `refresh` (`PlaylistRefresh`), `refreshDays`, `shift` (мин, null — общий), `position` (приоритет), `savedAt`, `attemptAt`, `status` (итог для пользователя) | — |
+| `epg_channel` | `id` (не меняется между обновлениями источника), `sourceId`, `xmltvId`, `names` (display-name через `\n`), `icon` | `(sourceId, xmltvId)` unique |
+| `programme` | `id`, `channelId` (= `epg_channel.id`), `start`, `stop` (UTC, без сдвига), `title`, `description` | `(channelId, start)` |
+| `programme_stage` | то же, но `channel` = XMLTV id — передачи идущего импорта | — |
+
+**Устойчивый ключ канала** (`Channel.key`, столбец `ckey`) — к нему привязано всё пользовательское: импорт P0.2 при
+каждом обновлении создаёт строки `channel` заново, `id` меняются. Ключ, как в `docs/spec/01-architecture.md` §3.1:
+- **M3U — URL потока.** Он однозначно указывает на поток и у нормальных провайдеров постоянен; `tvg-id` и название
+  не подходят: `tvg-id` часто пуст или одинаков у HD/SD-версий, название провайдер меняет («Первый HD» → «Первый»).
+  Цена: у провайдеров, вписывающих в URL меняющийся токен, правки слетят при обновлении (ponytail: тогда — ключ
+  без токена по правилу провайдера). Один поток в двух категориях — один канал: избранное и правки общие,
+  в «Избранном», «Недавних» и подборках он показывается один раз.
+- **Xtream — `server|user|stream_id`** (`Source.userKey()` + id): ни пароль, ни выбор TS/HLS (они входят в URL и
+  `cacheKey`) ключ не меняют.
+- Категория — `Source.userKey()` + `|` + имя провайдера.
+Пользовательские таблицы не делятся по источникам: ключи глобальны (URL). Профили (P5) добавят столбец профиля.
+
+**Миграция 1 → 2** (`MIGRATION_1_2`, SQL скопирован из `2.json`): новые столбцы через `ALTER TABLE` (сохранённые
+каналы остаются — офлайн-старт после обновления работает), `ckey` старых строк = URL (у Xtream правильный ключ придёт
+со следующим обновлением; в версии 1 пользовательских данных не было), новые таблицы. `MigrationTest` строит базу
+версии 1 по `1.json` так, как её создавал Room, и открывает текущей версией: Room сверяет схему после миграции.
 
 - **Строка `source` — это один импорт.** Импорт создаёт новую строку с `savedAt = null` и пишет её категории и каналы
   пачками (`Defaults.IMPORT_BATCH_SIZE` = 1000 каналов на транзакцию). Экраны видят только строку с `savedAt`, поэтому
@@ -240,12 +300,32 @@ Room 2.6 (SQLite), файл `fervo.db`, версия схемы 1, схема э
   недописанный импорт — сохранённое не затирается; остатки импорта, прерванного гибелью процесса, удаляются перед следующим.
   Импорты (загрузка, перенос старого кэша) идут по одному (`Mutex` в `Repository`).
 - **Привязка к источнику**: запросы ищут каналы по `sourceKey`, другой URL или аккаунт Xtream их не подхватит.
-- **Выдача экранам** (`PlaylistStore`): `categories(key)` — `Flow` непустых категорий по порядку со счётчиками;
-  `channels(ChannelFilter)` — `PagingData` (страница `Defaults.CHANNEL_PAGE_SIZE`, плейсхолдеры включены: число элементов
-  известно сразу, прокрутка переживает подмену); `channelAt(filter, i)` — канал по номеру (переключение в плеере).
-  `ChannelFilter` = ключ источника + имя категории + поиск, а не id строк: после фонового обновления тот же фильтр
-  (и тот же `Pager`) показывает новые строки. Категория и источник находятся некоррелированными подзапросами,
-  поэтому SQLite идёт по индексу `(sourceId, categoryId, position)`.
+- **Выдача экранам** (`PlaylistStore`, через `Repository`):
+  - `categories(key, withHidden)` — `Flow` категорий в порядке пользователя (переставленные первыми), затем провайдера;
+    счётчик — видимые каналы; `title` — имя пользователя; скрытые и опустевшие — только с `withHidden` (экран управления);
+  - `groups(key)` — колонка категорий LIVE-010: «Избранное» (всегда, с подсказкой), «Недавние», «С архивом», «Все каналы»
+    (пустые служебные не показываются), подборки, категории — со счётчиками;
+  - `items(ChannelFilter)` — `PagingData<ChannelItem>`: канал с правками пользователя (имя, логотип), номер, избранное,
+    скрыт ли, **«сейчас» и «далее»** (EPG-006); `channels(filter)` — то же без программы (`PagingData<Channel>`, нынешняя сетка);
+  - `guide(filter, from, to)` — `PagingData<GuideRow>` для сетки программы (см. «Телегид»);
+  - `channelAt(filter, i)` (плеер), `channelByNumber(n)` (LIVE-009, номер = `tvg-chno` / `num` / позиция с 1),
+    `channel(key)`, `indexOf(filter, key)` (LIVE-017: куда поставить фокус), `airing(key)`, `schedule(key, from, to)`.
+  `ChannelFilter` = ключ источника + список (`ChannelGroup`: все / избранное / недавние / с архивом / категория по имени
+  провайдера / подборка) + поиск + сортировка (LIVE-016: как у провайдера с ручным порядком, по номеру, А–Я, сначала с
+  архивом, сначала избранные) + `Visibility` (видимые / скрытые / все), а не id строк: после фонового обновления тот же
+  фильтр (и тот же `Pager`) показывает новые строки. Категория и источник находятся некоррелированными подзапросами,
+  поэтому SQLite идёт по индексу `(sourceId, categoryId, position)`; правки пользователя — `LEFT JOIN` по ключу.
+  Скрытая категория прячет свои каналы из «Все» и «С архивом», но не из избранного, недавних и подборок (LIVE-014).
+- **Свой `PagingSource`** (`ListSource`): LIMIT/OFFSET с плейсхолдерами, как у Room, но страница — два запроса:
+  каналы страницы, затем **одним запросом** «сейчас/далее» для всех её каналов (без запроса на канал). Источник
+  подписан на таблицы списка (`InvalidationTracker.Observer`) и помнит, когда на загруженных страницах кончается
+  первая передача (`validUntil`): общее «тиканье» раз в минуту (`minuteTicks`) перезагружает страницы только тогда —
+  «сейчас» сменяется само, а прогресс экран считает от `start/stop` по тому же тику.
+- **Пользовательские данные** (`UserStore`, через `Repository`): `setFavorite`, `setHidden(ключи)` (и диапазоном),
+  `rename`, `setCategoriesHidden`, `renameCategory`, `reorderCategories`, `reorder(список, ключи)` — избранное, подборка
+  или категория (новые каналы провайдера встают после упорядоченных), подборки (`createCollection` … `removeFromCollection`),
+  `watched(key)` → `recentKeys()` (последний и предыдущий канал), `edits()` / `resetEdits()` (LIVE-015: что изменится;
+  возврат имён, скрытия и порядка категории или всех категорий, избранное и привязки телегида не трогаются).
 - **Поиск** — FTS4 по названиям, совпадение по началу слов: запрос «мат фут» → `мат* фут*` (все слова, И).
   Стандартный токенизатор SQLite сворачивает регистр только у латиницы, поэтому и в индекс, и в запрос идёт
   `searchText()`: нижний регистр, `ё→е`, всё, кроме букв и цифр, — пробел. Поиск — внутри выбранной категории.
@@ -288,12 +368,74 @@ Room 2.6 (SQLite), файл `fervo.db`, версия схемы 1, схема э
 отозвано), `Repository.load` вместо `SecurityException` / `FileNotFoundException` даёт понятный текст с предложением
 выбрать файл заново («Источник» → «Выбрать файл»): на экране ошибки, а при показанном списке — в настройках.
 
+## Телегид (EPG)
+
+```
+Repository.refreshEpg(id) ──httpStream(url, userAgent источника)──▶ unpacked() (gzip по сигнатуре 1f 8b)
+   ▼                                                                   ▼
+EpgStore.import ◀── parseXmltv: XmlPullParser, по элементу ── <channel> в память (тысячи), <programme> нужных каналов
+   │   пачки по EPG_BATCH_SIZE ──▶ programme_stage (экраны его не читают)
+   └─ в конце одна транзакция: epg_channel (upsert, id те же) → programme источника заменяется из stage →
+      старое удаляется → rebind() (channel.epgId) → статус источника     ──▶ экраны перерисовываются один раз
+```
+
+- **Источники** (EPG-001): `epg_source`, несколько; добавляются `addEpgSource(url)` — пользователь сам решает, что
+  скачивать. «Взять из плейлиста» — `playlistEpgUrls(source)`: адреса `url-tvg` / `x-tvg-url` из заголовка M3U (их пишет
+  импорт плейлиста в `source.epgUrls`) или `xmltv.php` аккаунта Xtream (EPG-002). У каждого — свой User-Agent,
+  расписание (`PlaylistRefresh`, как у плейлиста: `epgWaitMs()` для цикла ожидания, `refreshDueEpg()`), сдвиг,
+  приоритет (`position`), время и итог последней попытки: «Каналов в телегиде: N, передач: M. Совпало с плейлистом: K»
+  или «Ни один канал плейлиста не найден в этом телегиде». Импорты телегида идут по одному (свой `Mutex`, не тот, что у
+  плейлиста: большой XMLTV не задерживает обновление каналов).
+- **Что хранится** (EPG-003): передачи только тех каналов XMLTV, которые нужны сохранённым плейлистам (их tvg-id,
+  нормализованное название или ручная привязка — `Wanted`), только в окне от «сейчас − прошлое» до «сейчас +
+  `Settings.epgDays`» (1–14, по умолчанию 7). Прошлое — `Defaults.EPG_PAST_MS` (6 ч: сетка открывается с парой прошедших
+  часов, плеер показывает предыдущую передачу) или глубина архива, если в плейлисте есть каналы с архивом
+  (ponytail: одна глубина на все каналы, а не по каналу). Каждый импорт удаляет закончившееся раньше окна.
+  Каналы XMLTV (`epg_channel`) хранятся все: из них выбирает ручная привязка и автосопоставление.
+- **Почему `programme_stage`**: Room сообщает подписчикам о каждой транзакции; пиши импорт сразу в `programme`, сетка и
+  списки перечитывались бы после каждой пачки. Перенос из stage — один `INSERT … SELECT` в последней транзакции.
+- **Битый файл**: передача с непонятным временем пропускается одна; парсер в «мягком» режиме (`relaxed`: необъявленные
+  сущности вроде `&nbsp;` не ошибка); если файл обрывается или ломается посередине, сохраняется прочитанное, а статус
+  говорит, что файл повреждён. Передача без `stop` заканчивается там, где начинается следующая передача её канала.
+- **Время** (`parseXmltvTime`): `YYYYMMDDhhmmss ±hhmm` (`+03:00` тоже), секунды/минуты/часы можно опустить, без пояса —
+  UTC (так в DTD XMLTV). В базе — UTC миллисекунды. Пересчёт дат — свой (`daysFromCivil`): `java.time` есть только с API 26.
+- **Сдвиг времени** (EPG-007) применяется при чтении, а не при импорте, поэтому обновление его не сбрасывает и смена
+  сразу видна: сдвиг канала (`channel_state.epgShift`) → источника (`epg_source.shift`) → общий (`Settings.epgShift`).
+  Время на экране = время в телегиде + сдвиг; поиск «сейчас» идёт по моменту `now − сдвиг`.
+- **Привязка** (EPG-004, `EpgIndex`): ручная (`channel_state.epg`, XMLTV id) → tvg-id / Xtream `epg_channel_id` (без
+  учёта регистра) → `normName` названия против всех display-name (та же нормализация, что у логотипов) → короткий EPG
+  самого канала. Если канал есть в нескольких телегидах, берётся первый по `position`. Результат хранится в
+  `channel.epgId`: его вычисляет импорт плейлиста (каналы сразу с программой) и `rebind()` после импорта телегида,
+  изменения источника и ручной привязки — пишутся только изменившиеся строки. Ручная привязка на канал, которого
+  нет среди сохранённых передач, возвращает источник для повторной загрузки (`Repository.bindEpg` делает это сам).
+- **Автосопоставление** (EPG-005, `autoMatch`): каналы без телегида против всех каналов XMLTV; похожесть — коэффициент
+  Дайса по парам букв нормализованных названий, но только при одинаковых цифрах («Россия 1» ≠ «Россия 24»).
+  ≥ `EPG_MATCH_SURE` (0,85) и отрыв от второго ≥ `EPG_MATCH_MARGIN` — привязывается сразу (как ручная привязка);
+  ≥ `EPG_MATCH_MIN` — в список на проверку с `EPG_MATCH_SUGGESTIONS` кандидатами; «Привязать телегид» —
+  `epgSuggestions(name)`, самые похожие первыми. `bindEpg(…, takeLogo)` — с логотипом телегида.
+- **«Сейчас / далее» одним запросом** (`EpgStore.around`): для пар (канал телегида, момент) страницы —
+  `SELECT … FROM programme WHERE id IN (SELECT (SELECT id … start <= t ORDER BY start DESC LIMIT 1) FROM (VALUES …) …
+  UNION ALL …)`: на пару — поиск по индексу `(channelId, start)`, числа вписаны в SQL (нет лимита на аргументы).
+  Плееру (`airing`) — ещё и предыдущая передача.
+- **Сетка программы** (EPG-008, `guide(filter, from, to)`): те же страницы каналов; для страницы один запрос передач в
+  окне `[from, to)` (в экранном времени); `GuideRow.programmes` упорядочены и обрезаны без наложений
+  (`nonOverlapping`), `guideCells(programmes, from, to)` даёт ячейки без пропусков (пропуск — ячейка «нет данных»):
+  строку рисует один холст (`x = (start − from) × масштаб`), фокус — отдельный элемент. Окно времени и окно строк
+  подгружаются отдельно: новое окно времени = новый `guide(…)`.
+- **Короткий EPG Xtream** (EPG-002, `loadShortEpg(source, channel)`): только для канала, который не покрыт XMLTV;
+  `get_short_epg&stream_id=…&limit=SHORT_EPG_LIMIT`, base64-тексты, время из `start_timestamp`/`stop_timestamp`.
+  Хранится как обычный телегид — в скрытом источнике `xtream:short_epg`, канал телегида = ключ канала, — так что
+  строки, плеер и сетка показывают его без отдельной ветки. Повторный запрос — не чаще раза в час на канал за запуск.
+
 ## M3U-парсер
 
 - Читает `Reader` построчно (`parseM3u(reader, baseUrl) { channel -> … }`), файл целиком в память не загружается;
   ошибка в одной записи пропускает только её.
 - Снимает BOM, понимает `\r\n`, пропускает пустые строки и неизвестные теги (`#EXTVLCOPT`, `#KODIPROP` и т.п.).
-- `#EXTINF`: атрибуты `key="value"` (используются `tvg-id`, `tvg-logo`, `group-title`, `tvg-name`).
+- `#EXTM3U`: адреса телегида `url-tvg` и `x-tvg-url` (списки через запятую разделяются, повторы убираются) — в `onEpgUrls`;
+  заголовков может быть несколько (склеенные плейлисты).
+- `#EXTINF`: атрибуты `key="value"` (используются `tvg-id`, `tvg-logo`, `group-title`, `tvg-name`, `tvg-chno` — номер,
+  `catchup-days` / `tvg-rec` / `timeshift` — глубина архива в днях).
   Имя канала — всё после **первой запятой вне кавычек**, поэтому `group-title="A, B",Канал, HD` разбирается корректно.
 - Группа: `group-title` → `#EXTGRP` → «Без категории».
 - Логотип: `tvg-logo` → нестандартный `logo`. Относительный путь достраивается от URL плейлиста
@@ -330,8 +472,11 @@ Room 2.6 (SQLite), файл `fervo.db`, версия схемы 1, схема э
 ```
 GET {server}/player_api.php?username=U&password=P                          → user_info.auth == 1
 GET …&action=get_live_categories  → [{category_id, category_name}]
-GET …&action=get_live_streams     → [{stream_id, name, category_id, stream_icon, epg_channel_id}]
+GET …&action=get_live_streams     → [{num, stream_id, name, category_id, stream_icon, epg_channel_id, tv_archive, tv_archive_duration}]
+GET …&action=get_short_epg&stream_id=…&limit=N → {epg_listings: [{title, description (base64), start_timestamp, stop_timestamp}]}
+GET {server}/xmltv.php?username=U&password=P  → XMLTV аккаунта (обычный источник телегида)
 URL потока: {server}/live/{U}/{P}/{stream_id}.ts   (или .m3u8, если включён флаг HLS)
+Ключ канала: {server}|{U}|{stream_id}
 ```
 
 Неверный аккаунт — «аккаунт не принят», как бы панель ни ответила: `auth` ≠ 1, HTTP 401 / 403 (`HttpException.code`);
@@ -435,15 +580,16 @@ Back (пульт, кнопка, жест) ──▶ BackHandler
 | Задача | Где |
 |---|---|
 | VOD / сериалы Xtream | `Xtream.kt`: `get_vod_categories`, `get_vod_streams`, `get_series`, `get_series_info`; URL `/movie/U/P/{id}.{ext}`, `/series/U/P/{id}.{ext}` |
-| EPG | `Xtream.kt`: `get_short_epg&stream_id=`; для M3U — XMLTV из `url-tvg` в `#EXTM3U` по `Channel.tvgId` |
-| Несколько плейлистов / избранное | `Repository`: список `Source` вместо одного; избранное — множество URL в prefs |
+| Экраны P1 (эфир, телегид, меню канала) | только `Repository`: `groups`, `items`, `guide`, `airing`, `schedule`, пользовательские данные, телегид — см. выше |
+| Несколько плейлистов (P4) | `Repository`: список `Source` вместо одного; пользовательские таблицы уже по глобальным ключам; приоритет телегидов — `epg_source.position` |
+| Профили (P5) | столбец профиля в `channel_state`, `category_state`, `channel_order`, `collection*`, `recent` |
 | User-Agent/Referer из плейлиста | `M3uParser`: разбирать `#EXTVLCOPT:http-user-agent`, хранить в `Channel`, добавить заголовки в `PlayItem`, в `ExoEngine` — `DefaultHttpDataSource.Factory.setDefaultRequestProperties` |
 | Запасной движок (P3) | новая реализация `PlaybackEngine`; цепочка — по `PlaybackError.kind` следующего движка; список возможностей движка (DRM, passthrough, субтитры) добавится вместе со вторым движком |
 
 ## Тесты
 
-`./gradlew testDebugUnitTest` (все тесты — в `core`, JVM; 48 тестов). Тесты базы и `JsonReader` идут под **Robolectric**:
-Room и `android.util.JsonReader` требуют Android-классов, а Robolectric даёт настоящий SQLite (с FTS4) прямо в JVM —
+`./gradlew testDebugUnitTest` (все тесты — в `core`, JVM; 74 теста). Тесты базы, `JsonReader` и `XmlPullParser` идут под **Robolectric**:
+Room, `android.util.JsonReader` и `android.util.Xml` требуют Android-классов, а Robolectric даёт настоящий SQLite (с FTS4) прямо в JVM —
 без устройства и эмулятора, на CI тем же `testDebugUnitTest`. Куча тестовой JVM ограничена 256 МБ (`core/build.gradle.kts`).
 - `M3uParserTest` — атрибуты, запятая в кавычках и в имени, `#EXTGRP`, CRLF/BOM/неизвестные теги, голый список URL,
   fallback на `tvg-name`, `logo`/`tvg-logo` и относительные пути;
@@ -467,5 +613,25 @@ Room и `android.util.JsonReader` требуют Android-классов, а Robo
   `System.gc()` и замер занятой кучи; критерий — рост от первого замера до максимума < 8 МБ (сам список каналов
   занял бы ~40 МБ). Сейчас: рост — единицы КБ, импорт ~4 с, FTS-поиск по 100 000 — ~30 мс.
 
-Загрузка базы логотипов, HTTP и UI unit-тестами не покрыты — их проверяют на устройстве. Тест миграций схемы
-появится со второй версией схемы (сейчас версия 1, мигрировать не из чего).
+- `XmltvTest` — разбор XMLTV: каналы, несколько display-name, первая из нескольких `title`, вложенные теги и `&nbsp;`,
+  битое время, ненужные каналы, передача без `stop`; gzip по содержимому; оборванный и испорченный файл; форматы времени
+  и часовые пояса;
+- `EpgMatchTest` — порядок точной привязки, автосопоставление (цифры должны совпадать), ячейки строки сетки;
+- `EpgStoreTest` (Robolectric) — импорт хранит только нужное в окне, «сейчас / далее» и прогресс в строках, итог
+  «ничего не совпало», старая программа видна до конца импорта, сдвиг (общий / источника / канала), ручная привязка после
+  обновления плейлиста и повторная загрузка, `airing` / `schedule` / строки сетки, короткий EPG;
+  **автосопоставление 400 каналов с телегидом на 3 000 каналов** — сейчас 0,3–0,9 с (критерий ≤ 5 с);
+  **XMLTV 322 МБ в gzip**, генерируемый на лету (2 000 каналов × 500 передач, 400 нужны): рост кучи 0 КБ (критерий < 8 МБ),
+  ~8 с на ПК, хранится 139 200 передач;
+- `UserStoreTest` (Robolectric) — избранное и его порядок, скрытие и переименование каналов и категорий, ручной порядок
+  с новыми каналами провайдера, подборки, недавние, служебные списки — **после повторного импорта**; сброс (LIVE-015);
+  сортировки, номера, канал по номеру, позиция канала;
+- `MigrationTest` (Robolectric) — база версии 1 из `1.json` с каналами открывается версией 2: схема сверена Room,
+  каналы, поиск и пользовательские данные работают.
+
+Проверка на реальных данных (P1.1, вручную, временным тестом): публичный XMLTV на 447 МБ (48 МБ gzip, `+0300`) с
+плейлистом ruiptv — 5,3 с на ПК, 3 205 каналов телегида, 24 446 передач, 193 из 215 каналов привязаны по названию,
+время передач верное по Москве; тестовый Xtream — номера 1–9, ключи по `stream_id`, пустой `xmltv.php` даёт статус
+«Ни один канал плейлиста не найден», `get_short_epg` — пустые списки.
+
+Загрузка базы логотипов, HTTP и UI unit-тестами не покрыты — их проверяют на устройстве.

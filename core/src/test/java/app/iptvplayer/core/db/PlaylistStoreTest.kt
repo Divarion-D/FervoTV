@@ -3,6 +3,7 @@ package app.iptvplayer.core.db
 import androidx.paging.PagingSource
 import androidx.room.Room
 import app.iptvplayer.core.SyntheticM3u
+import app.iptvplayer.core.loadPage
 import app.iptvplayer.core.migrateLegacyCache
 import app.iptvplayer.core.model.Channel
 import app.iptvplayer.core.source.encodePlaylist
@@ -60,7 +61,8 @@ class PlaylistStoreTest {
         }
 
     private fun page(f: ChannelFilter, size: Int = 100) = runBlocking {
-        store.pagingSource(f).load(PagingSource.LoadParams.Refresh(null, size, false)) as PagingSource.LoadResult.Page
+        val p = loadPage(size) { store.itemSource(f, 0) }
+        PagingSource.LoadResult.Page(p.data.map { it.channel }, p.prevKey, p.nextKey, p.itemsBefore, p.itemsAfter)
     }
 
     private fun names(f: ChannelFilter) = page(f).data.map { it.name }
@@ -84,18 +86,18 @@ class PlaylistStoreTest {
         val all = ChannelFilter("k")
         assertEquals(sample.map { it.name }, names(all))
         assertEquals(sample[0], page(all).data[0].copy(id = 0))
-        assertEquals(listOf("Первый", "Второй"), names(ChannelFilter("k", group = "Новости")))
+        assertEquals(listOf("Первый", "Второй"), names(ChannelFilter("k", group = ChannelGroup.Category("Новости"))))
 
         // FTS: case, ё/е, word prefixes, several words; inside the selected category only.
         assertEquals(listOf("Ёлки ТВ"), names(ChannelFilter("k", search = "елки")))
         assertEquals(listOf("Ёлки ТВ"), names(ChannelFilter("k", search = "ЁЛ")))
         assertEquals(listOf("Матч! Футбол 1"), names(ChannelFilter("k", search = "фут 1")))
-        assertEquals(emptyList<String>(), names(ChannelFilter("k", group = "Новости", search = "матч")))
+        assertEquals(emptyList<String>(), names(ChannelFilter("k", group = ChannelGroup.Category("Новости"), search = "матч")))
         assertEquals(emptyList<String>(), names(ChannelFilter("k", search = "торой"))) // prefix, not substring
         assertEquals(sample.map { it.name }, names(ChannelFilter("k", search = " !! "))) // nothing to search for
 
         // Player: channel by position in the filtered list.
-        assertEquals("Второй", runBlocking { store.channelAt(ChannelFilter("k", group = "Новости"), 1) }?.name)
+        assertEquals("Второй", runBlocking { store.channelAt(ChannelFilter("k", group = ChannelGroup.Category("Новости")), 1) }?.name)
         assertNull(runBlocking { store.channelAt(all, 4) })
 
         // Another source key sees nothing.

@@ -75,6 +75,7 @@ import app.iptvplayer.R
 import app.iptvplayer.core.Defaults
 import app.iptvplayer.core.Repository
 import app.iptvplayer.core.db.ChannelFilter
+import app.iptvplayer.core.db.ChannelGroup
 import app.iptvplayer.core.model.Channel
 import app.iptvplayer.core.model.Source
 import app.iptvplayer.core.source.cacheKey
@@ -127,7 +128,7 @@ fun ChannelsScreen(repo: Repository, source: Source, player: PlayerSession, onOp
         search = query.trim()
     }
     // By source key and category name: the same filter keeps working when a refresh replaces the rows.
-    val filter = ChannelFilter(source.cacheKey(), group.takeIf { it != ALL }, search)
+    val filter = ChannelFilter(source.cacheKey(), if (group == ALL) ChannelGroup.All else ChannelGroup.Category(group), search)
     val channels = remember(filter) { repo.channels(filter) }.collectAsLazyPagingItems()
 
     // Back to the top only when the user changed the filter, not when a refresh replaced the list.

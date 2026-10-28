@@ -12,7 +12,47 @@ data class Channel(
     val autoLogo: String? = null,
     /** Database row id; 0 for a channel that isn't stored. */
     val id: Long = 0,
+    /**
+     * Stable identity that user data (favorites, edits, EPG binding, history) is attached to: rows are recreated by
+     * every import, this is not. M3U: the stream URL; Xtream: server + user + stream_id (not the password or
+     * the TS/HLS choice, which are part of the URL).
+     */
+    val key: String = url,
+    /** tvg-chno / the provider's number; null = the position in the source (see [ChannelItem.number]). */
+    val number: Int? = null,
+    /** Archive (catch-up) depth in days, 0 = no archive. */
+    val archiveDays: Int = 0,
 )
+
+/** One programme of the guide; times are epoch ms with the guide's time shift already applied. */
+data class Programme(val start: Long, val stop: Long, val title: String, val description: String? = null) {
+    /** 0..1 at [now]. */
+    fun progress(now: Long): Float = ((now - start).toFloat() / (stop - start).coerceAtLeast(1)).coerceIn(0f, 1f)
+
+    /** Whole minutes left at [now], rounded up ("ещё 24 мин"). */
+    fun minutesLeft(now: Long): Long = ((stop - now).coerceAtLeast(0) + 59_999) / 60_000
+}
+
+/**
+ * A channel as the live screens show it: user edits applied ([Channel.name] is the user's name if renamed,
+ * [Channel.logo] the user's logo if set), with the guide for the moment it was loaded.
+ */
+data class ChannelItem(
+    val channel: Channel,
+    /** tvg-chno / provider number, else the position in the source from 1 (LIVE-009). */
+    val number: Int,
+    val favorite: Boolean,
+    /** Hidden itself or by its category (only listed when the filter asks for hidden ones). */
+    val hidden: Boolean,
+    val now: Programme? = null,
+    val next: Programme? = null,
+)
+
+/** Previous, current and next programme of one channel (player info bar). */
+data class Airing(val previous: Programme?, val now: Programme?, val next: Programme?)
+
+/** One row of the programme grid: the channel and its programmes overlapping the requested time range, in order. */
+data class GuideRow(val item: ChannelItem, val programmes: List<Programme>)
 
 sealed interface Source {
     /** http(s):// playlist URL or content:// URI of a local file. */
@@ -29,7 +69,22 @@ data class Settings(
     val playlistRefresh: PlaylistRefresh = Defaults.PLAYLIST_REFRESH,
     /** N for [PlaylistRefresh.EVERY_N_DAYS]. */
     val refreshDays: Int = Defaults.PLAYLIST_REFRESH_DAYS,
+    /** "Дней программы" (EPG-003): how many days of guide are downloaded, kept and scrollable. */
+    val epgDays: Int = Defaults.EPG_DAYS,
+    /** Global guide time shift in minutes (EPG-007); a source's or a channel's own shift wins over it. */
+    val epgShift: Int = Defaults.EPG_SHIFT,
+    /** Order of channels in the live section (LIVE-016). */
+    val channelSort: ChannelSort = Defaults.CHANNEL_SORT,
 )
+
+/** LIVE-016. [PROVIDER] is the provider's order with the user's manual order (LIVE-013) on top of it. */
+enum class ChannelSort(val title: String) {
+    PROVIDER("Как у провайдера"),
+    NUMBER("По номеру"),
+    NAME("По названию"),
+    ARCHIVE_FIRST("Сначала с архивом"),
+    FAVORITES_FIRST("Сначала избранные"),
+}
 
 /** When to re-download the playlist. The cached copy always opens first; the refresh runs in the background. */
 enum class PlaylistRefresh(private val title: String) {

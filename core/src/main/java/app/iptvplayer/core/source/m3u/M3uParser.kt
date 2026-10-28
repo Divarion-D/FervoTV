@@ -15,9 +15,10 @@ fun parseM3u(text: String, baseUrl: String? = null): List<Channel> =
 
 /**
  * Streaming version: reads [reader] line by line and hands out channels one at a time, so memory doesn't grow
- * with the playlist. The caller closes [reader].
+ * with the playlist. The caller closes [reader]. [onEpgUrls] gets the XMLTV addresses of each `#EXTM3U` header
+ * (`url-tvg` / `x-tvg-url`, comma-separated lists split).
  */
-fun parseM3u(reader: Reader, baseUrl: String? = null, onChannel: (Channel) -> Unit) {
+fun parseM3u(reader: Reader, baseUrl: String? = null, onEpgUrls: (List<String>) -> Unit = {}, onChannel: (Channel) -> Unit) {
     var info: String? = null
     var extGroup: String? = null
     var first = true
@@ -26,6 +27,7 @@ fun parseM3u(reader: Reader, baseUrl: String? = null, onChannel: (Channel) -> Un
         first = false
         when {
             line.isEmpty() -> {}
+            line.startsWith("#EXTM3U", ignoreCase = true) -> epgUrls(line).takeIf { it.isNotEmpty() }?.let(onEpgUrls)
             line.startsWith("#EXTINF", ignoreCase = true) -> { info = line; extGroup = null }
             line.startsWith("#EXTGRP:", ignoreCase = true) -> extGroup = line.substring(8).trim()
             line.startsWith("#") -> {}
@@ -49,7 +51,18 @@ private fun toChannel(info: String?, extGroup: String?, url: String, baseUrl: St
         ?: NO_GROUP
     // Some providers use a non-standard `logo` attribute, often with a relative path.
     val logo = (attrs["tvg-logo"] ?: attrs["logo"])?.ifBlank { null }?.let { resolve(baseUrl, it) }
-    return Channel(name, url, group, logo, attrs["tvg-id"]?.ifBlank { null })
+    return Channel(
+        name, url, group, logo, attrs["tvg-id"]?.ifBlank { null },
+        number = attrs["tvg-chno"]?.trim()?.toIntOrNull()?.takeIf { it > 0 },
+        // Archive depth in days: catchup-days is the common one, tvg-rec and timeshift are older spellings.
+        archiveDays = listOf("catchup-days", "tvg-rec", "timeshift").firstNotNullOfOrNull { attrs[it]?.trim()?.toIntOrNull() }
+            ?.coerceAtLeast(0) ?: 0,
+    )
+}
+
+private fun epgUrls(header: String): List<String> {
+    val attrs = ATTR.findAll(header).associate { m -> m.groupValues[1].lowercase() to m.groupValues[2] }
+    return listOf("url-tvg", "x-tvg-url").flatMap { attrs[it].orEmpty().split(',') }.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
 }
 
 private fun resolve(base: String?, ref: String): String =

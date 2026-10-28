@@ -11,14 +11,17 @@ class HttpException(val code: Int) : IOException("HTTP $code")
 
 fun httpGet(url: String): String = httpStream(url) { it.bufferedReader().readText() }
 
-/** GET and read the body. Follows redirects manually because HttpURLConnection won't cross http<->https. */
-fun <T> httpStream(url: String, read: (InputStream) -> T): T {
+/**
+ * GET and read the body. Follows redirects manually because HttpURLConnection won't cross http<->https.
+ * [userAgent]: an EPG source can have its own (EPG-001).
+ */
+fun <T> httpStream(url: String, userAgent: String = Defaults.USER_AGENT, read: (InputStream) -> T): T {
     var u = URL(url)
     repeat(Defaults.MAX_REDIRECTS) {
         val c = u.openConnection() as HttpURLConnection
         c.connectTimeout = Defaults.CONNECT_TIMEOUT_MS
         c.readTimeout = Defaults.READ_TIMEOUT_MS
-        c.setRequestProperty("User-Agent", Defaults.USER_AGENT)
+        c.setRequestProperty("User-Agent", userAgent)
         try {
             val code = c.responseCode
             if (code in 300..399) {

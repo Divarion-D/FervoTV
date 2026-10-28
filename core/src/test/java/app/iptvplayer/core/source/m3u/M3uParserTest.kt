@@ -68,4 +68,28 @@ class M3uParserTest {
     fun nameFallsBackToTvgName() {
         assertEquals("Zoo", parseM3u("#EXTINF:-1 tvg-name=\"Zoo\",\nhttp://z").single().name)
     }
+
+    /** SRC-008: guide addresses from the header, channel numbers, archive depth; unknown tags still skipped. */
+    @Test
+    fun headerEpgUrlsNumbersAndArchive() {
+        val text = """
+            #EXTM3U url-tvg="http://e/a.xml.gz, http://e/b.xml" x-tvg-url="http://e/b.xml" tvg-shift="0"
+            #EXTINF:-1 tvg-chno="7" catchup="default" catchup-days="3",Семь
+            #EXTVLCOPT:http-user-agent=X
+            #KODIPROP:inputstream=x
+            http://s/7
+            #EXTINF:-1 tvg-chno="x" tvg-rec="2",Без номера
+            http://s/0
+            #EXTM3U x-tvg-url="http://e/c.xml"
+            #EXTINF:-1,Обычный
+            http://s/1
+        """.trimIndent()
+        val urls = ArrayList<List<String>>()
+        val channels = ArrayList<Channel>()
+        parseM3u(java.io.StringReader(text), null, urls::add) { channels += it }
+        assertEquals(listOf(listOf("http://e/a.xml.gz", "http://e/b.xml"), listOf("http://e/c.xml")), urls)
+        assertEquals(listOf(7, null, null), channels.map { it.number })
+        assertEquals(listOf(3, 2, 0), channels.map { it.archiveDays })
+        assertEquals(listOf("http://s/7", "http://s/0", "http://s/1"), channels.map { it.key }) // M3U key = stream URL
+    }
 }

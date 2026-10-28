@@ -1,5 +1,6 @@
 package app.iptvplayer.core
 
+import app.iptvplayer.core.model.ChannelSort
 import app.iptvplayer.core.model.PlaylistRefresh
 
 /**
@@ -20,6 +21,21 @@ object Defaults {
     /** N for "every N days" and the values offered for it. */
     const val PLAYLIST_REFRESH_DAYS = 3
     val PLAYLIST_REFRESH_DAYS_OPTIONS = listOf(2, 3, 5, 7, 10, 14, 30)
+
+    /** "Дней программы" (EPG-003): days of guide downloaded, kept and scrollable; the user picks from [EPG_DAYS_RANGE]. */
+    const val EPG_DAYS = 7
+    val EPG_DAYS_RANGE = 1..14
+
+    /** Global guide time shift, minutes (EPG-007); changed in [EPG_SHIFT_STEP] steps up to ±[EPG_SHIFT_MAX]. */
+    const val EPG_SHIFT = 0
+    const val EPG_SHIFT_STEP = 15
+    const val EPG_SHIFT_MAX = 14 * 60
+
+    /** How often a new guide source is re-downloaded (each source has its own schedule). */
+    val EPG_REFRESH = PlaylistRefresh.DAILY
+
+    /** Order of channels in the live section (LIVE-016). */
+    val CHANNEL_SORT = ChannelSort.PROVIDER
 
     // --- About ---
     const val AUTHOR = "Divarion-D"
@@ -49,6 +65,38 @@ object Defaults {
 
     /** Channels loaded per page of the grid (Paging 3); the first load is 3 pages. */
     const val CHANNEL_PAGE_SIZE = 60
+
+    /** Guide programmes written per transaction while importing XMLTV. */
+    const val EPG_BATCH_SIZE = 2_000
+
+    /**
+     * Past programmes kept for channels without archive: the grid opens with about two hours of the past and the
+     * player shows the previous programme. Channels with archive keep their archive depth.
+     */
+    const val EPG_PAST_MS = 6 * 3_600_000L
+
+    /** Watched channels remembered for "Недавние" and the previous channel. */
+    const val RECENT_CHANNELS = 30
+
+    // --- Guide matching by name (EPG-005), Dice similarity of letter pairs, 0..1 ---
+    /** Bound right away when at least this similar... */
+    const val EPG_MATCH_SURE = 0.85
+
+    /** ...and this much more similar than the second best. */
+    const val EPG_MATCH_MARGIN = 0.1
+
+    /** Below this a candidate isn't offered for review. */
+    const val EPG_MATCH_MIN = 0.5
+
+    /** Candidates shown per channel in the review list. */
+    const val EPG_MATCH_SUGGESTIONS = 5
+
+    // --- Xtream short EPG (EPG-002) ---
+    /** Programmes asked per request (current + next ones). */
+    const val SHORT_EPG_LIMIT = 10
+
+    /** The stored short EPG of a channel is asked again when it has less than this ahead. */
+    const val SHORT_EPG_AHEAD_MS = 3_600_000L
 
     // --- UI / input ---
     const val SEARCH_DEBOUNCE_MS = 250L
