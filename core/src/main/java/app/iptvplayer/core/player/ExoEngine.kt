@@ -50,7 +50,7 @@ class ExoEngine(ctx: Context) : PlaybackEngine {
             if (stall.stalled(exo.bufferedPosition, SystemClock.elapsedRealtime())) {
                 exo.stop()
                 _state.update {
-                    it.copy(buffering = false, error = PlaybackError(PlaybackError.Kind.Network, "нет данных ${Defaults.BUFFER_STALL_TIMEOUT_MS / 1000} с"))
+                    it.copy(buffering = false, error = PlaybackError(PlaybackError.Kind.Stalled, "${Defaults.BUFFER_STALL_TIMEOUT_MS / 1000}"))
                 }
             } else main.postDelayed(this, 1_000)
         }

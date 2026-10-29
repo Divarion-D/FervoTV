@@ -1,6 +1,11 @@
 package app.iptvplayer.core
 
 import app.iptvplayer.core.db.ChannelGroup
+import app.iptvplayer.core.db.EpgResult
+import app.iptvplayer.core.db.EpgSource
+import app.iptvplayer.core.db.EpgStatus
+import app.iptvplayer.core.db.failedStatus
+import app.iptvplayer.core.db.lastStatus
 import app.iptvplayer.core.db.decodeGroup
 import app.iptvplayer.core.db.encode
 import app.iptvplayer.core.db.matchesWords
@@ -63,5 +68,17 @@ class MiscTest {
             ChannelGroup.Category("Кино: новинки"), ChannelGroup.Collection(7))) assertEquals(g, decodeGroup(g.encode()))
         assertEquals(ChannelGroup.All, decodeGroup(null))
         assertEquals(ChannelGroup.All, decodeGroup("collection:x"))
+    }
+
+    /** UI-022: a guide's last result is stored as data, not as words; core's own failures keep their code. */
+    @Test
+    fun epgStatusIsData() {
+        fun status(s: String?) = EpgSource(url = "u", status = s).lastStatus()
+        val ok = EpgResult(channels = 3, programmes = 40, matched = 0, damaged = true)
+        assertEquals(EpgStatus.Loaded(ok), status(ok.status()))
+        assertEquals(EpgStatus.Failed(ErrorCode.XTREAM_BAD_EPG, null), status(failedStatus(CoreException(ErrorCode.XTREAM_BAD_EPG))))
+        assertEquals(EpgStatus.Failed(null, "HTTP 404"), status(failedStatus(java.io.IOException("HTTP 404"))))
+        assertEquals(null, status("Ошибка: старая запись")) // written by 0.1/early 0.2: replaced by the next refresh
+        assertEquals(null, status(null))
     }
 }

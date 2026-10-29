@@ -122,7 +122,7 @@ class UserStoreTest {
         assertEquals(listOf("Первый"), names(ChannelGroup.Favorites)) // favorites stay
         assertEquals(listOf("Спорт", "Новости", "Кино"), runBlocking { store.categories("k").first() }.map { it.name })
 
-        assertTrue(!user.edits("k", null).isEmpty) // the category order
+        assertTrue(user.edits("k", null).categoryOrder)
         user.reset("k", null)
         assertTrue(user.edits("k", null).isEmpty)
         assertEquals(listOf("Новости", "Кино", "Спорт"), runBlocking { store.categories("k").first() }.map { it.name })
@@ -147,7 +147,7 @@ class UserStoreTest {
 
         val groups = runBlocking { store.groups("k").first() }
         assertEquals(
-            listOf("Избранное" to 0, "Недавние" to 2, "С архивом" to 1, "Все каналы" to 5, "Моя" to 1, "Новости" to 2, "Кино" to 1, "Спорт" to 2),
+            listOf("" to 0, "" to 2, "" to 1, "" to 5, "Моя" to 1, "Новости" to 2, "Кино" to 1, "Спорт" to 2),
             groups.map { it.title to it.count },
         )
         user.deleteCollection(id)

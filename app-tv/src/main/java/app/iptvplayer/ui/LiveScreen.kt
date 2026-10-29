@@ -1,6 +1,6 @@
 package app.iptvplayer.ui
 
-import android.app.Activity
+import app.iptvplayer.findActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -15,9 +15,7 @@ import app.iptvplayer.core.epg.floorTo
 import app.iptvplayer.core.epg.guideWindow
 import app.iptvplayer.core.epg.openingView
 import app.iptvplayer.core.input.VideoPanel
-import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -80,6 +78,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
+import android.os.SystemClock
+import app.iptvplayer.core.player.WatchTimer
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
@@ -173,12 +173,13 @@ fun LiveScreen(
     var search by remember { mutableStateOf(query.trim()) } // query after the input delay
     var groupQuery by rememberSaveable { mutableStateOf("") }
     var showHidden by rememberSaveable { mutableStateOf(false) }
-    val groupsAll by remember(source, showHidden) { repo.groups(source, showHidden) }.collectAsState(initial = null)
+    val groupsRaw by remember(source, showHidden) { repo.groups(source, showHidden) }.collectAsState(initial = null)
+    val groupsAll = groupsRaw?.let { remember(it, ctx, conf) { it.named(ctx) } } // UI-022: the service lists named here
     val searchGroups = (groupsAll?.size ?: 0) >= Defaults.CATEGORY_SEARCH_MIN
     val groups = remember(groupsAll, groupQuery, searchGroups) {
         groupsAll.orEmpty().filter { !searchGroups || matchesWords(it.title, groupQuery) }
     }
-    val groupTitle = groupsAll?.find { it.group == group }?.title ?: "Все каналы"
+    val groupTitle = groupsAll?.find { it.group == group }?.title ?: stringResource(R.string.group_all)
 
     // The list the section opens on (LIVE-017 / SET-011): the remembered one, or else the first one with channels.
     LaunchedEffect(groupsAll) {
@@ -275,9 +276,25 @@ fun LiveScreen(
     }
 
     // Background: live is released, back in front it starts again at the current moment (PLR-002).
+    var inFront by remember { mutableStateOf(true) }
     LifecycleStartEffect(player) {
         player.foreground()
-        onStopOrDispose { player.background() }
+        inFront = true
+        onStopOrDispose {
+            inFront = false
+            player.background()
+        }
+    }
+
+    // LIVE-010: "Недавние" gets a channel after a minute of watching it without a break, in full screen or the window.
+    LaunchedEffect(player) {
+        val timer = WatchTimer()
+        while (true) {
+            val st = player.state.value
+            val key = (if (fullscreen) returnKey else playingKey).takeIf { inFront && !st.paused && st.error == null }
+            timer.update(key, SystemClock.elapsedRealtime())?.let { repo.watched(it) }
+            delay(1_000)
+        }
     }
     // Leaving the section (Настройки, another source) stops what it played.
     DisposableEffect(player) { onDispose { player.close() } }
@@ -405,7 +422,7 @@ fun LiveScreen(
         }
         if (!hasItems) return@LaunchedEffect
         refocus = false
-        if (returnKey == null && settings.rememberLive) returnKey = repo.recentKeys(source).firstOrNull()
+        if (returnKey == null && settings.rememberLive) returnKey = repo.zapped.firstOrNull() ?: repo.recentKeys(source).firstOrNull()
         val at = returnKey?.let { repo.indexOf(currentFilter, it) } ?: listTarget
         focusRow(at)
     }
@@ -427,7 +444,7 @@ fun LiveScreen(
     suspend fun find(zap: Zap): Int? {
         val key = when (zap) {
             is Zap.Number -> repo.channelByNumber(source, zap.n)?.key ?: run { say(str(R.string.no_channel_number, zap.n)); return null }
-            Zap.Previous -> repo.recentKeys(source).getOrNull(1) ?: run { say(str(R.string.no_previous_channel)); return null }
+            Zap.Previous -> repo.zapped.getOrNull(1) ?: run { say(str(R.string.no_previous_channel)); return null }
             is Zap.Pick -> zap.key
         }
         // Picked in another list over the video (LIVE-019): the section follows to that list.
@@ -485,9 +502,10 @@ fun LiveScreen(
                 say(str(R.string.reset_none))
                 return@launch
             }
-            val text = listOf(str(R.string.reset_names) to e.renamed, str(R.string.reset_hidden) to e.hidden, str(R.string.reset_order) to e.reordered)
+            val order = listOfNotNull(str(R.string.reset_category_order).takeIf { e.categoryOrder }) + e.reordered.map { groupName(ctx, it) }
+            val text = listOf(str(R.string.reset_names) to e.renamed, str(R.string.reset_hidden) to e.hidden, str(R.string.reset_order) to order)
                 .filter { it.second.isNotEmpty() }
-                .joinToString("\n") { (what, list) -> "$what: " + list.take(5).joinToString(", ") + if (list.size > 5) " " + str(R.string.reset_more, list.size - 5) else "" }
+                .joinToString("\n") { (what, list) -> "$what: " + list.take(5).joinToString(", ") + if (list.size > 5) " " + ctx.resources.getQuantityString(R.plurals.reset_more, list.size - 5, list.size - 5) else "" }
             dialog = {
                 ConfirmDialog(
                     if (title != null) str(R.string.reset_category_title, title) else str(R.string.reset_all_title),
@@ -562,7 +580,7 @@ fun LiveScreen(
     fun sortMenu() {
         sheet = SheetSpec(
             str(R.string.channel_order), null,
-            listOf(null to ChannelSort.entries.map { s -> SheetItem(null, s.title, selected = s == settings.channelSort) { onSettings(settings.copy(channelSort = s)) } }),
+            listOf(null to ChannelSort.entries.map { s -> SheetItem(null, str(s.title()), selected = s == settings.channelSort) { onSettings(settings.copy(channelSort = s)) } }),
         )
     }
 
@@ -633,7 +651,7 @@ fun LiveScreen(
         -1L -> str(R.string.day_yesterday)
         0L -> str(R.string.day_today)
         1L -> str(R.string.day_tomorrow)
-        else -> SimpleDateFormat("EE, d MMM", Locale.getDefault()).format(Date(day)).replace(".", "")
+        else -> dayText(day)
     }
 
     fun today(t: Long) = floorTo(t, DAY_MS, zoneOffset(t))
@@ -691,7 +709,7 @@ fun LiveScreen(
         sheet = SheetSpec(
             str(R.string.channel_order), null,
             listOf(
-                null to ChannelSort.entries.map { s -> SheetItem(null, s.title, selected = s == settings.channelSort) { onSettings(settings.copy(channelSort = s)) } },
+                null to ChannelSort.entries.map { s -> SheetItem(null, str(s.title()), selected = s == settings.channelSort) { onSettings(settings.copy(channelSort = s)) } },
                 str(R.string.guide_show) to listOf(
                     SheetItem(R.drawable.ic_visibility, str(R.string.guide_show_empty), checked = settings.guideEmpty) { onSettings(settings.copy(guideEmpty = !settings.guideEmpty)) },
                     SheetItem(R.drawable.ic_live_tv, str(R.string.guide_video), checked = settings.preview) { togglePreview() },
@@ -758,7 +776,7 @@ fun LiveScreen(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                say(str(R.string.guide_match_failed, e.message ?: e.toString()))
+                say(str(R.string.guide_match_failed, errorText(ctx, e)))
             }
         }
     }
@@ -836,7 +854,7 @@ fun LiveScreen(
     // --- Back (UI-007: in the rail a second Back within 2 s leaves the app) ---
     val exit = remember { ExitGuard() }
     BackHandler(!fullscreen) {
-        if (exit.press(System.currentTimeMillis())) (ctx as? Activity)?.finish()
+        if (exit.press(System.currentTimeMillis())) ctx.findActivity()?.finish()
         else say(str(if (tv) R.string.exit_again_tv else R.string.exit_again_touch))
     }
     BackHandler(!wide && guide && !fullscreen) { onGuide(false) } // phone: «Телегид» → «Эфир», then exit
@@ -900,7 +918,7 @@ fun LiveScreen(
                     R.drawable.ic_star_fill, stringResource(R.string.favorites_empty),
                     stringResource(if (tv) R.string.favorites_hint_tv else R.string.favorites_hint_touch), modifier.fillMaxWidth(),
                 )
-            } else EmptyState(R.drawable.ic_search, "Ничего не найдено", null, modifier.fillMaxWidth())
+            } else EmptyState(R.drawable.ic_search, stringResource(R.string.nothing_found), null, modifier.fillMaxWidth())
         } else {
             val keyed = Modifier
                 .onFocusChanged { if (it.hasFocus) area = Area.List }
@@ -932,7 +950,7 @@ fun LiveScreen(
     }
 
     val groupSearch: (@Composable (Modifier) -> Unit)? = if (searchGroups) {
-        { m -> SearchField(groupQuery, { groupQuery = it }, "Поиск категорий", groupSearchFocus, m, height = if (wide) 40.dp else 48.dp) }
+        { m -> SearchField(groupQuery, { groupQuery = it }, stringResource(R.string.search_categories), groupSearchFocus, m, height = if (wide) 40.dp else 48.dp) }
     } else null
     val viewIcon = if (useTiles) R.drawable.ic_view_list else R.drawable.ic_grid_view
     val viewLabel = stringResource(if (useTiles) R.string.view_list else R.string.view_tiles)
@@ -1024,7 +1042,7 @@ fun LiveScreen(
                                 .padding(horizontal = 8.dp, vertical = 12.dp)
                                 .onFocusChanged { if (it.hasFocus) area = Area.Categories },
                         ) {
-                            Text("Категории", style = TvType.label, color = c.onSurfaceVariant, modifier = Modifier.padding(start = 10.dp, bottom = 8.dp))
+                            Text(stringResource(R.string.categories), style = TvType.label, color = c.onSurfaceVariant, modifier = Modifier.padding(start = 10.dp, bottom = 8.dp))
                             groupSearch?.invoke(Modifier.fillMaxWidth().padding(bottom = 8.dp))
                             LazyColumn(Modifier.remoteKeys(::categoryKeys), catState) {
                                 itemsIndexed(groups, key = { _, g -> g.group.encode() }) { i, g ->
@@ -1181,7 +1199,7 @@ fun LiveScreen(
                 onIndexChange = { i, ch ->
                     playIndex = i
                     returnKey = ch.key
-                    scope.launch { repo.watched(ch.key) }
+                    repo.zap(ch.key)
                 },
                 find = { find(it) },
                 panelOpen = panel != VideoPanel.None,

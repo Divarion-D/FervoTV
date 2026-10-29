@@ -33,12 +33,18 @@
 build.gradle.kts           версии плагинов; общие для app-tv/app-mobile версия, подпись release (secret()), R8
 core/src/main/java/app/iptvplayer/core/
   Defaults.kt              ВСЕ значения по умолчанию и настраиваемые константы (для обоих приложений)
-  Repository.kt            единственный вход для приложений: Source и Settings (prefs), lastGroup; load (импорт в БД),
-                           списки и строки каналов, телегид (источники, загрузка, привязка, «сейчас/далее», сетка),
-                           пользовательские данные; matchLogos; migrateLegacyCache; offerChangelog
+  Repository.kt            единственный вход для приложений: Source и Settings (prefs), lastGroup, zapped (последний и
+                           предыдущий канал); load (импорт в БД), списки и строки каналов, телегид (источники, загрузка,
+                           привязка, «сейчас/далее», сетка), пользовательские данные; matchLogos; migrateLegacyCache;
+                           offerChangelog; файл настроек: backup / saveSettingsFile / readSettingsFile / restore, passwordMissing
+  CoreException.kt         CoreException(code: ErrorCode, detail) — ошибки ядра кодами, без текста (UI-022)
+  backup/SettingsFile.kt   формат `.fervo` (BAK-001/011): Backup (части source / settings / guide / channels), writeBackup,
+                           readBackup — проверка всего файла до применения; FORMAT_VERSION
   model/Model.kt           Channel (+ key, number, archiveDays, autoLogo, id), Programme, ChannelItem, Airing, GuideRow,
-                           Source (M3u | Xtream), Settings, ChannelSort, PlaylistRefresh (waitMs — расписание), plural(), NO_GROUP
-  player/Playback.kt       PlaybackEngine (интерфейс движка), PlayItem, PlaybackState, PlaybackError, PlayerSession (сеанс над экранами)
+                           Source (M3u | Xtream), Settings (+ language), ChannelSort, PlaylistRefresh (waitMs — расписание),
+                           NO_GROUP (значение-ключ, название даёт приложение)
+  player/Playback.kt       PlaybackEngine (интерфейс движка), PlayItem, PlaybackState, PlaybackError (Kind), PlayerSession
+                           (сеанс над экранами), WatchTimer — порог «Недавних» (минута без перерыва, LIVE-010)
   player/ExoEngine.kt      реализация на Media3 ExoPlayer; recovery() — HLS-повтор и возврат к эфиру, errorKind() — категория ошибки
   Qr.kt                    qrModules(text): QR-код (ZXing, только кодировщик) как матрица модулей
   db/Db.kt                 Room: AppDb (версия 2, MIGRATION_1_2), таблицы плейлиста source / category / channel / channel_fts,
@@ -75,16 +81,25 @@ core/src/test/java/app/iptvplayer/core/
   source/m3u/M3uParserTest.kt, source/m3u/M3uStreamTest.kt, source/xtream/XtreamTest.kt, source/PlaylistCacheTest.kt,
   db/PlaylistStoreTest.kt, db/EpgStoreTest.kt, db/UserStoreTest.kt, db/MigrationTest.kt, epg/XmltvTest.kt, epg/EpgMatchTest.kt,
   logos/LogoIndexTest.kt, logos/BackdropTest.kt, player/PlayerSessionTest.kt (+ FakeEngine),
-  player/ExoRecoveryTest.kt, input/KeyActionTest.kt, model/PlaylistRefreshTest.kt, MiscTest.kt;
+  player/ExoRecoveryTest.kt, player/WatchTimerTest.kt, input/KeyActionTest.kt, model/PlaylistRefreshTest.kt,
+  backup/SettingsFileTest.kt, MiscTest.kt;
   TestUtil.kt (SyntheticM3u, SyntheticXmltv, gzipped, usedHeap, loadPage), source/LegacyCache.kt (playlist.tsv для фикстур)
 
 app-tv/src/main/java/app/iptvplayer/       (app-mobile/… — такая же копия)
   MainActivity.kt     App(): выбор экрана — Что нового / Setup / Настройки / загрузка / ошибка / «Эфир»; расписание обновления
                       плейлиста и телегида (без сети ждут её); фоновая задача для плашки (BgTask); сеанс плеера
                       (PlayerSession); «Что нового»; вид раздела (список / сетка); на телефоне Настройки — вкладка «Ещё»
+  Language.kt         UI-022: LANGUAGES, applyLanguage / platformLanguage (Android 13+: язык приложения платформы),
+                      Localized (до 13: язык поверх композиции), findActivity(), inLanguage()
   Input.kt            Compose-часть ввода: KeyEvent.toAction() (→ keyAction), Modifier.remoteKeys() (короткое/долгое нажатие
                       для области фокуса), Modifier.touchActions(), isTv(), initialFocus()
-  ui/SetupScreen.kt   ввод источника: SegmentedButton M3U/Xtream, поля с иконками
+  ui/SetupScreen.kt   ввод источника: SegmentedButton M3U/Xtream, поля с иконками; «Загрузить настройки из файла» при первом
+                      запуске; запрос пароля после файла настроек без него
+  ui/SettingsFile.kt  BAK-011 в интерфейсе: settingsFile() — диалог сохранения (отметка «Сохранить и пароль»), системное окно
+                      выбора файла, без него — «Загрузки» (MediaStore на 10+, папка с разрешением на 6–9), подтверждение
+                      замены, ошибки
+  ui/Texts.kt         UI-022: слова для значений и кодов ядра — Txt, ChannelSort.title(), PlaylistRefresh.label(), daysText,
+                      названия служебных списков, errorText(), playbackErrorText(), Source.label(), dayText(), dateTimeText()
   ui/SettingsScreen.kt настройки (TopAppBar + SettingItem), «О приложении», QR-диалог ссылки, DocScreen («Что нового», «Лицензии»)
   ui/Theme.kt         AppTheme: цветовая схема Material 3 (сгенерирована, см. «Дизайн»); Ext — роли Fervo (focus, now,
                       live…), TvType — TV-шкала текста с табличными цифрами (33-design §2)
@@ -103,7 +118,9 @@ app-tv/src/main/java/app/iptvplayer/       (app-mobile/… — такая же �
   ui/ChannelLogo.kt   логотип канала (Coil): подложка из pickBackdrop и логотип запекаются в одну картинку (Bake); BrokenLogos
   ui/PlayerScreen.kt  видео (SurfaceView) через PlayerSession, инфо-плашка, часы, набор номера, обработка Action;
                       ◀ / ▶ и свайпы от краёв — панели поверх видео (слот overlay от «Эфира»)
-res/values/strings.xml, res/values-ru/strings.xml  новые строки интерфейса (UI-022): английский по умолчанию, русский
+res/values/strings.xml, res/values-ru/strings.xml  все строки интерфейса app-tv (UI-022): английский по умолчанию, русский;
+                    множественные формы — <plurals>; res/xml/locales_config.xml — языки для системных настроек
+app-tv/src/test/java/app/iptvplayer/NoUiTextInCodeTest.kt  кириллица в строковых литералах app-tv — ошибка теста
 app-tv/src/main/res/drawable/ic_*.xml   иконки Material Symbols Rounded (banner.xml — только в app-tv)
 .github/workflows/ci.yml       на каждый push/PR: testDebugUnitTest + lintDebug + assembleDebug всех модулей (оба debug APK — артефакт)
 .github/workflows/release.yml  тег v<versionName>: тесты и lint всех модулей, подписанные APK/AAB app-tv, GitHub Release с текстом из CHANGELOG.md
@@ -297,7 +314,7 @@ Room 2.6 (SQLite), файл `fervo.db`, версия схемы **2**, схем�
 | `category_state` | `ckey` PK, `name`, `hidden`, `position` | LIVE-012, 013 (порядок категорий) |
 | `channel_order` | (`list` = `category.ckey`, `ckey`) PK, `position` | LIVE-013: свой порядок каналов в категории |
 | `collection`, `collection_channel` | `id`, `name`, `position`; (`collectionId`, `ckey`) PK, `position` | LIVE-014: подборки из любых каналов |
-| `recent` | `ckey` PK, `watchedAt` (индекс) | LIVE-010 «Недавние», LIVE-017 последний, LIVE-018 предыдущий канал; хранится `RECENT_CHANNELS` |
+| `recent` | `ckey` PK, `watchedAt` (индекс) | LIVE-010 «Недавние» и LIVE-020: канал попадает сюда после `RECENT_MIN_WATCH_MS` просмотра без перерыва; хранится `RECENT_CHANNELS` |
 
 Телегид:
 
@@ -356,7 +373,9 @@ Room 2.6 (SQLite), файл `fervo.db`, версия схемы **2**, схем�
 - **Пользовательские данные** (`UserStore`, через `Repository`): `setFavorite`, `setHidden(ключи)` (и диапазоном),
   `rename`, `setCategoriesHidden`, `renameCategory`, `reorderCategories`, `reorder(список, ключи)` — избранное, подборка
   или категория (новые каналы провайдера встают после упорядоченных), подборки (`createCollection` … `removeFromCollection`),
-  `watched(key)` → `recentKeys()` (последний и предыдущий канал), `edits()` / `resetEdits()` (LIVE-015: что изменится;
+  `watched(key)` → `recentKeys()` («Недавние»; `watched` зовёт `LiveScreen` через `WatchTimer` — минута просмотра без перерыва,
+  в окне или во весь экран; пауза и фон сбрасывают отсчёт), `zap(key)` → `zapped` (последний и предыдущий канал
+  LIVE-017/018 — любой, даже на секунду; в prefs источника), `edits()` / `resetEdits()` (LIVE-015: что изменится;
   возврат имён, скрытия и порядка категории или всех категорий, избранное и привязки телегида не трогаются).
 - **Поиск** — FTS4 по названиям, совпадение по началу слов: запрос «мат фут» → `мат* фут*` (все слова, И).
   Стандартный токенизатор SQLite сворачивает регистр только у латиницы, поэтому и в индекс, и в запрос идёт
@@ -394,7 +413,7 @@ Room 2.6 (SQLite), файл `fervo.db`, версия схемы **2**, схем�
   меню, долгий CH± — в начало / конец; отпускание OK, начатого в другом месте, проглатывается (меню, открытое долгим OK,
   не нажимает свой первый пункт).
 - **Номер и предыдущий канал** (`Zap` в `PlayerScreen`): цифры собирает `NumberDial`; канал ищется `channelByNumber` /
-  `recentKeys()[1]`, его место — `indexOf` в текущем списке, а если его там нет — раздел переключается на «Все каналы».
+  `zapped[1]`, его место — `indexOf` в текущем списке, а если его там нет — раздел переключается на «Все каналы».
 - **Плитки каналов**: `LazyVerticalGrid` с `GridCells.Adaptive` — 104 dp на узком экране (3 колонки на телефоне), 150 dp на широком.
   Элементы — из `LazyPagingItems` (`paging-compose`): в памяти только загруженные страницы, ещё не загруженные позиции
   рисуются пустыми карточками. Номер на карточке и в строке — номер канала (`tvg-chno` / Xtream / позиция в источнике).
@@ -644,6 +663,40 @@ Back (пульт, кнопка, жест) ──▶ BackHandler
 `Left`/`Right` в плеере пока ничего не делают — зарезервированы под список каналов поверх видео и аудиодорожки.
 Долгое нажатие и свайп от края пока ничего не делают: контекстное меню и панели поверх видео появятся в P1.
 
+## Языки интерфейса (UI-022)
+
+- Все строки `app-tv` — в `res/values` (английский, он же запасной) и `res/values-ru`; множественные формы — `<plurals>`.
+  `NoUiTextInCodeTest` не даёт вернуть кириллицу в литералы Kotlin. `app-mobile` (не выпускается) остаётся на русских литералах.
+- `core` текста не производит: ошибки — `CoreException(ErrorCode)`, воспроизведение — `PlaybackError.Kind`, итог телегида —
+  `EpgStatus` (в базе — `ok …` / `error КОД …`), служебные списки — с пустым `title`, `Edits.categoryOrder` — флаг,
+  `ChannelSort` и `PlaylistRefresh` — без подписей. Слова для них — `ui/Texts.kt`. `NO_GROUP` остаётся русским значением в
+  данных (ключ правок категории), на экране его заменяет `group_none`.
+- Выбор — `Settings.language` ("" = как в системе), попадает в файл настроек. Android 13+: `LocaleManager` (язык виден и в
+  системных настройках приложения; при запуске берётся оттуда, если его поменяли там); смена приходит как изменение
+  конфигурации — activity не пересоздаётся. До 13: `Localized` подменяет контекст, конфигурацию и направление письма для
+  всей композиции — без новой зависимости (AppCompat с `setApplicationLocales` потребовал бы `AppCompatActivity`).
+  `Locale.setDefault` — для форматов дат. В AAB языковые сплиты выключены: язык меняется внутри приложения.
+- Даты — `getBestDateTimePattern` языка («Thu, Oct 29» / «чт, 29 окт»), время — системный 12/24 ч, числа в строках —
+  форматирование ресурсов по языку. Раскладки используют start/end; шкала времени сетки телегида всегда слева направо.
+- Журнал изменений и лицензии — только по-русски; в английском интерфейсе над ними строка об этом.
+
+## Файл настроек (BAK-011)
+
+- Формат (`core/backup/SettingsFile.kt`) — тот же `.fervo`, что расширит BAK-001: ZIP, `manifest.json` (`format`,
+  `formatVersion` = 1, `appVersion`, `createdAt`, `parts`) и по JSON на часть: `source`, `settings`, `guide`, `channels`.
+  Правки — по устойчивым ключам каналов и категорий; содержимое плейлиста, программа и картинки не сохраняются.
+- Чтение проверяет весь файл до применения: не ZIP / нет манифеста / чужой `format` → `BACKUP_FOREIGN`, оборванный, битый
+  JSON, часть из `parts` отсутствует → `BACKUP_CORRUPT`, `formatVersion` больше своего → `BACKUP_NEWER`; не больше 16 МБ.
+  Неизвестные части и поля пропускаются, отсутствующие поля — значения по умолчанию.
+- `Repository.restore`: источники телегида и правки каналов заменяются в одной транзакции (подборки получают новые id),
+  затем настройки и источник. Источники телегида новые — `App` скачивает их сразу; источник плейлиста тот же — его
+  обновляют, другой — загружается сам. Пароль Xtream без отметки «Сохранить и пароль» не пишется; после такого файла
+  `passwordMissing` держит экран источника с запросом пароля, пока источник не задан.
+- Интерфейс (`ui/SettingsFile.kt`): системное окно (`CreateDocument` / `OpenDocument`, любой тип — формат по содержимому);
+  если его нет (`ActivityNotFoundException`) — «Загрузки»: Android 10+ через `MediaStore.Downloads` без разрешений,
+  6–9 — папка с `WRITE_EXTERNAL_STORAGE`. Ограничение: на Android 11+ без окна видны только файлы, записанные этой
+  установкой (после переустановки — нет); для таких приставок — передача по сети (BAK-005, P6).
+
 ## Манифест
 
 `app-tv`:
@@ -652,7 +705,11 @@ Back (пульт, кнопка, жест) ──▶ BackHandler
 
 `app-mobile`: только обычный `LAUNCHER`, без баннера и `uses-feature`.
 
-Оба: `usesCleartextTraffic="true"` — IPTV почти всегда работает по http; одинаковые `configChanges`.
+Оба: `usesCleartextTraffic="true"` — IPTV почти всегда работает по http.
+
+`app-tv` ещё: `supportsRtl="true"`, `localeConfig` (языки в системных настройках Android 13+), в `configChanges` —
+`locale|layoutDirection` (смена языка не пересоздаёт activity и не перезапускает поток), `WRITE_EXTERNAL_STORAGE`
+с `maxSdkVersion="28"` — только для файла настроек в «Загрузках» на приставках без системного окна выбора файла.
 
 ## Как расширять
 
@@ -663,18 +720,26 @@ Back (пульт, кнопка, жест) ──▶ BackHandler
 | Несколько плейлистов (P4) | `Repository`: список `Source` вместо одного; пользовательские таблицы уже по глобальным ключам; приоритет телегидов — `epg_source.position` |
 | Профили (P5) | столбец профиля в `channel_state`, `category_state`, `channel_order`, `collection*`, `recent` |
 | User-Agent/Referer из плейлиста | `M3uParser`: разбирать `#EXTVLCOPT:http-user-agent`, хранить в `Channel`, добавить заголовки в `PlayItem`, в `ExoEngine` — `DefaultHttpDataSource.Factory.setDefaultRequestProperties` |
+| Новый язык интерфейса | `res/values-<код>/strings.xml` (+ `<plurals>`), код — в `LANGUAGES` (`Language.kt`), `res/xml/locales_config.xml` и `language_<код>` |
+| Часть файла настроек (P5: профили, история…) | `backup/SettingsFile.kt`: новый `<часть>.json` и имя в `parts`; `FORMAT_VERSION` не меняется, старые версии часть пропустят |
 | Запасной движок (P3) | новая реализация `PlaybackEngine`; цепочка — по `PlaybackError.kind` следующего движка; список возможностей движка (DRM, passthrough, субтитры) добавится вместе со вторым движком |
 
 ## Тесты
 
-`./gradlew testDebugUnitTest` (все тесты — в `core`, JVM; 91 тест). Тесты базы, `JsonReader` и `XmlPullParser` идут под **Robolectric**:
+`./gradlew testDebugUnitTest` (тесты `core` — JVM, 99; в `app-tv` — 2: `NoUiTextInCodeTest`). Тесты базы, `JsonReader` и `XmlPullParser` идут под **Robolectric**:
 Room, `android.util.JsonReader` и `android.util.Xml` требуют Android-классов, а Robolectric даёт настоящий SQLite (с FTS4) прямо в JVM —
 без устройства и эмулятора, на CI тем же `testDebugUnitTest`. Куча тестовой JVM ограничена 256 МБ (`core/build.gradle.kts`).
 - `M3uParserTest` — атрибуты, запятая в кавычках и в имени, `#EXTGRP`, CRLF/BOM/неизвестные теги, голый список URL,
   fallback на `tvg-name`, `logo`/`tvg-logo` и относительные пути;
 - `LogoIndexTest` — `normName` и порядок поиска (сначала tvg-id, потом название);
 - `PlaylistCacheTest` — формат старого `playlist.tsv`, ключ источника, срок обновления;
-- `PlaylistRefreshTest` — расписание: «при запуске» один раз, «вручную», «каждые N дней», ожидание после неудачи, подписи;
+- `PlaylistRefreshTest` — расписание: «при запуске» один раз, «вручную», «каждые N дней», ожидание после неудачи;
+- `SettingsFileTest` (Robolectric) — BAK-011: сохранение → загрузка в чистую базу и чистые настройки даёт то же состояние,
+  правки ложатся на заново загруженные каналы по ключам; пароль Xtream только по отметке (иначе `passwordMissing`);
+  `manifest.json`; оборванный, с битым JSON, без части из `parts`, более новой версии, чужой ZIP, не ZIP, пустой файл —
+  своя ошибка и ничего не меняется; файл с одной частью и неизвестными полями меняет только её;
+- `WatchTimerTest` — «Недавние»: минута без перерыва засчитывается один раз, перелистывание не засчитывается, пауза
+  и другой канал начинают отсчёт заново;
 - `PlayerSessionTest` (+ `FakeEngine` — тестовый движок) — эфир освобождается в фоне и начинается заново, остальное
   на паузе; пауза, повтор, закрытие; движок создаётся только при первом воспроизведении;
 - `ExoRecoveryTest` — HLS-повтор один раз, возврат к эфиру, прочие ошибки показываются; категории ошибок;
@@ -684,11 +749,12 @@ Room, `android.util.JsonReader` и `android.util.Xml` требуют Android-к�
 - `GuideTest` — метки шкалы по местному времени (и в поясе +5:45), «сейчас» на трети, окно времени строк, пропуски
   по 30 мин, ◀▶ по передачам (сдвиг вида у обрезанной ячейки, прокрутка «ровно чтобы показать», края телегида),
   диапазон дней, «5 мин назад / вчера»;
-- `MiscTest` — поиск категорий по началу слов, когда предлагать «Что нового», QR-код (размер, три метки по углам);
+- `MiscTest` — поиск категорий по началу слов, когда предлагать «Что нового», QR-код (размер, три метки по углам),
+  итог загрузки телегида хранится данными (`EpgStatus`), ошибки ядра — кодами;
 - `BackdropTest` — выбор подложки логотипа по пикселям;
 - `M3uStreamTest` — разбор из `Reader` совпадает с разбором текста; 100 000 записей без роста кучи;
 - `XtreamTest` (Robolectric) — потоковый `get_live_streams`: порядок, категории, HLS-флаг, битые записи, не-массив;
-  «аккаунт не принят» при auth = 0, 401 и 403 (ответ отдаёт локальный однозапросный HTTP-сервер на сокете);
+  `XTREAM_REJECTED` при auth = 0, 401 и 403 (ответ отдаёт локальный однозапросный HTTP-сервер на сокете);
 - `PlaylistStoreTest` (Robolectric, база в файле) — запись/чтение, категории со счётчиками и порядком, FTS-поиск
   (регистр, ё/е, префиксы, несколько слов, внутри категории), канал по номеру, привязка к источнику; пустой и
   оборванный импорт не затирают сохранённое; старые каналы видны до конца импорта; `autoLogo`; перенос `playlist.tsv`;

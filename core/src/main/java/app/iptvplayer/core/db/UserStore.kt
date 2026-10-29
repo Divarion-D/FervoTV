@@ -58,9 +58,12 @@ data class CollectionChannel(val collectionId: Long, val ckey: String, val posit
 @Entity(tableName = "recent", indices = [Index("watchedAt")])
 data class Recent(@PrimaryKey val ckey: String, val watchedAt: Long)
 
-/** What "Вернуть как в плейлисте" (LIVE-015) would undo, as lines for the user; all empty = no edits. */
-data class Edits(val renamed: List<String>, val hidden: List<String>, val reordered: List<String>) {
-    val isEmpty get() = renamed.isEmpty() && hidden.isEmpty() && reordered.isEmpty()
+/**
+ * What "Вернуть как в плейлисте" (LIVE-015) would undo, as names for the user; [reordered] = categories with a manual
+ * channel order, [categoryOrder] = the order of the categories themselves. All empty = no edits.
+ */
+data class Edits(val renamed: List<String>, val hidden: List<String>, val reordered: List<String>, val categoryOrder: Boolean = false) {
+    val isEmpty get() = renamed.isEmpty() && hidden.isEmpty() && reordered.isEmpty() && !categoryOrder
 }
 
 data class NameKey(val name: String, val ckey: String)
@@ -224,6 +227,21 @@ abstract class UserDao {
     @Query("DELETE FROM channel_order WHERE list IN ($SOURCE_CATEGORIES)")
     abstract fun resetOrder(sourceKey: String, category: String?)
 
+    // --- BAK-011: all edits, as stored ---
+    @Query("SELECT * FROM channel_state ORDER BY ckey") abstract fun allChannelStates(): List<ChannelState>
+    @Query("SELECT * FROM category_state ORDER BY ckey") abstract fun allCategoryStates(): List<CategoryState>
+    @Query("SELECT * FROM channel_order ORDER BY list, position") abstract fun allOrder(): List<ChannelOrder>
+    @Query("SELECT * FROM collection ORDER BY position, id") abstract fun allCollections(): List<CollectionRow>
+    @Query("SELECT ckey FROM collection_channel WHERE collectionId = :id ORDER BY position") abstract fun collectionKeys(id: Long): List<String>
+    @Query("DELETE FROM channel_state") abstract fun clearChannelStates()
+    @Query("DELETE FROM category_state") abstract fun clearCategoryStates()
+    @Query("DELETE FROM channel_order") abstract fun clearAllOrder()
+    @Query("DELETE FROM collection") abstract fun clearCollections()
+    @Query("DELETE FROM collection_channel") abstract fun clearCollectionChannels()
+    @Insert abstract fun insertChannelStates(rows: List<ChannelState>)
+    @Insert abstract fun insertCategoryStates(rows: List<CategoryState>)
+    @Insert abstract fun insertCollectionChannels(rows: List<CollectionChannel>)
+
     /** The category order is reset only with all categories. */
     @Query(
         """UPDATE category_state SET name = NULL, hidden = 0,
@@ -233,6 +251,20 @@ abstract class UserDao {
 }
 
 data class KeyEpg(val ckey: String, val epg: String)
+
+/**
+ * Every edit of channels and categories (BAK-011), keyed by stable keys: favourites, hiding, names, guide bindings and
+ * shifts, logos ([channels]); category names, hiding, order ([categories]); manual channel order per category key
+ * ([order]); collections in their order with their channel keys. History is not part of it.
+ */
+data class UserData(
+    val channels: List<ChannelState> = emptyList(),
+    val categories: List<CategoryState> = emptyList(),
+    val order: Map<String, List<String>> = emptyMap(),
+    val collections: List<SavedCollection> = emptyList(),
+)
+
+data class SavedCollection(val name: String, val channels: List<String>)
 
 data class CategoryEdit(val name: String, val title: String?, val hidden: Boolean, val position: Int?)
 
@@ -342,9 +374,40 @@ class UserStore(private val db: AppDb) {
         return Edits(
             renamed = cats.filter { it.title != null }.map { "${it.name} → ${it.title}" } + dao.renamedChannels(sourceKey, category),
             hidden = cats.filter { it.hidden }.map { it.title ?: it.name } + dao.hiddenChannels(sourceKey, category),
-            reordered = listOfNotNull("Порядок категорий".takeIf { category == null && cats.any { it.position != null } }) +
-                dao.reorderedCategories(sourceKey, category),
+            reordered = dao.reorderedCategories(sourceKey, category),
+            categoryOrder = category == null && cats.any { it.position != null },
         )
+    }
+
+    /** BAK-011: all edits as they are now. */
+    fun dump(): UserData = db.runInTransaction<UserData> {
+        UserData(
+            channels = dao.allChannelStates(),
+            categories = dao.allCategoryStates(),
+            order = dao.allOrder().groupBy({ it.list }, { it.ckey }),
+            collections = dao.allCollections().map { SavedCollection(it.name, dao.collectionKeys(it.id)) },
+        )
+    }
+
+    /**
+     * BAK-011: every edit becomes [d] (collections get new ids). Recent channels stay. The caller rebinds the guide
+     * ([EpgStore.rebind]): the guide bindings change with it.
+     */
+    internal fun replace(d: UserData) = db.runInTransaction {
+        dao.clearChannelStates()
+        dao.clearCategoryStates()
+        dao.clearAllOrder()
+        dao.clearCollectionChannels()
+        dao.clearCollections()
+        dao.insertChannelStates(d.channels.distinctBy { it.ckey })
+        dao.insertCategoryStates(d.categories.distinctBy { it.ckey })
+        for ((list, keys) in d.order) dao.insertOrder(keys.distinct().mapIndexed { i, k -> ChannelOrder(list, k, i) })
+        d.collections.forEachIndexed { i, c ->
+            val id = dao.insertCollection(CollectionRow(name = c.name, position = i))
+            dao.insertCollectionChannels(c.channels.distinct().mapIndexed { p, k -> CollectionChannel(id, k, p) })
+        }
+        dao.pruneChannels()
+        dao.pruneCategories()
     }
 
     /**

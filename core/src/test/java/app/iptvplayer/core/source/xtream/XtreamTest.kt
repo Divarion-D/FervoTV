@@ -7,6 +7,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import app.iptvplayer.core.CoreException
+import app.iptvplayer.core.ErrorCode
 import java.io.IOException
 import java.io.StringReader
 import app.iptvplayer.core.model.Source
@@ -75,7 +77,7 @@ class XtreamTest {
                 val e = assertThrows(IOException::class.java) {
                     loadXtream(Source.Xtream("http://127.0.0.1:${srv.localPort}", "u", "p"), {}, {})
                 }
-                assertEquals(ACCOUNT_REJECTED, e.message)
+                assertEquals(ErrorCode.XTREAM_REJECTED, (e as CoreException).code)
             } finally {
                 srv.close()
             }

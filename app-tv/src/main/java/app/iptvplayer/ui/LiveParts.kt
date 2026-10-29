@@ -75,6 +75,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -94,9 +95,7 @@ import app.iptvplayer.core.model.ChannelItem
 import app.iptvplayer.core.model.Programme
 import app.iptvplayer.core.player.PlaybackState
 import app.iptvplayer.core.player.PlayerSession
-import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 import kotlin.math.roundToInt
 
 // Parts of the live section (33-design §4): every list cell draws each pixel once — no fill under a fill, no clip
@@ -243,7 +242,7 @@ fun Clock(modifier: Modifier = Modifier, date: Boolean = true) {
         if (date) {
             Spacer(Modifier.width(8.dp))
             Text(
-                remember(now) { SimpleDateFormat("EE, d MMM", Locale.getDefault()).format(Date(now)).replace(".", "") },
+                remember(now, LocalConfiguration.current) { dayText(now) },
                 style = TvType.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 2.dp),
             )
@@ -296,7 +295,7 @@ fun SearchField(query: String, onQuery: (String) -> Unit, hint: String, pillFocu
             singleLine = true,
             leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },
             trailingIcon = if (query.isEmpty()) null else {
-                { IconButton(onClick = { onQuery("") }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Очистить") } }
+                { IconButton(onClick = { onQuery("") }) { Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.clear)) } }
             },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { editing = false }),
@@ -338,7 +337,7 @@ fun SearchField(query: String, onQuery: (String) -> Unit, hint: String, pillFocu
             )
             if (query.isNotEmpty()) {
                 IconButton(onClick = { onQuery("") }, Modifier.focusProperties { canFocus = false }) {
-                    Icon(painterResource(R.drawable.ic_close), contentDescription = "Очистить", tint = fg)
+                    Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.clear), tint = fg)
                 }
             }
         }
@@ -552,7 +551,7 @@ fun ChannelCard(item: ChannelItem?, selected: Boolean, now: Long, tv: Boolean, m
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                if (item == null) "" else "${item.number} · ${p?.title ?: item.channel.group}",
+                if (item == null) "" else "${item.number} · ${p?.title ?: groupName(LocalContext.current, item.channel.group)}",
                 style = MaterialTheme.typography.labelSmall,
                 color = if (focused) Ext.onFocus else c.onSurfaceVariant,
                 maxLines = 1,

@@ -16,6 +16,8 @@ android {
     }
 
     buildFeatures { compose = true }
+    // UI-022: the language is switched inside the app, so every translation must be in the APK, not in Play splits.
+    bundle { language { enableSplit = false } }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -32,4 +34,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("io.coil-kt:coil-compose:2.7.0") // channel logos: memory + disk cache
     implementation("androidx.paging:paging-compose:3.3.5") // channel grid straight from the database
+
+    testImplementation("junit:junit:4.13.2") // NoUiTextInCodeTest
 }

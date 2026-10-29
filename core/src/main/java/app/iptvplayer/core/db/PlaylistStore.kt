@@ -8,7 +8,9 @@ import androidx.paging.PagingState
 import androidx.paging.map
 import androidx.room.InvalidationTracker
 import androidx.sqlite.db.SimpleSQLiteQuery
+import app.iptvplayer.core.CoreException
 import app.iptvplayer.core.Defaults
+import app.iptvplayer.core.ErrorCode
 import app.iptvplayer.core.epg.EpgIndex
 import app.iptvplayer.core.epg.nonOverlapping
 import app.iptvplayer.core.model.Airing
@@ -28,7 +30,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.IOException
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 
@@ -85,7 +86,10 @@ data class ChannelFilter(
 /** A programme found in the grid (EPG-010) and the channel it is on. */
 data class ProgrammeHit(val key: String, val channel: String, val programme: Programme)
 
-/** A list with its count for the category column (LIVE-001, LIVE-010); [hidden] = a hidden category (LIVE-012). */
+/**
+ * A list with its count for the category column (LIVE-001, LIVE-010); [hidden] = a hidden category (LIVE-012).
+ * [title] is the user's or the provider's name; empty for the service lists, which the apps name (UI-022).
+ */
 data class GroupCount(val group: ChannelGroup, val title: String, val count: Int, val hidden: Boolean = false)
 
 /** The saved channels of playlist sources: streaming import, lists for the screens. */
@@ -115,7 +119,7 @@ class PlaylistStore(private val db: AppDb, private val clock: () -> Long = Syste
             fill(import)
             import.flush()
             // Almost always a broken/blocked response rather than a real empty playlist.
-            if (import.count == 0) throw IOException("Плейлист пуст")
+            if (import.count == 0) throw CoreException(ErrorCode.PLAYLIST_EMPTY)
             db.runInTransaction {
                 dao.complete(id, savedAt, import.headerEpgUrls.joinToString("\n"))
                 dao.otherSources(id).forEach(dao::deleteSource)
@@ -181,10 +185,10 @@ class PlaylistStore(private val db: AppDb, private val clock: () -> Long = Syste
         val service = db.changes(*SERVICE_TABLES).map {
             withContext(Dispatchers.IO) {
                 listOf(
-                    GroupCount(ChannelGroup.Favorites, "Избранное", count(ChannelFilter(sourceKey, ChannelGroup.Favorites))),
-                    GroupCount(ChannelGroup.Recent, "Недавние", count(ChannelFilter(sourceKey, ChannelGroup.Recent))),
-                    GroupCount(ChannelGroup.Archive, "С архивом", count(ChannelFilter(sourceKey, ChannelGroup.Archive))),
-                    GroupCount(ChannelGroup.All, "Все каналы", count(ChannelFilter(sourceKey))),
+                    GroupCount(ChannelGroup.Favorites, "", count(ChannelFilter(sourceKey, ChannelGroup.Favorites))),
+                    GroupCount(ChannelGroup.Recent, "", count(ChannelFilter(sourceKey, ChannelGroup.Recent))),
+                    GroupCount(ChannelGroup.Archive, "", count(ChannelFilter(sourceKey, ChannelGroup.Archive))),
+                    GroupCount(ChannelGroup.All, "", count(ChannelFilter(sourceKey))),
                 ).filter { it.group == ChannelGroup.Favorites || it.count > 0 }
             }
         }

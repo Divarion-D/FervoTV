@@ -19,12 +19,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import java.net.ConnectException
-import java.net.SocketTimeoutException
-import java.net.UnknownHostException
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import app.iptvplayer.core.model.Settings
+import app.iptvplayer.ui.Txt
+import app.iptvplayer.ui.dateTimeText
+import app.iptvplayer.ui.errorText
+import app.iptvplayer.ui.label
+import app.iptvplayer.ui.settingsFile
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -87,9 +89,14 @@ class MainActivity : ComponentActivity() {
         )
         super.onCreate(savedInstanceState)
         val repo = Repository(applicationContext)
+        // Android 13+: the language may have been changed in the system's app settings (UI-022).
+        platformLanguage(this)?.let { if (it != repo.settings.language) repo.settings = repo.settings.copy(language = it) }
         setContent {
-            AppTheme {
-                Surface(Modifier.fillMaxSize()) { App(repo) }
+            var language by remember { mutableStateOf(repo.settings.language) }
+            Localized(language) {
+                AppTheme {
+                    Surface(Modifier.fillMaxSize()) { App(repo, onLanguage = { language = it }) }
+                }
             }
         }
         // The root Surface paints the whole screen anyway: a window background under it is one more full-screen fill per frame.
@@ -98,17 +105,20 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun App(repo: Repository) {
+private fun App(repo: Repository, onLanguage: (String) -> Unit) {
     var source by remember { mutableStateOf(repo.source) }
+    // BAK-011: the source came from a settings file without its password: ask for it before loading.
+    var askPassword by remember { mutableStateOf(repo.passwordMissing) }
     var editing by remember { mutableStateOf(false) }
     var ready by remember { mutableStateOf(false) } // the source's channels are saved in the database
-    var error by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<Exception?>(null) }
     var attempt by remember { mutableIntStateOf(0) }
     var settings by remember { mutableStateOf(repo.settings) }
     var settingsOpen by remember { mutableStateOf(false) }
-    var logoStatus by remember { mutableStateOf("") }
+    var logoStatus by remember { mutableStateOf<Txt?>(null) }
+    var logosFound by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var refreshing by remember { mutableStateOf(false) }
-    var playlistStatus by remember { mutableStateOf("") }
+    var playlistStatus by remember { mutableStateOf<Txt?>(null) }
     var refreshRequest by remember { mutableIntStateOf(0) }
     var task by remember { mutableStateOf<BgTask?>(null) } // what runs in the background (UI-015)
     val ctx = LocalContext.current
@@ -136,20 +146,21 @@ private fun App(repo: Repository) {
     // Channels are shown right away; logos found in the index are stored next to them and fill in when ready.
     suspend fun loadLogos(s: Source) {
         val on = settings.autoLogos
-        logoStatus = if (on) "Подбор логотипов…" else "Автоподгрузка выключена"
+        logosFound = null
+        logoStatus = Txt(if (on) R.string.logos_finding else R.string.logos_off)
         if (on) task = BgTask(ctx.getString(R.string.task_logos))
         try {
             // Off: clears the stored matches.
             val (found, total) = repo.matchLogos(s, settings.logoSource.takeIf { on })
             if (on) {
-                logoStatus = "Логотипы найдены для $found из $total каналов"
-                task = BgTask(ctx.getString(R.string.task_logos_done, found, total), ok = true)
+                logosFound = found to total
+                task = BgTask(ctx.resources.getQuantityString(R.plurals.logos_found, total, found, total), ok = true)
             }
         } catch (e: CancellationException) {
             if (task?.ok == null) task = null
             throw e
         } catch (e: Exception) {
-            logoStatus = "Не удалось загрузить базу логотипов: ${e.message ?: e}"
+            logoStatus = Txt(R.string.logos_failed, errorText(ctx, e))
             task = BgTask(ctx.getString(R.string.task_logos_failed), ok = false)
         }
     }
@@ -167,7 +178,7 @@ private fun App(repo: Repository) {
     suspend fun refresh(s: Source) {
         refreshing = true
         lastAttempt = System.currentTimeMillis()
-        playlistStatus = "Обновление…"
+        playlistStatus = Txt(R.string.playlist_updating)
         if (ready) task = BgTask(ctx.getString(R.string.task_playlist))
         try {
             repo.load(s)
@@ -175,20 +186,19 @@ private fun App(repo: Repository) {
             if (task?.ok == null) task = null
             throw e
         } catch (e: Exception) {
-            val msg = errorText(e)
             if (!ready) {
-                error = msg
+                error = e
             } else {
-                playlistStatus = "Не удалось обновить: $msg"
+                playlistStatus = Txt(R.string.playlist_update_failed, errorText(ctx, e))
                 task = BgTask(ctx.getString(R.string.task_playlist_failed), ok = false)
-                Toast.makeText(ctx, "Не удалось обновить плейлист — показан сохранённый список", Toast.LENGTH_LONG).show()
+                Toast.makeText(ctx, ctx.getString(R.string.refresh_failed_toast), Toast.LENGTH_LONG).show()
             }
             return
         } finally {
             refreshing = false
         }
         if (ready) task = BgTask(ctx.getString(R.string.task_playlist_done), ok = true)
-        playlistStatus = "Обновлён ${formatTime(System.currentTimeMillis())}"
+        playlistStatus = Txt(R.string.playlist_updated_at, dateTimeText(ctx, System.currentTimeMillis()))
         ready = true
         startLogos(s)
     }
@@ -200,8 +210,9 @@ private fun App(repo: Repository) {
 
     // Saved channels first, network second: the app opens instantly and still works without internet.
     // Outside the branches below so opening/cancelling the source editor doesn't reload the playlist.
-    LaunchedEffect(source, attempt) {
+    LaunchedEffect(source, attempt, askPassword) {
         val s = source ?: return@LaunchedEffect
+        if (askPassword) return@LaunchedEffect
         ready = false
         error = null
         lastAttempt = 0L
@@ -211,7 +222,7 @@ private fun App(repo: Repository) {
             return@LaunchedEffect
         }
         ready = true
-        playlistStatus = "Сохранён ${formatTime(savedAt)}"
+        playlistStatus = Txt(R.string.playlist_saved_at, dateTimeText(ctx, savedAt))
         // Logo matching starts right away, in parallel with the first frame of the grid.
         startLogos(s)
     }
@@ -267,15 +278,43 @@ private fun App(repo: Repository) {
         if (refreshRequest > 0) source?.let { refresh(it) }
     }
 
+    fun changeSettings(s: Settings) {
+        repo.settings = s
+        settings = s
+    }
+
+    // UI-022: the interface language applies at once; screens keep their state.
+    LaunchedEffect(settings.language) {
+        applyLanguage(ctx, settings.language)
+        onLanguage(settings.language)
+    }
+
+    // BAK-011: a settings file replaced everything: the screens start again, the source and the guide download again
+    // (the guide sources are new, so they are due right away).
+    val file = settingsFile(repo) {
+        val old = source
+        settings = repo.settings
+        guide = settings.liveGuide
+        source = repo.source
+        askPassword = repo.passwordMissing
+        editing = false
+        settingsOpen = false
+        screens.removeState("settings")
+        screens.removeState("channels")
+        if (source == old && !askPassword) refreshRequest++ // the same source: refresh it; another one loads by itself
+    }
+
     val err = error
     val src = source
     when {
-        changelogOpen -> DocScreen("Что нового", "CHANGELOG.md", onClose = { changelogOpen = false })
-        src == null || editing -> SetupScreen(
+        changelogOpen -> DocScreen(stringResource(R.string.whats_new), "CHANGELOG.md", onClose = { changelogOpen = false })
+        src == null || editing || askPassword -> SetupScreen(
             initial = src,
-            onCancel = { editing = false },
+            askPassword = askPassword,
+            onCancel = { editing = false; askPassword = false },
+            onLoadFile = file.load,
             onDone = {
-                repo.source = it; source = it; editing = false; settingsOpen = false
+                repo.source = it; source = it; editing = false; settingsOpen = false; askPassword = false
                 // Another playlist: its screens start from scratch.
                 screens.removeState("settings")
                 screens.removeState("channels")
@@ -285,10 +324,14 @@ private fun App(repo: Repository) {
             val close = { settingsOpen = false; screens.removeState("settings") }
             val content: @Composable () -> Unit = {
                 SettingsScreen(
-                    settings, src.label(), logoStatus, playlistStatus, refreshing,
-                    onChange = { repo.settings = it; settings = it },
+                    settings, src.label(LocalContext.current),
+                    logosFound?.let { (found, total) -> pluralStringResource(R.plurals.logos_found, total, found, total) } ?: logoStatus?.text().orEmpty(),
+                    playlistStatus?.text().orEmpty(), refreshing,
+                    onChange = ::changeSettings,
                     onEditSource = { editing = true },
                     onRefreshNow = { refreshRequest++ },
+                    onSaveFile = file.save,
+                    onLoadFile = file.load,
                     onClose = close,
                 )
             }
@@ -310,14 +353,14 @@ private fun App(repo: Repository) {
                 painterResource(R.drawable.ic_error), contentDescription = null,
                 modifier = Modifier.size(56.dp), tint = MaterialTheme.colorScheme.error,
             )
-            Text("Не удалось загрузить плейлист", style = MaterialTheme.typography.titleLarge)
-            Text(err, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            Text(stringResource(R.string.playlist_failed), style = MaterialTheme.typography.titleLarge)
+            Text(errorText(LocalContext.current, err), color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = { attempt++ }, Modifier.initialFocus().focusRing(CircleShape)) {
-                    IconLabel(R.drawable.ic_refresh, "Повторить")
+                    IconLabel(R.drawable.ic_refresh, stringResource(R.string.retry))
                 }
                 OutlinedButton(onClick = { editing = true }, Modifier.focusRing(CircleShape)) {
-                    IconLabel(R.drawable.ic_playlist_play, "Источник")
+                    IconLabel(R.drawable.ic_playlist_play, stringResource(R.string.source))
                 }
             }
         }
@@ -327,16 +370,16 @@ private fun App(repo: Repository) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             CircularProgressIndicator()
-            Text("Загрузка плейлиста…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.loading_playlist), color = MaterialTheme.colorScheme.onSurfaceVariant)
             // No cache yet (first start) and a slow/dead source: let the user switch the playlist instead of waiting.
             OutlinedButton(onClick = { settingsOpen = true }, Modifier.initialFocus().focusRing(CircleShape)) {
-                IconLabel(R.drawable.ic_settings, "Настройки")
+                IconLabel(R.drawable.ic_settings, stringResource(R.string.section_settings))
             }
         }
         else -> screens.SaveableStateProvider("channels") {
             LiveScreen(
                 repo, src, player, settings, online, task,
-                onSettings = { repo.settings = it; settings = it },
+                onSettings = ::changeSettings,
                 onOpenSettings = { settingsOpen = true },
                 guide = guide,
                 onGuide = { guide = it },
@@ -349,16 +392,16 @@ private fun App(repo: Repository) {
         AlertDialog(
             onDismissRequest = { changelogOffer = false },
             icon = { Icon(painterResource(R.drawable.ic_history), contentDescription = null) },
-            title = { Text("Fervo TV обновлён") },
-            text = { Text("Версия ${version.first}. Посмотреть, что изменилось?") },
+            title = { Text(stringResource(R.string.updated_title)) },
+            text = { Text(stringResource(R.string.updated_text, version.first)) },
             confirmButton = {
                 TextButton(
                     onClick = { changelogOffer = false; changelogOpen = true },
                     Modifier.initialFocus().focusRing(shape),
-                ) { Text("Что нового") }
+                ) { Text(stringResource(R.string.whats_new)) }
             },
             dismissButton = {
-                TextButton(onClick = { changelogOffer = false }, Modifier.focusRing(shape)) { Text("Позже") }
+                TextButton(onClick = { changelogOffer = false }, Modifier.focusRing(shape)) { Text(stringResource(R.string.later)) }
             },
         )
     }
@@ -371,17 +414,3 @@ private fun installedVersion(ctx: Context): Pair<String, Boolean> {
     return info.versionName.orEmpty() to (info.lastUpdateTime != info.firstInstallTime)
 }
 
-/** Human-readable reason instead of raw Java exception text. */
-private fun errorText(e: Exception): String = when (e) {
-    is UnknownHostException -> "Нет подключения к интернету или сервер не найден"
-    is SocketTimeoutException -> "Сервер не отвечает"
-    is ConnectException -> "Не удалось подключиться к серверу"
-    else -> e.message ?: e.toString()
-}
-
-private fun formatTime(ms: Long): String = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(ms))
-
-private fun Source.label(): String = when (this) {
-    is Source.M3u -> if (url.startsWith("content://")) "Локальный файл" else url
-    is Source.Xtream -> "Xtream Codes · $server"
-}

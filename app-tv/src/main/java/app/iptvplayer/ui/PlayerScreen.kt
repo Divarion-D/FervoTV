@@ -20,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.core.view.WindowCompat
@@ -101,7 +102,7 @@ fun PlayerScreen(
     var showInfo by remember { mutableStateOf(true) }
     val state by player.state.collectAsState()
     val noConnection = stringResource(R.string.no_connection)
-    val error = state.error?.let { if (offline) noConnection else it.detail }
+    val error = state.error?.let { if (offline) noConnection else playbackErrorText(LocalContext.current, it) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(index, reopen) {
@@ -239,17 +240,17 @@ private fun InfoBar(ch: Channel, number: Int, total: Int, error: String?, modifi
         ChannelLogo(ch, Modifier.size(width = 112.dp, height = 70.dp), top = 12.dp)
         Spacer(Modifier.width(20.dp))
         Column(Modifier.weight(1f)) {
-            Text(ch.group, style = MaterialTheme.typography.labelLarge, color = c.primary, maxLines = 1)
+            Text(groupName(LocalContext.current, ch.group), style = MaterialTheme.typography.labelLarge, color = c.primary, maxLines = 1)
             Text(
                 ch.name, style = MaterialTheme.typography.headlineSmall, color = Color.White,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
-            Text("Канал $number из $total", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
+            Text(stringResource(R.string.player_position, number, total), style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
             if (error != null) {
                 Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(painterResource(R.drawable.ic_error), contentDescription = null, tint = c.error, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Ошибка: $error · OK — повторить", style = MaterialTheme.typography.bodyMedium, color = c.error)
+                    Text(stringResource(R.string.player_error, error), style = MaterialTheme.typography.bodyMedium, color = c.error)
                 }
             }
         }

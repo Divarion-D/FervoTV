@@ -4,7 +4,6 @@
     <string name="task_playlist_done">Плейлист обновлён</string>
     <string name="task_playlist_failed">Не удалось обновить плейлист</string>
     <string name="task_logos">Подбор логотипов</string>
-    <string name="task_logos_done">Логотипы найдены для %1$d из %2$d каналов</string>
     <string name="task_logos_failed">Не удалось загрузить базу логотипов</string>
 
     <string name="section_live">Эфир</string>
@@ -93,7 +92,12 @@
     <string name="reset_names">Названия</string>
     <string name="reset_hidden">Скрытое</string>
     <string name="reset_order">Порядок</string>
-    <string name="reset_more">и ещё %1$d</string>
+    <plurals name="reset_more">
+        <item quantity="one">и ещё %d</item>
+        <item quantity="few">и ещё %d</item>
+        <item quantity="many">и ещё %d</item>
+        <item quantity="other">и ещё %d</item>
+    </plurals>
     <string name="reset">Вернуть</string>
     <string name="done">Готово</string>
     <string name="cancel">Отмена</string>
@@ -154,4 +158,150 @@
     <!-- Настройки: Эфир (LIVE-022) -->
     <string name="settings_open_guide">Открывать сеткой телегида</string>
     <string name="settings_open_guide_summary">«Эфир» открывается сеткой телегида, а не списком</string>
+    <!-- UI-022 -->
+    <string name="back">Назад</string>
+    <string name="close">Закрыть</string>
+    <string name="clear">Очистить</string>
+    <string name="retry">Повторить</string>
+    <string name="later">Позже</string>
+    <string name="apply">Применить</string>
+    <string name="save">Сохранить</string>
+    <string name="by_default">По умолчанию</string>
+    <string name="nothing_found">Ничего не найдено</string>
+    <string name="categories">Категории</string>
+    <string name="group_favorites">Избранное</string>
+    <string name="group_recent">Недавние</string>
+    <string name="group_archive">С архивом</string>
+    <string name="group_all">Все каналы</string>
+    <string name="group_none">Без категории</string>
+    <string name="reset_category_order">Порядок категорий</string>
+    <string name="sort_provider">Как у провайдера</string>
+    <string name="sort_number">По номеру</string>
+    <string name="sort_name">По названию</string>
+    <string name="sort_archive">Сначала с архивом</string>
+    <string name="sort_favorites">Сначала избранные</string>
+
+    <string name="loading_playlist">Загрузка плейлиста…</string>
+    <string name="playlist_failed">Не удалось загрузить плейлист</string>
+    <string name="source">Источник</string>
+    <string name="source_local_file">Локальный файл</string>
+    <string name="source_xtream">Xtream Codes · %1$s</string>
+    <string name="updated_title">Fervo TV обновлён</string>
+    <string name="updated_text">Версия %1$s. Посмотреть, что изменилось?</string>
+    <string name="whats_new">Что нового</string>
+    <string name="refresh_failed_toast">Не удалось обновить плейлист — показан сохранённый список</string>
+    <string name="err_no_internet">Нет подключения к интернету или сервер не найден</string>
+    <string name="err_timeout">Сервер не отвечает</string>
+    <string name="err_connect">Не удалось подключиться к серверу</string>
+    <string name="err_http">Сервер ответил ошибкой HTTP %1$d</string>
+    <string name="err_file_lost">Нет доступа к файлу плейлиста (его переместили, удалили или отключили накопитель). Выберите файл заново: «Источник» → «Выбрать файл»</string>
+    <string name="err_playlist_empty">Плейлист пуст</string>
+    <string name="err_epg_source_gone">Источник телегида удалён</string>
+    <string name="err_bad_redirect">Сервер ответил переадресацией без адреса (HTTP %1$s)</string>
+    <string name="err_too_many_redirects">Слишком много перенаправлений</string>
+    <string name="err_xtream_rejected">Xtream: аккаунт не принят — проверьте логин и пароль</string>
+    <string name="err_xtream_not_xtream">Xtream: сервер ответил не как Xtream Codes</string>
+    <string name="err_xtream_bad_epg">Xtream: сервер вернул не телегид</string>
+    <string name="err_xtream_bad_channels">Xtream: сервер вернул не список каналов</string>
+    <string name="err_backup_foreign">Это не файл настроек Fervo TV. Ничего не изменено.</string>
+    <string name="err_backup_corrupt">Файл повреждён или неполный. Ничего не изменено.</string>
+    <string name="err_backup_newer">Файл создан более новой версией Fervo TV (формат %1$s). Обновите приложение и попробуйте снова. Ничего не изменено.</string>
+
+    <string name="player_position">Канал %1$d из %2$d</string>
+    <string name="player_error">Ошибка: %1$s · OK — повторить</string>
+    <string name="play_err_network">ошибка сети (%1$s)</string>
+    <string name="play_err_format">формат потока не поддерживается (%1$s)</string>
+    <string name="play_err_decoder">ошибка декодера (%1$s)</string>
+    <string name="play_err_drm">защищённый поток, DRM (%1$s)</string>
+    <string name="play_err_other">ошибка воспроизведения (%1$s)</string>
+    <string name="play_err_stalled">нет данных %1$s с</string>
+
+    <string name="source_title">Источник плейлиста</string>
+    <string name="setup_title">Добавьте плейлист</string>
+    <string name="setup_text">M3U / M3U8 по ссылке или из файла, либо аккаунт Xtream Codes</string>
+    <string name="field_server">Сервер</string>
+    <string name="field_login">Логин</string>
+    <string name="field_password">Пароль</string>
+    <string name="field_playlist_url">URL плейлиста</string>
+    <string name="xtream_hls">Потоки в HLS (m3u8)</string>
+    <string name="xtream_hls_summary">Включите, если сервер не отдаёт MPEG-TS</string>
+    <string name="choose_file">Выбрать файл</string>
+    <string name="load">Загрузить</string>
+    <string name="password_needed">Введите пароль аккаунта: файл настроек сохранён без него</string>
+
+    <string name="settings_playlist">Плейлист</string>
+    <string name="settings_refresh_now">Обновить плейлист сейчас</string>
+    <string name="settings_source">Источник плейлиста</string>
+    <string name="settings_auto_refresh">Автообновление</string>
+    <string name="settings_auto_refresh_summary">%1$s · сохранённый список открывается сразу, без ожидания сети</string>
+    <string name="settings_refresh_interval">Интервал обновления</string>
+    <string name="settings_refresh_title">Обновлять плейлист</string>
+    <string name="settings_refresh_every">Обновлять каждые</string>
+    <string name="refresh_on_start">При каждом запуске</string>
+    <string name="refresh_6h">Каждые 6 часов</string>
+    <string name="refresh_daily">Раз в день</string>
+    <string name="refresh_weekly">Раз в неделю</string>
+    <string name="refresh_manual">Только вручную</string>
+    <plurals name="refresh_every_days">
+        <item quantity="one">Каждый %d день</item>
+        <item quantity="few">Каждые %d дня</item>
+        <item quantity="many">Каждые %d дней</item>
+        <item quantity="other">Каждые %d дня</item>
+    </plurals>
+    <plurals name="days">
+        <item quantity="one">%d день</item>
+        <item quantity="few">%d дня</item>
+        <item quantity="many">%d дней</item>
+        <item quantity="other">%d дня</item>
+    </plurals>
+    <string name="playlist_updating">Обновление…</string>
+    <string name="playlist_update_failed">Не удалось обновить: %1$s</string>
+    <string name="playlist_updated_at">Обновлён %1$s</string>
+    <string name="playlist_saved_at">Сохранён %1$s</string>
+    <string name="settings_logos">Логотипы каналов</string>
+    <string name="settings_auto_logos">Автоподгрузка логотипов</string>
+    <string name="settings_auto_logos_summary">Если в плейлисте нет логотипа или он не открывается — искать по названию канала в базе</string>
+    <string name="settings_logo_source">Источник логотипов (iptv-org API)</string>
+    <string name="logos_finding">Подбор логотипов…</string>
+    <string name="logos_off">Автоподгрузка выключена</string>
+    <plurals name="logos_found">
+        <item quantity="one">Логотипы найдены для %1$d из %2$d канала</item>
+        <item quantity="few">Логотипы найдены для %1$d из %2$d каналов</item>
+        <item quantity="many">Логотипы найдены для %1$d из %2$d каналов</item>
+        <item quantity="other">Логотипы найдены для %1$d из %2$d канала</item>
+    </plurals>
+    <string name="logos_failed">Не удалось загрузить базу логотипов: %1$s</string>
+    <string name="settings_about">О приложении</string>
+    <string name="settings_version">Версия</string>
+    <string name="settings_version_value">%1$s · сборка %2$d</string>
+    <string name="settings_author">Автор</string>
+    <string name="settings_github">Исходный код на GitHub</string>
+    <string name="settings_whats_new_summary">Список изменений по версиям</string>
+    <string name="settings_licenses">Лицензии</string>
+    <string name="settings_licenses_summary">Библиотеки и сервисы, на которых построено приложение</string>
+    <!-- The documents are in Russian: no note in the Russian interface. -->
+    <string name="doc_russian_only"></string>
+    <string name="qr_title">Откройте на телефоне</string>
+
+    <string name="settings_interface">Интерфейс</string>
+    <string name="settings_language">Язык интерфейса</string>
+    <string name="language_system">Как в системе</string>
+
+    <string name="settings_file">Файл настроек</string>
+    <string name="settings_file_save">Сохранить настройки в файл</string>
+    <string name="settings_file_save_summary">Источник, телегид, правки каналов и настройки — для нового устройства или переустановки</string>
+    <string name="settings_file_load">Загрузить настройки из файла</string>
+    <string name="settings_file_load_summary">Текущие настройки будут заменены</string>
+    <string name="settings_file_save_text">В файл попадут источник плейлиста, настройки, источники и привязки телегида, избранное, скрытые и переименованные каналы, их порядок и подборки. Не передавайте его посторонним: в нём адрес плейлиста.</string>
+    <string name="settings_file_with_password">Сохранить и пароль</string>
+    <string name="settings_file_password_warning">Файл не зашифрован: пароль сможет прочитать любой, у кого окажется файл.</string>
+    <string name="settings_file_saved">Настройки сохранены: %1$s</string>
+    <string name="settings_file_save_failed">Не удалось сохранить настройки: %1$s</string>
+    <string name="settings_file_replace_title">Заменить текущие настройки?</string>
+    <string name="settings_file_replace_text">Источник, настройки, источники телегида и правки каналов из файла заменят текущие. Затем плейлист и телегид загрузятся заново.</string>
+    <string name="settings_file_replace">Заменить</string>
+    <string name="settings_file_load_failed">Не удалось загрузить настройки</string>
+    <string name="settings_file_loaded">Настройки загружены</string>
+    <string name="settings_file_downloads">Файлы настроек в «Загрузках»</string>
+    <string name="settings_file_downloads_empty">В «Загрузках» нет файлов .fervo</string>
 </resources>

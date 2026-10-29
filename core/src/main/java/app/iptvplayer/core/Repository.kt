@@ -2,6 +2,9 @@ package app.iptvplayer.core
 
 import android.content.Context
 import android.net.Uri
+import app.iptvplayer.core.backup.Backup
+import app.iptvplayer.core.backup.readBackup
+import app.iptvplayer.core.backup.writeBackup
 import app.iptvplayer.core.db.AppDb
 import app.iptvplayer.core.db.CategoryCount
 import app.iptvplayer.core.db.ChannelFilter
@@ -17,6 +20,7 @@ import app.iptvplayer.core.db.GroupCount
 import app.iptvplayer.core.db.PlaylistStore
 import app.iptvplayer.core.db.ProgrammeHit
 import app.iptvplayer.core.db.UserStore
+import app.iptvplayer.core.db.failedStatus
 import app.iptvplayer.core.epg.AutoMatch
 import app.iptvplayer.core.epg.EpgEntry
 import app.iptvplayer.core.epg.Suggestion
@@ -51,12 +55,13 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 import java.io.File
 import java.io.FileNotFoundException
-import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.coroutineContext
 
 /** Stores the source and settings, imports the playlist into the database and serves it. The one entry point for the apps. */
-class Repository(private val ctx: Context, db: AppDb = AppDb.get(ctx)) {
+class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx)) {
     private val prefs = ctx.getSharedPreferences("iptv", Context.MODE_PRIVATE)
     private val settingsPrefs = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
     private val store = PlaylistStore(db)
@@ -116,6 +121,7 @@ class Repository(private val ctx: Context, db: AppDb = AppDb.get(ctx)) {
             liveTiles = if (settingsPrefs.contains("liveTiles")) settingsPrefs.getBoolean("liveTiles", false) else null,
             liveGuide = settingsPrefs.getBoolean("liveGuide", Defaults.LIVE_GUIDE),
             guideEmpty = settingsPrefs.getBoolean("guideEmpty", Defaults.GUIDE_EMPTY),
+            language = settingsPrefs.getString("language", null) ?: Defaults.LANGUAGE,
         )
         set(v) {
             settingsPrefs.edit()
@@ -131,9 +137,16 @@ class Repository(private val ctx: Context, db: AppDb = AppDb.get(ctx)) {
                 .putBoolean("rememberLive", v.rememberLive)
                 .putBoolean("liveGuide", v.liveGuide)
                 .putBoolean("guideEmpty", v.guideEmpty)
+                .putString("language", v.language)
                 .apply { if (v.liveTiles == null) remove("liveTiles") else putBoolean("liveTiles", v.liveTiles) }
                 .apply()
         }
+
+    /**
+     * BAK-011: the source came from a settings file without its Xtream password. True until the user sets the source
+     * (setting it clears the flag with the rest of the source); the app asks for the password instead of loading.
+     */
+    val passwordMissing: Boolean get() = prefs.getBoolean("passwordMissing", false)
 
     /** The list the live section was left on (LIVE-017); the channel is the most recent of [recentKeys]. */
     var lastGroup: ChannelGroup
@@ -174,7 +187,7 @@ class Repository(private val ctx: Context, db: AppDb = AppDb.get(ctx)) {
                             null
                         } catch (e: FileNotFoundException) {
                             null
-                        } ?: throw IOException(FILE_LOST)
+                        } ?: throw CoreException(ErrorCode.FILE_LOST)
                         input.reader().use { parseM3u(it, s.url, import::epgUrls, add) }
                     } else {
                         httpStream(s.url) { input -> input.reader().use { parseM3u(it, s.url, import::epgUrls, add) } }
@@ -241,11 +254,23 @@ class Repository(private val ctx: Context, db: AppDb = AppDb.get(ctx)) {
     suspend fun edits(s: Source, category: String?): Edits = io { user.edits(s.cacheKey(), category) }
     suspend fun resetEdits(s: Source, category: String?) = io { user.reset(s.cacheKey(), category) }
 
-    /** A channel started playing: "Недавние", the last channel (LIVE-017) and the previous one (LIVE-018). */
+    /** A channel was watched long enough for "Недавние" (LIVE-010, see [app.iptvplayer.core.player.WatchTimer]). */
     suspend fun watched(key: String) = io { user.watched(key) }
 
-    /** Keys of the last watched channels of [s], most recent first: [0] is the last channel, [1] the previous one. */
+    /** Keys of the channels of [s] in "Недавние", most recent first. */
     suspend fun recentKeys(s: Source): List<String> = user.recentKeys(s.cacheKey())
+
+    /**
+     * The last two channels started, however briefly, most recent first: [0] the last channel (LIVE-017), [1] the
+     * previous one (LIVE-018). Kept with the source: another source starts without them.
+     */
+    val zapped: List<String> get() = prefs.getString("zapped", null)?.split('\n')?.filter { it.isNotEmpty() }.orEmpty()
+
+    /** A channel started playing in full screen. */
+    fun zap(key: String) {
+        val list = zapped
+        if (list.firstOrNull() != key) prefs.edit().putString("zapped", (listOf(key) + list.take(1)).joinToString("\n")).apply()
+    }
 
     /** LIVE-020: the last watched channels of [s] with the time each was watched, most recent first. */
     suspend fun recent(s: Source): List<Pair<ChannelItem, Long>> =
@@ -276,7 +301,7 @@ class Repository(private val ctx: Context, db: AppDb = AppDb.get(ctx)) {
     suspend fun refreshEpg(id: Long): EpgResult = withContext(Dispatchers.IO) {
         val job = coroutineContext
         epgLock.withLock {
-            val src = epg.source(id) ?: throw IOException("Источник телегида удалён")
+            val src = epg.source(id) ?: throw CoreException(ErrorCode.EPG_SOURCE_GONE)
             val now = System.currentTimeMillis()
             epgAttempts[id] = now
             try {
@@ -286,7 +311,7 @@ class Repository(private val ctx: Context, db: AppDb = AppDb.get(ctx)) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                epg.attempted(id, now, "Ошибка: ${e.message ?: e}")
+                epg.attempted(id, now, failedStatus(e))
                 throw e
             }
         }
@@ -357,6 +382,42 @@ class Repository(private val ctx: Context, db: AppDb = AppDb.get(ctx)) {
     /** The channel's own guide shift in minutes (EPG-007), null = the source's / global one. */
     suspend fun setEpgShift(key: String, minutes: Int?) = io { user.setEpgShift(key, minutes) }
 
+    // --- Settings file (BAK-011) ---
+
+    /** What a settings file holds, as it is now: the source, settings, guide sources and every channel edit. */
+    suspend fun backup(): Backup = io {
+        Backup(source = source, settings = settings, guides = epg.sourceRows(), channels = user.dump())
+    }
+
+    /** Writes the settings file to [out] (and closes it); the Xtream password only [withPassword]. */
+    suspend fun saveSettingsFile(out: OutputStream, withPassword: Boolean, appVersion: String) {
+        val b = backup()
+        io { writeBackup(out, b, withPassword, appVersion, System.currentTimeMillis()) }
+    }
+
+    /** Reads a settings file; nothing changes yet. A foreign, damaged or newer file throws [CoreException] (BACKUP_…). */
+    suspend fun readSettingsFile(input: InputStream): Backup = io { input.use(::readBackup) }
+
+    /**
+     * Replaces the current settings with those of [b] (parts it doesn't have stay). Guide sources are replaced (their
+     * guides download again), channel edits replaced in one transaction. The caller then refreshes the source.
+     */
+    suspend fun restore(b: Backup) = withContext(Dispatchers.IO) {
+        epgLock.withLock {
+            db.runInTransaction {
+                b.guides?.let(epg::replaceSources)
+                b.channels?.let(user::replace)
+                epg.rebind()
+            }
+        }
+        b.settings?.let { settings = it }
+        if (b.channels != null) lastGroup = ChannelGroup.All // a collection id it named is gone
+        b.source?.let {
+            source = it
+            if (b.passwordMissing) prefs.edit().putBoolean("passwordMissing", true).apply()
+        }
+    }
+
     /**
      * Matches the saved channels of [s] against the logo database [logoSource] (or clears the matches when null)
      * and stores the result next to the channels. Returns (channels with a logo found, all channels).
@@ -368,9 +429,6 @@ class Repository(private val ctx: Context, db: AppDb = AppDb.get(ctx)) {
         store.applyAutoLogos(key) { ch -> job.ensureActive(); index?.find(ch) }
     }
 }
-
-internal const val FILE_LOST = "Нет доступа к файлу плейлиста (его переместили, удалили или отключили накопитель). " +
-    "Выберите файл заново: «Источник» → «Выбрать файл»"
 
 /** [seen] = the version the user last ran (null: none recorded, e.g. updated from 0.1, which didn't record it). */
 internal fun changelogDue(seen: String?, current: String, updated: Boolean): Boolean =

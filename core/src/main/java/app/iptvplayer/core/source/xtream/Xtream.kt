@@ -1,6 +1,8 @@
 package app.iptvplayer.core.source.xtream
 
 import android.util.Base64
+import app.iptvplayer.core.CoreException
+import app.iptvplayer.core.ErrorCode
 import android.util.JsonReader
 import android.util.JsonToken
 import app.iptvplayer.core.model.Channel
@@ -13,10 +15,7 @@ import app.iptvplayer.core.net.httpGet
 import app.iptvplayer.core.net.httpStream
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.IOException
 import java.net.URLEncoder
-
-internal const val ACCOUNT_REJECTED = "Xtream: аккаунт не принят — проверьте логин и пароль"
 
 /**
  * Live categories (in provider order, via [onCategory]) and channels (via [onChannel], one at a time).
@@ -30,11 +29,11 @@ fun loadXtream(s: Source.Xtream, onCategory: (String) -> Unit, onChannel: (Chann
     val auth = try {
         httpGet(api)
     } catch (e: HttpException) {
-        if (e.code == 401 || e.code == 403) throw IOException(ACCOUNT_REJECTED) else throw e
+        if (e.code == 401 || e.code == 403) throw CoreException(ErrorCode.XTREAM_REJECTED) else throw e
     }
-    val info = runCatching { JSONObject(auth) }.getOrNull() ?: throw IOException("Xtream: сервер ответил не как Xtream Codes")
+    val info = runCatching { JSONObject(auth) }.getOrNull() ?: throw CoreException(ErrorCode.XTREAM_NOT_XTREAM)
     // optInt also accepts "1" as a string, which some panels return.
-    if (info.optJSONObject("user_info")?.optInt("auth") != 1) throw IOException(ACCOUNT_REJECTED)
+    if (info.optJSONObject("user_info")?.optInt("auth") != 1) throw CoreException(ErrorCode.XTREAM_REJECTED)
 
     val cats = JSONArray(httpGet("$api&action=get_live_categories")).objects()
         .associate { it.optString("category_id") to it.optString("category_name") }
@@ -67,7 +66,7 @@ fun loadShortEpg(s: Source.Xtream, streamId: String, limit: Int): List<Programme
 /** `{"epg_listings": [{title, description, start_timestamp, stop_timestamp, …}]}`; entries without times are skipped. */
 internal fun readShortEpg(r: JsonReader): List<Programme> {
     val out = ArrayList<Programme>()
-    if (r.peek() != JsonToken.BEGIN_OBJECT) throw IOException("Xtream: сервер вернул не телегид")
+    if (r.peek() != JsonToken.BEGIN_OBJECT) throw CoreException(ErrorCode.XTREAM_BAD_EPG)
     r.beginObject()
     while (r.hasNext()) {
         if (r.nextName() != "epg_listings" || r.peek() != JsonToken.BEGIN_ARRAY) { r.skipValue(); continue }
@@ -108,7 +107,7 @@ private fun unBase64(s: String?): String? = s?.let {
 internal fun readLiveStreams(
     r: JsonReader, cats: Map<String, String>, path: String, ext: String, userKey: String, onChannel: (Channel) -> Unit,
 ) {
-    if (r.peek() != JsonToken.BEGIN_ARRAY) throw IOException("Xtream: сервер вернул не список каналов")
+    if (r.peek() != JsonToken.BEGIN_ARRAY) throw CoreException(ErrorCode.XTREAM_BAD_CHANNELS)
     r.beginArray()
     while (r.hasNext()) {
         if (r.peek() != JsonToken.BEGIN_OBJECT) { r.skipValue(); continue }

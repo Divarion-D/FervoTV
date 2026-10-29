@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -50,7 +51,14 @@ import app.iptvplayer.initialFocus
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SetupScreen(initial: Source?, onCancel: () -> Unit, onDone: (Source) -> Unit) {
+fun SetupScreen(
+    initial: Source?,
+    onCancel: () -> Unit,
+    onDone: (Source) -> Unit,
+    onLoadFile: () -> Unit,
+    /** BAK-011: the source came from a settings file without its password. */
+    askPassword: Boolean = false,
+) {
     val ctx = LocalContext.current
     val x = initial as? Source.Xtream
     var xtream by remember { mutableStateOf(x != null) }
@@ -80,7 +88,7 @@ fun SetupScreen(initial: Source?, onCancel: () -> Unit, onDone: (Source) -> Unit
     Column(Modifier.fillMaxSize().safeDrawingPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
         if (initial != null) {
             TopAppBar(
-                title = { Text("Источник плейлиста") },
+                title = { Text(stringResource(R.string.source_title)) },
                 navigationIcon = { BackButton(onCancel) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             )
@@ -98,10 +106,10 @@ fun SetupScreen(initial: Source?, onCancel: () -> Unit, onDone: (Source) -> Unit
                     painterResource(R.drawable.ic_live_tv), contentDescription = null,
                     modifier = Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary,
                 )
-                Text("Fervo TV", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
-                Text("Добавьте плейлист", style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+                Text(stringResource(R.string.setup_title), style = MaterialTheme.typography.titleLarge)
                 Text(
-                    "M3U / M3U8 по ссылке или из файла, либо аккаунт Xtream Codes",
+                    stringResource(R.string.setup_text),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -123,7 +131,7 @@ fun SetupScreen(initial: Source?, onCancel: () -> Unit, onDone: (Source) -> Unit
                                 )
                             })
                         },
-                        modifier = (if (i == 0) Modifier.initialFocus() else Modifier).focusRing(shape),
+                        modifier = (if (i == 0 && !askPassword) Modifier.initialFocus() else Modifier).focusRing(shape),
                         colors = SegmentedButtonDefaults.colors(
                             activeContainerColor = MaterialTheme.colorScheme.primary,
                             activeContentColor = MaterialTheme.colorScheme.onPrimary,
@@ -132,27 +140,37 @@ fun SetupScreen(initial: Source?, onCancel: () -> Unit, onDone: (Source) -> Unit
                 }
             }
 
+            if (askPassword) Text(stringResource(R.string.password_needed), color = MaterialTheme.colorScheme.primary)
             if (xtream) {
-                Field(server, { server = it }, "Сервер", R.drawable.ic_dns, placeholder = "http://host:port")
-                Field(user, { user = it }, "Логин", R.drawable.ic_person)
-                Field(pass, { pass = it }, "Пароль", R.drawable.ic_key, password = true)
+                Field(server, { server = it }, stringResource(R.string.field_server), R.drawable.ic_dns, placeholder = "http://host:port")
+                Field(user, { user = it }, stringResource(R.string.field_login), R.drawable.ic_person)
+                Field(
+                    pass, { pass = it }, stringResource(R.string.field_password), R.drawable.ic_key, password = true,
+                    modifier = if (askPassword) Modifier.initialFocus() else Modifier,
+                )
                 SettingItem(
-                    R.drawable.ic_tv, "Потоки в HLS (m3u8)", "Включите, если сервер не отдаёт MPEG-TS",
+                    R.drawable.ic_tv, stringResource(R.string.xtream_hls), stringResource(R.string.xtream_hls_summary),
                     trailing = { Switch(hls, onCheckedChange = null) },
                 ) { hls = !hls }
             } else {
-                Field(url, { url = it }, "URL плейлиста", R.drawable.ic_link, placeholder = "http://…/playlist.m3u")
+                Field(url, { url = it }, stringResource(R.string.field_playlist_url), R.drawable.ic_link, placeholder = "http://…/playlist.m3u")
                 OutlinedButton(
                     onClick = { pickFile.launch(arrayOf("*/*")) },
                     modifier = Modifier.focusRing(CircleShape),
-                ) { IconLabel(R.drawable.ic_folder_open, "Выбрать файл") }
+                ) { IconLabel(R.drawable.ic_folder_open, stringResource(R.string.choose_file)) }
             }
 
             Button(
                 onClick = { source?.let(onDone) },
                 enabled = source != null,
                 modifier = Modifier.fillMaxWidth().height(52.dp).focusRing(CircleShape),
-            ) { IconLabel(R.drawable.ic_playlist_play, "Загрузить") }
+            ) { IconLabel(R.drawable.ic_playlist_play, stringResource(R.string.load)) }
+
+            // BAK-011: a new install takes everything from a settings file instead.
+            if (initial == null) OutlinedButton(
+                onClick = onLoadFile,
+                modifier = Modifier.fillMaxWidth().focusRing(CircleShape),
+            ) { IconLabel(R.drawable.ic_restart_alt, stringResource(R.string.settings_file_load)) }
         }
     }
 }
@@ -163,10 +181,11 @@ private fun Field(
     onChange: (String) -> Unit,
     label: String,
     @DrawableRes icon: Int,
+    modifier: Modifier = Modifier,
     placeholder: String? = null,
     password: Boolean = false,
 ) = OutlinedTextField(
-    value, onChange, Modifier.fillMaxWidth(),
+    value, onChange, modifier.fillMaxWidth(),
     label = { Text(label) },
     placeholder = placeholder?.let { { Text(it) } },
     leadingIcon = { Icon(painterResource(icon), contentDescription = null) },

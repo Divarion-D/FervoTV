@@ -36,6 +36,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.iptvplayer.R
 import app.iptvplayer.core.qrModules
@@ -60,7 +61,7 @@ fun Modifier.focusRing(shape: Shape): Modifier {
 @Composable
 fun BackButton(onClick: () -> Unit) =
     IconButton(onClick = onClick, modifier = Modifier.focusRing(RoundedCornerShape(50))) {
-        Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Назад")
+        Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = stringResource(R.string.back))
     }
 
 /** Icon + text inside a Button, per M3 spec sizes. */
@@ -104,7 +105,7 @@ fun <T> ChoiceDialog(
             }
         }
     },
-    confirmButton = { TextButton(onClick = onDismiss, modifier = Modifier.focusRing(RoundedCornerShape(50))) { Text("Отмена") } },
+    confirmButton = { TextButton(onClick = onDismiss, modifier = Modifier.focusRing(RoundedCornerShape(50))) { Text(stringResource(R.string.cancel)) } },
 )
 
 /** Settings-style row: the whole row is the click/focus target, so remote and touch behave the same. */

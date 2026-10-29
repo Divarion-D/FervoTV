@@ -113,7 +113,7 @@ class EpgStoreTest {
         importPlaylist()
         val (id, result) = importGuide("""<tv><channel id="z"><display-name>Zzz</display-name></channel></tv>""")
         assertEquals(0, result.matched)
-        assertTrue(epg.source(id)!!.status!!.contains("Ни один канал плейлиста не найден"))
+        assertEquals(EpgStatus.Loaded(result), epg.source(id)!!.lastStatus())
     }
 
     /** EPG-003: the old guide stays on screen while the new one is read, and is replaced at the end. */

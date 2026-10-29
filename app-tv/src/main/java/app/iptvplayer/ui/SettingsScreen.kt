@@ -48,7 +48,7 @@ import app.iptvplayer.core.model.PlaylistRefresh
 import app.iptvplayer.core.model.Settings
 import app.iptvplayer.initialFocus
 import app.iptvplayer.isTv
-import app.iptvplayer.core.model.plural
+import app.iptvplayer.LANGUAGES
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
@@ -71,17 +71,20 @@ fun SettingsScreen(
     onChange: (Settings) -> Unit,
     onEditSource: () -> Unit,
     onRefreshNow: () -> Unit,
+    onSaveFile: () -> Unit,
+    onLoadFile: () -> Unit,
     onClose: () -> Unit,
 ) {
     // Row to put the focus back on after a subpage, a dialog or the source editor (UI-005); saved across the editor.
     var lastRow by rememberSaveable { mutableStateOf("refresh") }
-    var subpage by remember { mutableStateOf<Pair<String, String>?>(null) } // title to asset
+    var subpage by remember { mutableStateOf<Pair<Int, String>?>(null) } // title to asset
     subpage?.let { (title, asset) ->
-        DocScreen(title, asset, onClose = { subpage = null })
+        DocScreen(stringResource(title), asset, onClose = { subpage = null })
         return
     }
     var refreshDialog by remember { mutableStateOf(false) }
     var daysDialog by remember { mutableStateOf(false) }
+    var languageDialog by remember { mutableStateOf(false) }
     var qrUrl by remember { mutableStateOf<String?>(null) }
     BackHandler(onBack = onClose)
     val ctx = LocalContext.current
@@ -90,8 +93,8 @@ fun SettingsScreen(
         focusRequester(rows.getOrPut(key) { FocusRequester() }).onFocusChanged { if (it.isFocused) lastRow = key }
     // TV: focus on the first row when opened, on the row we left from when back.
     val tv = remember { ctx.isTv() }
-    LaunchedEffect(refreshDialog, daysDialog, qrUrl) {
-        if (!tv || refreshDialog || daysDialog || qrUrl != null) return@LaunchedEffect
+    LaunchedEffect(refreshDialog, daysDialog, languageDialog, qrUrl) {
+        if (!tv || refreshDialog || daysDialog || languageDialog || qrUrl != null) return@LaunchedEffect
         withFrameNanos {}
         runCatching { rows[lastRow]?.requestFocus() }
     }
@@ -104,7 +107,7 @@ fun SettingsScreen(
 
     Column(Modifier.fillMaxSize().safeDrawingPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
         TopAppBar(
-            title = { Text("Настройки") },
+            title = { Text(stringResource(R.string.section_settings)) },
             navigationIcon = { BackButton(onClose) },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         )
@@ -116,31 +119,31 @@ fun SettingsScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            SectionTitle("Плейлист")
+            SectionTitle(stringResource(R.string.settings_playlist))
             SettingItem(
-                R.drawable.ic_refresh, "Обновить плейлист сейчас", playlistStatus.ifEmpty { null },
+                R.drawable.ic_refresh, stringResource(R.string.settings_refresh_now), playlistStatus.ifEmpty { null },
                 Modifier.row("refresh"),
                 trailing = if (refreshing) {
                     { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) }
                 } else null,
             ) { if (!refreshing) onRefreshNow() }
-            SettingItem(R.drawable.ic_playlist_play, "Источник плейлиста", sourceLabel, Modifier.row("source"), onClick = onEditSource)
+            SettingItem(R.drawable.ic_playlist_play, stringResource(R.string.settings_source), sourceLabel, Modifier.row("source"), onClick = onEditSource)
             SettingItem(
-                R.drawable.ic_schedule, "Автообновление",
-                "${settings.playlistRefresh.label(settings.refreshDays)} · сохранённый список открывается сразу, без ожидания сети",
+                R.drawable.ic_schedule, stringResource(R.string.settings_auto_refresh),
+                stringResource(R.string.settings_auto_refresh_summary, settings.playlistRefresh.label(ctx, settings.refreshDays)),
                 Modifier.row("schedule"),
             ) { refreshDialog = true }
             if (settings.playlistRefresh == PlaylistRefresh.EVERY_N_DAYS) {
                 SettingItem(
-                    R.drawable.ic_schedule, "Интервал обновления", daysText(settings.refreshDays), Modifier.row("days"),
+                    R.drawable.ic_schedule, stringResource(R.string.settings_refresh_interval), daysText(ctx, settings.refreshDays), Modifier.row("days"),
                 ) { daysDialog = true }
             }
             if (refreshDialog) {
                 ChoiceDialog(
-                    title = "Обновлять плейлист",
+                    title = stringResource(R.string.settings_refresh_title),
                     options = PlaylistRefresh.entries,
                     selected = settings.playlistRefresh,
-                    label = { it.label(settings.refreshDays) },
+                    label = { it.label(ctx, settings.refreshDays) },
                     onSelect = {
                         onChange(settings.copy(playlistRefresh = it))
                         refreshDialog = false
@@ -151,10 +154,10 @@ fun SettingsScreen(
             }
             if (daysDialog) {
                 ChoiceDialog(
-                    title = "Обновлять каждые",
+                    title = stringResource(R.string.settings_refresh_every),
                     options = Defaults.PLAYLIST_REFRESH_DAYS_OPTIONS,
                     selected = settings.refreshDays,
-                    label = ::daysText,
+                    label = { daysText(ctx, it) },
                     onSelect = { onChange(settings.copy(refreshDays = it)); daysDialog = false },
                     onDismiss = { daysDialog = false },
                 )
@@ -178,20 +181,20 @@ fun SettingsScreen(
                 Modifier.row("liveGuide"), trailing = { Switch(settings.liveGuide, onCheckedChange = null) },
             ) { onChange(settings.copy(liveGuide = !settings.liveGuide)) }
 
-            SectionTitle("Логотипы каналов")
+            SectionTitle(stringResource(R.string.settings_logos))
             SettingItem(
                 R.drawable.ic_image,
-                "Автоподгрузка логотипов",
-                "Если в плейлисте нет логотипа или он не открывается — искать по названию канала в базе",
+                stringResource(R.string.settings_auto_logos),
+                stringResource(R.string.settings_auto_logos_summary),
                 Modifier.row("autoLogos"),
                 trailing = { Switch(settings.autoLogos, onCheckedChange = null) },
             ) { onChange(settings.copy(autoLogos = !settings.autoLogos)) }
             OutlinedTextField(
                 logoSource, { logoSource = it }, Modifier.fillMaxWidth().padding(top = 8.dp),
-                label = { Text("Источник логотипов (iptv-org API)") },
+                label = { Text(stringResource(R.string.settings_logo_source)) },
                 leadingIcon = { Icon(painterResource(R.drawable.ic_link), contentDescription = null) },
                 trailingIcon = if (logoSource != Defaults.LOGO_SOURCE) {
-                    { IconButton(onClick = resetLogoSource) { Icon(painterResource(R.drawable.ic_restart_alt), contentDescription = "По умолчанию") } }
+                    { IconButton(onClick = resetLogoSource) { Icon(painterResource(R.drawable.ic_restart_alt), contentDescription = stringResource(R.string.by_default)) } }
                 } else null,
                 supportingText = { Text(logoStatus) },
                 singleLine = true,
@@ -202,33 +205,66 @@ fun SettingsScreen(
                 FilledTonalButton(
                     onClick = { onChange(settings.copy(logoSource = logoSource.trim())) },
                     modifier = Modifier.focusRing(CircleShape),
-                ) { IconLabel(R.drawable.ic_check, "Применить") }
+                ) { IconLabel(R.drawable.ic_check, stringResource(R.string.apply)) }
             }
 
-            SectionTitle("О приложении")
-            SettingItem(R.drawable.ic_info, "Версия", remember { versionLabel(ctx) }, Modifier.row("version")) {}
-            SettingItem(R.drawable.ic_person, "Автор", Defaults.AUTHOR, Modifier.row("author")) {}
-            SettingItem(R.drawable.ic_code, "Исходный код на GitHub", Defaults.GITHUB_URL, Modifier.row("github")) {
+            SectionTitle(stringResource(R.string.settings_interface))
+            SettingItem(
+                R.drawable.ic_language, stringResource(R.string.settings_language), languageName(settings.language), Modifier.row("language"),
+            ) { languageDialog = true }
+            if (languageDialog) {
+                ChoiceDialog(
+                    title = stringResource(R.string.settings_language),
+                    options = LANGUAGES,
+                    selected = settings.language.takeIf { it in LANGUAGES } ?: "",
+                    label = { languageName(ctx, it) },
+                    onSelect = { onChange(settings.copy(language = it)); languageDialog = false },
+                    onDismiss = { languageDialog = false },
+                )
+            }
+
+            // BAK-011
+            SectionTitle(stringResource(R.string.settings_file))
+            SettingItem(
+                R.drawable.ic_save, stringResource(R.string.settings_file_save), stringResource(R.string.settings_file_save_summary),
+                Modifier.row("saveFile"), onClick = onSaveFile,
+            )
+            SettingItem(
+                R.drawable.ic_folder_open, stringResource(R.string.settings_file_load), stringResource(R.string.settings_file_load_summary),
+                Modifier.row("loadFile"), onClick = onLoadFile,
+            )
+
+            SectionTitle(stringResource(R.string.settings_about))
+            SettingItem(R.drawable.ic_info, stringResource(R.string.settings_version), versionLabel(ctx), Modifier.row("version")) {}
+            SettingItem(R.drawable.ic_person, stringResource(R.string.settings_author), Defaults.AUTHOR, Modifier.row("author")) {}
+            SettingItem(R.drawable.ic_code, stringResource(R.string.settings_github), Defaults.GITHUB_URL, Modifier.row("github")) {
                 if (!openUrl(ctx, Defaults.GITHUB_URL)) qrUrl = Defaults.GITHUB_URL
             }
-            SettingItem(R.drawable.ic_history, "Что нового", "Список изменений по версиям", Modifier.row("changelog")) {
-                subpage = "Что нового" to "CHANGELOG.md"
+            SettingItem(R.drawable.ic_history, stringResource(R.string.whats_new), stringResource(R.string.settings_whats_new_summary), Modifier.row("changelog")) {
+                subpage = R.string.whats_new to "CHANGELOG.md"
             }
             SettingItem(
-                R.drawable.ic_info, "Лицензии", "Библиотеки и сервисы, на которых построено приложение", Modifier.row("licenses"),
-            ) { subpage = "Лицензии" to "LICENSES.md" }
+                R.drawable.ic_info, stringResource(R.string.settings_licenses), stringResource(R.string.settings_licenses_summary), Modifier.row("licenses"),
+            ) { subpage = R.string.settings_licenses to "LICENSES.md" }
         }
     }
     qrUrl?.let { url -> QrDialog(url, onDismiss = { qrUrl = null }) }
 }
 
-private fun daysText(n: Int) = "$n ${plural(n, "день", "дня", "дней")}"
+@Composable
+private fun languageName(tag: String): String = languageName(LocalContext.current, tag)
+
+private fun languageName(ctx: Context, tag: String): String = when (tag) {
+    "ru" -> ctx.getString(R.string.language_ru)
+    "en" -> ctx.getString(R.string.language_en)
+    else -> ctx.getString(R.string.language_system)
+}
 
 /** No browser (common on TV boxes): the link as a QR code for the phone, and as text. */
 @Composable
 private fun QrDialog(url: String, onDismiss: () -> Unit) = AlertDialog(
     onDismissRequest = onDismiss,
-    title = { Text("Откройте на телефоне") },
+    title = { Text(stringResource(R.string.qr_title)) },
     text = {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             QrCode(url, Modifier.size(220.dp))
@@ -236,18 +272,18 @@ private fun QrDialog(url: String, onDismiss: () -> Unit) = AlertDialog(
         }
     },
     confirmButton = {
-        TextButton(onClick = onDismiss, modifier = Modifier.initialFocus().focusRing(RoundedCornerShape(50))) { Text("Закрыть") }
+        TextButton(onClick = onDismiss, modifier = Modifier.initialFocus().focusRing(RoundedCornerShape(50))) { Text(stringResource(R.string.close)) }
     },
 )
 
-/** "0.1 · сборка 1 · debug" — from the installed package, so it always matches build.gradle.kts. */
+/** "0.1 · build 1 · debug" — from the installed package, so it always matches build.gradle.kts. */
 private fun versionLabel(ctx: Context): String {
     @Suppress("DEPRECATION") // getPackageInfo(String, PackageInfoFlags) is API 33+
     val info = ctx.packageManager.getPackageInfo(ctx.packageName, 0)
     @Suppress("DEPRECATION") // longVersionCode is API 28+
     val code = info.versionCode
     val debug = ctx.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
-    return "${info.versionName} · сборка $code" + if (debug) " · debug" else ""
+    return ctx.getString(R.string.settings_version_value, info.versionName, code) + if (debug) " · debug" else ""
 }
 
 /** False when there is no browser (TV boxes often have none). */
@@ -285,6 +321,10 @@ fun DocScreen(title: String, asset: String, onClose: () -> Unit) {
                 .padding(horizontal = 24.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            // UI-022: the change log and the licences are kept in Russian only.
+            stringResource(R.string.doc_russian_only).takeIf { it.isNotEmpty() }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             for (b in blocks) when {
                 b.startsWith("## ") -> Text(
                     b.removePrefix("## "),

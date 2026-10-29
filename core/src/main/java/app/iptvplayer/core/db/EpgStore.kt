@@ -10,7 +10,9 @@ import androidx.room.RawQuery
 import androidx.room.Update
 import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.sqlite.db.SupportSQLiteQuery
+import app.iptvplayer.core.CoreException
 import app.iptvplayer.core.Defaults
+import app.iptvplayer.core.ErrorCode
 import app.iptvplayer.core.epg.AutoMatch
 import app.iptvplayer.core.epg.EpgEntry
 import app.iptvplayer.core.epg.EpgIndex
@@ -99,6 +101,9 @@ abstract class EpgDao {
 
     @Query("SELECT * FROM epg_source WHERE url != '$SHORT_EPG_URL' ORDER BY position")
     abstract suspend fun sourceList(): List<EpgSource>
+
+    @Query("SELECT * FROM epg_source WHERE url != '$SHORT_EPG_URL' ORDER BY position")
+    abstract fun sourceRows(): List<EpgSource>
 
     @Query("SELECT * FROM epg_source WHERE id = :id")
     abstract fun source(id: Long): EpgSource?
@@ -217,12 +222,38 @@ data class IdEpg(val id: Long, val epgId: Long?)
 
 data class EpgBinding(val epgId: Long?, val shift: Int?)
 
-/** Result of a guide import, also written as the source's [EpgSource.status]. */
+/**
+ * Result of a guide import, also written as the source's [EpgSource.status]. [matched] = 0: no playlist channel is in
+ * this guide; [damaged]: the file broke off, what came before the damage is loaded.
+ */
 data class EpgResult(val channels: Int, val programmes: Int, val matched: Int, val damaged: Boolean = false) {
-    fun status(): String = buildString {
-        append("Каналов в телегиде: $channels, передач: $programmes. ")
-        append(if (matched == 0) "Ни один канал плейлиста не найден в этом телегиде" else "Совпало с плейлистом: $matched")
-        if (damaged) append(". Файл повреждён: загружено то, что было до повреждения")
+    internal fun status(): String = "ok $channels $programmes $matched ${if (damaged) 1 else 0}"
+}
+
+/** [EpgSource.status] as data, for the apps to word in the interface language (UI-022). */
+sealed interface EpgStatus {
+    data class Loaded(val result: EpgResult) : EpgStatus
+
+    /** [code] null = not one of core's own failures (network, HTTP); [detail] = its technical text. */
+    data class Failed(val code: ErrorCode?, val detail: String?) : EpgStatus
+}
+
+/** The status of a failed refresh. */
+internal fun failedStatus(e: Exception): String {
+    val code = (e as? CoreException)?.code
+    val detail = if (e is CoreException) e.detail else e.message ?: e.javaClass.simpleName
+    return "error ${code?.name ?: "-"}" + (detail?.let { " $it" } ?: "")
+}
+
+/** Null: never refreshed, or a status written by an older version (it is replaced by the next refresh). */
+fun EpgSource.lastStatus(): EpgStatus? {
+    val parts = status?.split(' ', limit = 3) ?: return null
+    return when (parts[0]) {
+        "ok" -> parts.getOrNull(2)?.split(' ')?.mapNotNull(String::toIntOrNull)?.takeIf { it.size == 3 }?.let { (p, m, d) ->
+            parts[1].toIntOrNull()?.let { EpgStatus.Loaded(EpgResult(it, p, m, d == 1)) }
+        }
+        "error" -> EpgStatus.Failed(ErrorCode.entries.find { it.name == parts.getOrNull(1) }, parts.getOrNull(2))
+        else -> null
     }
 }
 
@@ -260,6 +291,25 @@ class EpgStore(private val db: AppDb) {
     }
 
     fun attempted(id: Long, at: Long, status: String?) = dao.attempted(id, at, status)
+
+    /** BAK-011: guide sources in priority order (the Xtream short EPG is not one of them). */
+    fun sourceRows(): List<EpgSource> = dao.sourceRows()
+
+    /**
+     * BAK-011: the guide sources become [list] (address, User-Agent, schedule, shift; in priority order). Their
+     * guides are gone until downloaded again: new sources are due right away. The short EPG stays.
+     */
+    internal fun replaceSources(list: List<EpgSource>) = db.runInTransaction {
+        for (s in dao.sourceRows()) {
+            dao.deleteSourceProgrammes(s.id)
+            dao.deleteSourceChannels(s.id)
+            dao.deleteSourceRow(s.id)
+        }
+        list.distinctBy { it.url }.forEachIndexed { i, s ->
+            dao.insertSource(s.copy(id = 0, position = i, savedAt = null, attemptAt = null, status = null))
+        }
+        rebind()
+    }
 
     /** Guide channels in priority order plus the user's bindings: what playlist imports bind channels with. */
     fun index(): EpgIndex = EpgIndex(entries(), user.epgBindings().associate { it.ckey to it.epg })

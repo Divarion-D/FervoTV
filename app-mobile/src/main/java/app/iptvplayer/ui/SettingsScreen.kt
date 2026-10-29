@@ -47,7 +47,6 @@ import app.iptvplayer.core.model.PlaylistRefresh
 import app.iptvplayer.core.model.Settings
 import app.iptvplayer.initialFocus
 import app.iptvplayer.isTv
-import app.iptvplayer.core.model.plural
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
@@ -307,3 +306,20 @@ private fun SectionTitle(text: String) = Text(
     style = MaterialTheme.typography.labelLarge,
     color = MaterialTheme.colorScheme.primary,
 )
+
+// Legacy phone UI (not shipped): its own Russian labels; app-tv takes them from resources (UI-022).
+private fun PlaylistRefresh.label(days: Int): String = when (this) {
+    PlaylistRefresh.ON_START -> "При каждом запуске"
+    PlaylistRefresh.HOURS_6 -> "Каждые 6 часов"
+    PlaylistRefresh.DAILY -> "Раз в день"
+    PlaylistRefresh.WEEKLY -> "Раз в неделю"
+    PlaylistRefresh.EVERY_N_DAYS -> "Каждые $days ${plural(days, "день", "дня", "дней")}"
+    PlaylistRefresh.MANUAL -> "Только вручную"
+}
+
+private fun plural(n: Int, one: String, few: String, many: String): String = when {
+    n % 100 in 11..14 -> many
+    n % 10 == 1 -> one
+    n % 10 in 2..4 -> few
+    else -> many
+}

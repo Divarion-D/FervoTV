@@ -52,6 +52,9 @@ object Defaults {
     /** EPG-010: the grid lists channels without a programme too. */
     const val GUIDE_EMPTY = true
 
+    /** UI-022: interface language, "" = the system's (English when the system's isn't translated). */
+    const val LANGUAGE = ""
+
     /** EPG-008 (owner's decision, 33-design §10): the grid's scale, dp per hour. */
     const val GUIDE_DP_PER_HOUR = 150
 
@@ -96,8 +99,11 @@ object Defaults {
      */
     const val EPG_PAST_MS = 6 * 3_600_000L
 
-    /** Watched channels remembered for "Недавние" and the previous channel. */
+    /** Watched channels remembered for "Недавние" (LIVE-010, LIVE-020). */
     const val RECENT_CHANNELS = 30
+
+    /** LIVE-010: a channel goes to "Недавние" after this long playing without a break (full screen or the window). */
+    const val RECENT_MIN_WATCH_MS = 60_000L
 
     // --- Guide matching by name (EPG-005), Dice similarity of letter pairs, 0..1 ---
     /** Bound right away when at least this similar... */

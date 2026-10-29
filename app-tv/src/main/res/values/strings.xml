@@ -6,7 +6,6 @@
     <string name="task_playlist_done">Playlist updated</string>
     <string name="task_playlist_failed">Couldn\'t update the playlist</string>
     <string name="task_logos">Finding channel logos</string>
-    <string name="task_logos_done">Logos found for %1$d of %2$d channels</string>
     <string name="task_logos_failed">Couldn\'t load the logo database</string>
 
     <!-- Live section -->
@@ -99,7 +98,10 @@
     <string name="reset_names">Names</string>
     <string name="reset_hidden">Hidden</string>
     <string name="reset_order">Order</string>
-    <string name="reset_more">and %1$d more</string>
+    <plurals name="reset_more">
+        <item quantity="one">and %d more</item>
+        <item quantity="other">and %d more</item>
+    </plurals>
     <string name="reset">Put back</string>
     <string name="done">Done</string>
     <string name="cancel">Cancel</string>
@@ -161,4 +163,152 @@
     <!-- Settings: Live (LIVE-022) -->
     <string name="settings_open_guide">Open as the programme grid</string>
     <string name="settings_open_guide_summary">Live opens as the guide grid instead of the list</string>
+    <!-- UI-022: the rest of the interface (P1.4) -->
+    <string name="app_name" translatable="false">Fervo TV</string>
+    <string name="back">Back</string>
+    <string name="close">Close</string>
+    <string name="clear">Clear</string>
+    <string name="retry">Retry</string>
+    <string name="later">Later</string>
+    <string name="apply">Apply</string>
+    <string name="save">Save</string>
+    <string name="by_default">Default</string>
+    <string name="nothing_found">Nothing found</string>
+    <string name="categories">Categories</string>
+    <string name="group_favorites">Favourites</string>
+    <string name="group_recent">Recent</string>
+    <string name="group_archive">With archive</string>
+    <string name="group_all">All channels</string>
+    <string name="group_none">No category</string>
+    <string name="reset_category_order">Category order</string>
+    <string name="sort_provider">As the provider has it</string>
+    <string name="sort_number">By number</string>
+    <string name="sort_name">By name</string>
+    <string name="sort_archive">Archive first</string>
+    <string name="sort_favorites">Favourites first</string>
+
+    <!-- Start, errors -->
+    <string name="loading_playlist">Loading the playlist…</string>
+    <string name="playlist_failed">Couldn\'t load the playlist</string>
+    <string name="source">Source</string>
+    <string name="source_local_file">Local file</string>
+    <string name="source_xtream">Xtream Codes · %1$s</string>
+    <string name="updated_title">Fervo TV has been updated</string>
+    <string name="updated_text">Version %1$s. See what has changed?</string>
+    <string name="whats_new">What\'s new</string>
+    <string name="refresh_failed_toast">Couldn\'t update the playlist — the saved list is shown</string>
+    <string name="err_no_internet">No internet connection, or the server wasn\'t found</string>
+    <string name="err_timeout">The server doesn\'t answer</string>
+    <string name="err_connect">Couldn\'t connect to the server</string>
+    <string name="err_http">The server answered with error HTTP %1$d</string>
+    <string name="err_file_lost">The playlist file can\'t be opened (it was moved or deleted, or the drive was removed). Pick it again: “Source” → “Choose a file”</string>
+    <string name="err_playlist_empty">The playlist is empty</string>
+    <string name="err_epg_source_gone">The guide source was removed</string>
+    <string name="err_bad_redirect">The server redirected without an address (HTTP %1$s)</string>
+    <string name="err_too_many_redirects">Too many redirects</string>
+    <string name="err_xtream_rejected">Xtream: the account was rejected — check the login and password</string>
+    <string name="err_xtream_not_xtream">Xtream: the server doesn\'t answer like Xtream Codes</string>
+    <string name="err_xtream_bad_epg">Xtream: the server didn\'t return a programme guide</string>
+    <string name="err_xtream_bad_channels">Xtream: the server didn\'t return a channel list</string>
+    <string name="err_backup_foreign">This isn\'t a Fervo TV settings file. Nothing was changed.</string>
+    <string name="err_backup_corrupt">The file is damaged or incomplete. Nothing was changed.</string>
+    <string name="err_backup_newer">The file was made by a newer version of Fervo TV (format %1$s). Update the app and try again. Nothing was changed.</string>
+
+    <!-- Player -->
+    <string name="player_position">Channel %1$d of %2$d</string>
+    <string name="player_error">Error: %1$s · OK to retry</string>
+    <string name="play_err_network">network error (%1$s)</string>
+    <string name="play_err_format">unsupported stream format (%1$s)</string>
+    <string name="play_err_decoder">decoder error (%1$s)</string>
+    <string name="play_err_drm">protected stream, DRM (%1$s)</string>
+    <string name="play_err_other">playback error (%1$s)</string>
+    <string name="play_err_stalled">no data for %1$s s</string>
+
+    <!-- Source (setup) -->
+    <string name="source_title">Playlist source</string>
+    <string name="setup_title">Add a playlist</string>
+    <string name="setup_text">M3U / M3U8 by link or from a file, or an Xtream Codes account</string>
+    <string name="field_server">Server</string>
+    <string name="field_login">Login</string>
+    <string name="field_password">Password</string>
+    <string name="field_playlist_url">Playlist URL</string>
+    <string name="xtream_hls">HLS streams (m3u8)</string>
+    <string name="xtream_hls_summary">Turn on if the server doesn\'t give MPEG-TS</string>
+    <string name="choose_file">Choose a file</string>
+    <string name="load">Load</string>
+    <string name="password_needed">Enter the account password: the settings file was saved without it</string>
+
+    <!-- Settings -->
+    <string name="settings_playlist">Playlist</string>
+    <string name="settings_refresh_now">Update the playlist now</string>
+    <string name="settings_source">Playlist source</string>
+    <string name="settings_auto_refresh">Auto update</string>
+    <string name="settings_auto_refresh_summary">%1$s · the saved list opens at once, without waiting for the network</string>
+    <string name="settings_refresh_interval">Update interval</string>
+    <string name="settings_refresh_title">Update the playlist</string>
+    <string name="settings_refresh_every">Update every</string>
+    <string name="refresh_on_start">On every start</string>
+    <string name="refresh_6h">Every 6 hours</string>
+    <string name="refresh_daily">Once a day</string>
+    <string name="refresh_weekly">Once a week</string>
+    <string name="refresh_manual">Manually only</string>
+    <plurals name="refresh_every_days">
+        <item quantity="one">Every %d day</item>
+        <item quantity="other">Every %d days</item>
+    </plurals>
+    <plurals name="days">
+        <item quantity="one">%d day</item>
+        <item quantity="other">%d days</item>
+    </plurals>
+    <string name="playlist_updating">Updating…</string>
+    <string name="playlist_update_failed">Couldn\'t update: %1$s</string>
+    <string name="playlist_updated_at">Updated %1$s</string>
+    <string name="playlist_saved_at">Saved %1$s</string>
+    <string name="settings_logos">Channel logos</string>
+    <string name="settings_auto_logos">Find logos automatically</string>
+    <string name="settings_auto_logos_summary">When the playlist has no logo or it doesn\'t open, look the channel up by name in the database</string>
+    <string name="settings_logo_source">Logo source (iptv-org API)</string>
+    <string name="logos_finding">Finding logos…</string>
+    <string name="logos_off">Automatic logos are off</string>
+    <plurals name="logos_found">
+        <item quantity="one">Logos found for %1$d of %2$d channel</item>
+        <item quantity="other">Logos found for %1$d of %2$d channels</item>
+    </plurals>
+    <string name="logos_failed">Couldn\'t load the logo database: %1$s</string>
+    <string name="settings_about">About</string>
+    <string name="settings_version">Version</string>
+    <string name="settings_version_value">%1$s · build %2$d</string>
+    <string name="settings_author">Author</string>
+    <string name="settings_github">Source code on GitHub</string>
+    <string name="settings_whats_new_summary">Changes by version</string>
+    <string name="settings_licenses">Licences</string>
+    <string name="settings_licenses_summary">Libraries and services the app is built on</string>
+    <string name="doc_russian_only">This text is in Russian only.</string>
+    <string name="qr_title">Open on your phone</string>
+
+    <!-- Interface language (UI-022) -->
+    <string name="settings_interface">Interface</string>
+    <string name="settings_language">Interface language</string>
+    <string name="language_system">As in the system</string>
+    <string name="language_ru" translatable="false">Русский</string>
+    <string name="language_en" translatable="false">English</string>
+
+    <!-- Settings file (BAK-011) -->
+    <string name="settings_file">Settings file</string>
+    <string name="settings_file_save">Save settings to a file</string>
+    <string name="settings_file_save_summary">Source, guide, channel edits and settings — for a new device or a reinstall</string>
+    <string name="settings_file_load">Load settings from a file</string>
+    <string name="settings_file_load_summary">Replaces the current settings</string>
+    <string name="settings_file_save_text">The file keeps the playlist source, the settings, guide sources and bindings, favourites, hidden and renamed channels, their order and collections. Keep it private: it has the playlist address.</string>
+    <string name="settings_file_with_password">Save the password too</string>
+    <string name="settings_file_password_warning">The file isn\'t encrypted: anyone who has it can read the password.</string>
+    <string name="settings_file_saved">Settings saved: %1$s</string>
+    <string name="settings_file_save_failed">Couldn\'t save the settings: %1$s</string>
+    <string name="settings_file_replace_title">Replace the current settings?</string>
+    <string name="settings_file_replace_text">The source, settings, guide sources and channel edits from the file will replace the current ones. Then the playlist and the guide download again.</string>
+    <string name="settings_file_replace">Replace</string>
+    <string name="settings_file_load_failed">Couldn\'t load the settings</string>
+    <string name="settings_file_loaded">Settings loaded</string>
+    <string name="settings_file_downloads">Settings files in Downloads</string>
+    <string name="settings_file_downloads_empty">There are no .fervo files in Downloads</string>
 </resources>

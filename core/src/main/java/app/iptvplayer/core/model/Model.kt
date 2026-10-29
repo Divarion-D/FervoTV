@@ -86,29 +86,16 @@ data class Settings(
     val liveGuide: Boolean = Defaults.LIVE_GUIDE,
     /** EPG-010: the grid lists channels without a programme too. */
     val guideEmpty: Boolean = Defaults.GUIDE_EMPTY,
+    /** UI-022: the interface language as a BCP 47 tag ("ru", "en"); empty = the system's. Not the metadata language. */
+    val language: String = Defaults.LANGUAGE,
 )
 
-/** LIVE-016. [PROVIDER] is the provider's order with the user's manual order (LIVE-013) on top of it. */
-enum class ChannelSort(val title: String) {
-    PROVIDER("Как у провайдера"),
-    NUMBER("По номеру"),
-    NAME("По названию"),
-    ARCHIVE_FIRST("Сначала с архивом"),
-    FAVORITES_FIRST("Сначала избранные"),
-}
+/** LIVE-016. [PROVIDER] is the provider's order with the user's manual order (LIVE-013) on top of it. The apps name them. */
+enum class ChannelSort { PROVIDER, NUMBER, NAME, ARCHIVE_FIRST, FAVORITES_FIRST }
 
 /** When to re-download the playlist. The cached copy always opens first; the refresh runs in the background. */
-enum class PlaylistRefresh(private val title: String) {
-    ON_START("При каждом запуске"),
-    HOURS_6("Каждые 6 часов"),
-    DAILY("Раз в день"),
-    WEEKLY("Раз в неделю"),
-    EVERY_N_DAYS("Каждые N дней"),
-    MANUAL("Только вручную");
-
-    /** "Каждые 3 дня" for [EVERY_N_DAYS], the plain title otherwise. */
-    fun label(days: Int): String =
-        if (this == EVERY_N_DAYS) "Каждые $days ${plural(days, "день", "дня", "дней")}" else title
+enum class PlaylistRefresh {
+    ON_START, HOURS_6, DAILY, WEEKLY, EVERY_N_DAYS, MANUAL;
 
     /**
      * How long to wait before the next refresh of a playlist saved at [savedAt]; 0 or less = now, null = not by time.
@@ -128,14 +115,10 @@ enum class PlaylistRefresh(private val title: String) {
     }
 }
 
-/** Russian plural: 1 день, 2 дня, 5 дней, 21 день. */
-fun plural(n: Int, one: String, few: String, many: String): String = when {
-    n % 100 in 11..14 -> many
-    n % 10 == 1 -> one
-    n % 10 in 2..4 -> few
-    else -> many
-}
-
 private const val HOUR_MS = 3_600_000L
 
+/**
+ * The category of channels the provider gave none. A data value, not a title: user edits of this category are keyed
+ * by it, so it never changes; the apps show their own name for it (UI-022).
+ */
 const val NO_GROUP = "Без категории"

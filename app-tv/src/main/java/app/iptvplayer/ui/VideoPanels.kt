@@ -63,9 +63,7 @@ import app.iptvplayer.core.input.keyAction
 import app.iptvplayer.core.model.ChannelItem
 import app.iptvplayer.remoteKeys
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 
 // Panels over the full-screen video (LIVE-019, LIVE-020): translucent at the screen's edge, the stream goes on under
 // them. ◀ / ▶ switch the panels ([onSide]), OK picks, Back closes (the live screen's BackHandler).
@@ -226,6 +224,6 @@ private fun agoText(at: Long, now: Long): String {
         is Ago.Minutes -> stringResource(R.string.ago_minutes, a.n)
         Ago.Today -> stringResource(R.string.ago_today, time)
         Ago.Yesterday -> stringResource(R.string.ago_yesterday, time)
-        Ago.Earlier -> SimpleDateFormat("d MMM", Locale.getDefault()).format(Date(at)) + ", " + time
+        Ago.Earlier -> dayText(at, weekday = false) + ", " + time
     }
 }

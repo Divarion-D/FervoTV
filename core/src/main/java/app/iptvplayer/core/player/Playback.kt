@@ -19,11 +19,11 @@ data class PlaybackState(
 )
 
 /**
- * [kind] is what a fallback chain (the next engine, P3) decides by; [detail] is the engine's own code name,
- * shown to the user as is.
+ * [kind] is what a fallback chain (the next engine, P3) decides by and what the apps word for the user (UI-022);
+ * [detail] is the engine's own code name, shown as is ([Kind.Stalled]: seconds without data).
  */
 data class PlaybackError(val kind: Kind, val detail: String) {
-    enum class Kind { Network, Format, Decoder, Drm, Other }
+    enum class Kind { Network, Format, Decoder, Drm, Other, Stalled }
 }
 
 /**
@@ -132,5 +132,29 @@ class PlayerSession(newEngine: () -> PlaybackEngine) {
     fun release() {
         item = null
         if (lazyEngine.isInitialized()) engine.release()
+    }
+}
+
+/**
+ * LIVE-010: "Недавние" gets a channel only after [minMs] of playing without a break, so zapping through channels
+ * doesn't fill it. Fed the channel playing now (null = nothing, paused, failed or in the background) with a clock;
+ * another channel or a break starts the count again.
+ */
+class WatchTimer(private val minMs: Long = app.iptvplayer.core.Defaults.RECENT_MIN_WATCH_MS) {
+    private var key: String? = null
+    private var since = 0L
+    private var counted = false
+
+    /** The key to record as watched, once per uninterrupted watch; null otherwise. */
+    fun update(playing: String?, now: Long): String? {
+        if (playing != key) {
+            key = playing
+            since = now
+            counted = false
+            return null
+        }
+        if (playing == null || counted || now - since < minMs) return null
+        counted = true
+        return playing
     }
 }

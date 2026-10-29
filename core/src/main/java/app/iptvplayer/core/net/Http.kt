@@ -1,6 +1,8 @@
 package app.iptvplayer.core.net
 
+import app.iptvplayer.core.CoreException
 import app.iptvplayer.core.Defaults
+import app.iptvplayer.core.ErrorCode
 import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
@@ -25,7 +27,7 @@ fun <T> httpStream(url: String, userAgent: String = Defaults.USER_AGENT, read: (
         try {
             val code = c.responseCode
             if (code in 300..399) {
-                u = URL(u, c.getHeaderField("Location") ?: throw IOException("HTTP $code без Location"))
+                u = URL(u, c.getHeaderField("Location") ?: throw CoreException(ErrorCode.BAD_REDIRECT, code.toString()))
                 return@repeat
             }
             if (code !in 200..299) throw HttpException(code)
@@ -34,5 +36,5 @@ fun <T> httpStream(url: String, userAgent: String = Defaults.USER_AGENT, read: (
             c.disconnect()
         }
     }
-    throw IOException("Слишком много перенаправлений")
+    throw CoreException(ErrorCode.TOO_MANY_REDIRECTS)
 }

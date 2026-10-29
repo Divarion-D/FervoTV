@@ -30,12 +30,4 @@ class PlaylistRefreshTest {
         assertEquals(6 * hour, PlaylistRefresh.HOURS_6.waitMs(now - 7 * day, now, now, 3))
         assertEquals(5 * hour, PlaylistRefresh.HOURS_6.waitMs(now - 7 * day, now - hour, now, 3))
     }
-
-    @Test
-    fun labels() {
-        assertEquals("Каждые 2 дня", PlaylistRefresh.EVERY_N_DAYS.label(2))
-        assertEquals("Каждые 5 дней", PlaylistRefresh.EVERY_N_DAYS.label(5))
-        assertEquals("Раз в день", PlaylistRefresh.DAILY.label(5))
-        assertEquals(listOf("день", "дня", "дней", "дней", "день", "дня"), listOf(1, 3, 11, 14, 21, 22).map { plural(it, "день", "дня", "дней") })
-    }
 }
