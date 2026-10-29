@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
@@ -158,6 +159,20 @@ fun SettingsScreen(
                     onDismiss = { daysDialog = false },
                 )
             }
+
+            SectionTitle(stringResource(R.string.settings_live))
+            SettingItem(
+                R.drawable.ic_live_tv, stringResource(R.string.settings_preview), stringResource(R.string.settings_preview_summary),
+                Modifier.row("preview"), trailing = { Switch(settings.preview, onCheckedChange = null) },
+            ) { onChange(settings.copy(preview = !settings.preview)) }
+            if (settings.preview) SettingItem(
+                R.drawable.ic_live_tv, stringResource(R.string.settings_preview_sound), stringResource(R.string.settings_preview_sound_summary),
+                Modifier.row("previewSound"), trailing = { Switch(settings.previewSound, onCheckedChange = null) },
+            ) { onChange(settings.copy(previewSound = !settings.previewSound)) }
+            SettingItem(
+                R.drawable.ic_history, stringResource(R.string.settings_remember), stringResource(R.string.settings_remember_summary),
+                Modifier.row("rememberLive"), trailing = { Switch(settings.rememberLive, onCheckedChange = null) },
+            ) { onChange(settings.copy(rememberLive = !settings.rememberLive)) }
 
             SectionTitle("Логотипы каналов")
             SettingItem(

@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- UI-022: new user-visible strings live here (English, the default); Russian in values-ru. -->
+<resources>
+    <!-- Background tasks (UI-015) -->
+    <string name="task_playlist">Updating the playlist</string>
+    <string name="task_playlist_done">Playlist updated</string>
+    <string name="task_playlist_failed">Couldn\'t update the playlist</string>
+    <string name="task_logos">Finding channel logos</string>
+    <string name="task_logos_done">Logos found for %1$d of %2$d channels</string>
+    <string name="task_logos_failed">Couldn\'t load the logo database</string>
+
+    <!-- Live section -->
+    <string name="section_live">Live</string>
+    <string name="section_settings">Settings</string>
+    <string name="title_with_list">· %1$s</string>
+    <string name="search_channels">Search channels</string>
+    <string name="view_list">List</string>
+    <string name="view_tiles">Tiles</string>
+    <string name="channel_order">Channel order</string>
+    <string name="offline">No network</string>
+    <string name="no_connection">No internet connection</string>
+    <string name="exit_again_tv">Press Back again to exit</string>
+    <string name="exit_again_touch">Press Back again to exit</string>
+    <string name="no_channel_number">There is no channel %1$d</string>
+    <string name="no_previous_channel">No previous channel</string>
+    <string name="favorites_empty">Favourites are empty</string>
+    <string name="favorites_hint_tv">Long OK on a channel → “Add to favourites”</string>
+    <string name="favorites_hint_touch">Long press a channel → “Add to favourites”</string>
+    <string name="row_favorite">In favourites</string>
+    <string name="row_archive">Archive</string>
+    <string name="minutes_left">· %1$d min left</string>
+    <string name="programme_left">%1$s · %2$d min left</string>
+
+    <!-- Preview window and programme (LIVE-006/007) -->
+    <string name="live_badge">LIVE</string>
+    <string name="preview_off">Preview is off in settings</string>
+    <string name="preview_error_tv">Couldn\'t open · OK to retry</string>
+    <string name="preview_error_touch">Couldn\'t open · tap to retry</string>
+    <string name="no_programme">No programme guide</string>
+    <string name="next_up">NEXT</string>
+    <string name="programme_times">%1$s–%2$s · %3$s · %4$d min left</string>
+    <string name="duration_h">%1$d h</string>
+    <string name="duration_m">%1$d min</string>
+    <string name="duration_hm">%1$d h %2$d min</string>
+
+    <!-- Key hints (UI-010) -->
+    <string name="key_ok">OK</string>
+    <string name="key_long_ok">long OK</string>
+    <string name="key_back">Back</string>
+    <string name="hint_watch">Watch</string>
+    <string name="hint_categories">Categories</string>
+    <string name="hint_schedule">Schedule</string>
+    <string name="hint_actions">Actions</string>
+    <string name="hint_select">Select</string>
+    <string name="hint_channels">Channels</string>
+    <string name="hint_menu">Menu</string>
+    <string name="hint_watch_or_details">Watch / details</string>
+    <string name="hint_to_channel">To the channel</string>
+    <string name="hint_open">Open</string>
+    <string name="hint_back">Back</string>
+    <string name="hint_exit">Exit</string>
+    <string name="hint_to_list">To the list</string>
+
+    <!-- Menus (LIVE-011…015) -->
+    <string name="menu_watching">Watching</string>
+    <string name="menu_channel">Channel</string>
+    <string name="watch">Watch</string>
+    <string name="watch_channel">Watch the channel</string>
+    <string name="favorite_add">Add to favourites</string>
+    <string name="favorite_remove">Remove from favourites</string>
+    <string name="collection_add">Add to a collection…</string>
+    <string name="collection_remove">Remove from this collection</string>
+    <string name="collection_pick">Add to a collection</string>
+    <string name="collection_added">Added to “%1$s”</string>
+    <string name="collection_new">New collection…</string>
+    <string name="collection_new_title">New collection</string>
+    <string name="collection_rename">Rename collection</string>
+    <string name="collection_name">Collection name</string>
+    <string name="collection_delete">Delete collection</string>
+    <string name="collection_delete_title">Delete the collection “%1$s”?</string>
+    <string name="collection_delete_text">The channels stay in their categories.</string>
+    <string name="delete">Delete</string>
+    <string name="rename">Rename</string>
+    <string name="channel_name">Channel name</string>
+    <string name="category_name">Category name</string>
+    <string name="name_reset_hint">Empty — the name from the playlist</string>
+    <string name="show">Show</string>
+    <string name="hide">Hide</string>
+    <string name="category_show">Show category</string>
+    <string name="category_hide">Hide category</string>
+    <string name="show_hidden">Show hidden</string>
+    <string name="hide_hidden">Don\'t show hidden</string>
+    <string name="reset_category">Back to the playlist</string>
+    <string name="reset_all">All categories back to the playlist</string>
+    <string name="reset_category_title">Put “%1$s” back as in the playlist?</string>
+    <string name="reset_all_title">Put all categories back as in the playlist?</string>
+    <string name="reset_keeps">Favourites, collections and guide bindings stay.</string>
+    <string name="reset_none">No changes — everything is as in the playlist</string>
+    <string name="reset_names">Names</string>
+    <string name="reset_hidden">Hidden</string>
+    <string name="reset_order">Order</string>
+    <string name="reset_more">and %1$d more</string>
+    <string name="reset">Put back</string>
+    <string name="done">Done</string>
+    <string name="cancel">Cancel</string>
+
+    <!-- Settings: Live (LIVE-006, SET-011) -->
+    <string name="settings_live">Live</string>
+    <string name="settings_preview">Preview in a window</string>
+    <string name="settings_preview_summary">The focused channel plays next to the list</string>
+    <string name="settings_preview_sound">Preview sound</string>
+    <string name="settings_preview_sound_summary">Off: the sound comes with full screen</string>
+    <string name="settings_remember">Remember category and channel</string>
+    <string name="settings_remember_summary">The section opens where you left it, also after a restart</string>
+</resources>

@@ -37,6 +37,15 @@ object Defaults {
     /** Order of channels in the live section (LIVE-016). */
     val CHANNEL_SORT = ChannelSort.PROVIDER
 
+    /** "Превью в окне" (LIVE-006): the focused channel plays next to the list; off = the window shows its logo. */
+    const val PREVIEW = true
+
+    /** "Звук превью": off, the sound comes with full screen. */
+    const val PREVIEW_SOUND = false
+
+    /** "Запоминать категорию и канал" (SET-011, LIVE-017): the live section opens where it was left. */
+    const val REMEMBER_LIVE = true
+
     // --- About ---
     const val AUTHOR = "Divarion-D"
     const val GITHUB_URL = "https://github.com/Divarion-D/FervoTV"
@@ -105,4 +114,23 @@ object Defaults {
 
     /** From this many categories the category list gets its own search field. */
     const val CATEGORY_SEARCH_MIN = 20
+
+    /** The focused channel starts in the preview window after this pause, so fast scrolling doesn't open every stream. */
+    const val PREVIEW_DELAY_MS = 600L
+
+    /** Number dialing (LIVE-009): switch this long after the last digit; at most this many digits. */
+    const val NUMBER_DIAL_MS = 2_000L
+    const val NUMBER_DIAL_DIGITS = 5
+
+    /** A second Back within this time leaves the app (UI-007). */
+    const val EXIT_CONFIRM_MS = 2_000L
+
+    /** CH+/CH− in a long list move by this many rows (LIVE-021). */
+    const val LIST_PAGE = 10
+
+    /** Toasts and the result of a background task stay this long (UI-015). */
+    const val TOAST_MS = 4_000L
+
+    /** Hours of the channel's schedule next to the preview (LIVE-007). */
+    const val SCHEDULE_HOURS = 24
 }

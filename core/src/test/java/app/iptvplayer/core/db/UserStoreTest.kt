@@ -96,6 +96,10 @@ class UserStoreTest {
         assertEquals(listOf("Первый", "Матч", "Первый"), names())
         assertEquals(listOf("Ёлочки"), names(ChannelGroup.Favorites))
         assertEquals(listOf("Ёлочки"), names(cat("Кино"))) // opened directly (management screen)
+        // The category column with hidden ones, to bring them back (LIVE-012).
+        val all = runBlocking { store.groups("k", withHidden = true).first() }.filter { it.group is ChannelGroup.Category }
+        assertEquals(listOf("Новости" to false, "Кино" to true, "Футбол" to false), all.map { it.title to it.hidden })
+        assertEquals(2, runBlocking { store.groups("k").first() }.count { it.group is ChannelGroup.Category })
     }
 
     /** LIVE-013/015: manual order on top of the provider's; new channels go after; reset brings the playlist back. */

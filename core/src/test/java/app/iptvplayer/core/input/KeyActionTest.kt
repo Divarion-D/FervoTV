@@ -21,5 +21,15 @@ class KeyActionTest {
         assertEquals(Action.Up, keyAction(KEYCODE_DPAD_UP))
         assertNull(keyAction(KEYCODE_BACK)) // Back goes through BackHandler
         assertNull(keyAction(KEYCODE_A))
+        assertEquals(Action.Recall, keyAction(KEYCODE_LAST_CHANNEL))
+    }
+
+    @Test
+    fun digits() {
+        assertEquals(0, keyDigit(KEYCODE_0))
+        assertEquals(9, keyDigit(KEYCODE_9))
+        assertEquals(7, keyDigit(KEYCODE_NUMPAD_7))
+        assertNull(keyDigit(KEYCODE_A))
+        assertNull(keyAction(KEYCODE_5)) // digits are not commands
     }
 }

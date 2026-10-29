@@ -4,6 +4,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 
 /**
  * Dark Material 3 scheme, "vivid" variant. Tones come from Google's material-color-utilities (TonalPalette, seed #FF8C1A):
@@ -52,3 +55,35 @@ private val Scheme = darkColorScheme(
 
 @Composable
 fun AppTheme(content: @Composable () -> Unit) = MaterialTheme(colorScheme = Scheme, content = content)
+
+/**
+ * Fervo roles beyond M3 (33-design 2.1): focus is a fill, "now" is the orange line, "live" the red badge.
+ * The TV is always dark (owner's decision), so these are constants; the light theme comes with the phone UI.
+ */
+object Ext {
+    val focus = Color(0xFFFF8C1A)
+    val onFocus = Color(0xFF3E1D00)
+    val focusPressed = Color(0xFFF08006)
+    val now = Color(0xFFFF8C1A)
+    val nowTrack = Color(0x29EAE1DC) // onSurface 16 %
+    val onFocusTrack = Color(0x4D3E1D00) // onFocus 30 %: the progress track on a focused row
+    val live = Color(0xFFB7211E)
+    val onLive = Color.White
+    val success = Color(0xFF8ED885)
+    val warning = Color(0xFFFCBC03)
+}
+
+private fun style(size: Int, line: Int, weight: FontWeight = FontWeight.Medium) =
+    TextStyle(fontSize = size.sp, lineHeight = line.sp, fontWeight = weight, fontFeatureSettings = "tnum")
+
+/** TV type scale (33-design 2.2): Roboto, tabular digits everywhere (numbers, times and the clock line up). */
+object TvType {
+    val display = style(48, 56)
+    val headline = style(28, 36)
+    val title = style(22, 28)
+    val titleSmall = style(18, 24)
+    val body = style(16, 24, FontWeight.Normal)
+    val bodySmall = style(14, 20, FontWeight.Normal)
+    val label = style(14, 20)
+    val badge = style(12, 16)
+}

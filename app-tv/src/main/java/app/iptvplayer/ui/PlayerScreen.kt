@@ -17,10 +17,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -42,7 +42,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.compose.LifecycleStartEffect
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.type
+import app.iptvplayer.core.input.NumberDial
+import app.iptvplayer.core.input.keyDigit
+import kotlinx.coroutines.launch
 import app.iptvplayer.core.Defaults
 import app.iptvplayer.core.input.Action
 import app.iptvplayer.core.model.Channel
@@ -56,31 +62,44 @@ import app.iptvplayer.toAction
 import app.iptvplayer.touchActions
 import kotlinx.coroutines.delay
 
+/** Switching by more than one step (LIVE-009, LIVE-018); the live screen finds the channel's place in its list. */
+sealed interface Zap {
+    data class Number(val n: Int) : Zap
+    data object Previous : Zap
+}
+
 /**
  * Plays position [startIndex] of a filtered channel list of [count] channels; [channelAt] reads a position from the
- * database. Channel up/down goes round the list. Playback goes through [player], never an engine directly.
+ * database. Channel up/down goes round the list; digits dial a number, Last/Recall goes back to the previous channel
+ * ([find] answers where that channel is, null = none, already reported). Playback goes through [player], never an
+ * engine directly; the live screen owns the session (open/close, background), this screen only shows it.
  */
 @Composable
 fun PlayerScreen(
     player: PlayerSession,
     count: Int,
     startIndex: Int,
+    offline: Boolean,
     channelAt: suspend (Int) -> Channel?,
-    onIndexChange: (Int) -> Unit,
+    onIndexChange: (Int, Channel) -> Unit,
+    find: suspend (Zap) -> Int?,
 ) {
     var index by remember { mutableIntStateOf(startIndex) }
+    var reopen by remember { mutableIntStateOf(0) } // a jump can land on the same index of another list
     var ch by remember { mutableStateOf<Channel?>(null) }
     val total by rememberUpdatedState(count) // a background refresh can change it
     var showInfo by remember { mutableStateOf(true) }
     val state by player.state.collectAsState()
-    val error = state.error?.detail
+    val noConnection = stringResource(R.string.no_connection)
+    val error = state.error?.let { if (offline) noConnection else it.detail }
+    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(index) {
+    LaunchedEffect(index, reopen) {
         showInfo = true
-        onIndexChange(index)
         val next = channelAt(index) ?: return@LaunchedEffect
         ch = next
-        player.open(PlayItem(next.url, live = true))
+        onIndexChange(index, next)
+        player.open(PlayItem(next.url, live = true)) // the preview's stream goes on as is
     }
     LaunchedEffect(index, showInfo) {
         if (showInfo) {
@@ -88,12 +107,26 @@ fun PlayerScreen(
             showInfo = false
         }
     }
-    // Background: live is released, back in front it starts again at the current moment (PLR-002).
-    LifecycleStartEffect(player) {
-        player.foreground()
-        onStopOrDispose { player.background() }
+
+    fun jump(zap: Zap) {
+        scope.launch {
+            find(zap)?.let { index = it; reopen++ }
+        }
     }
-    DisposableEffect(player) { onDispose { player.close() } }
+
+    // Number dialing (LIVE-009): OK switches at once, otherwise the dial does by itself; Back cancels.
+    var dial by remember { mutableStateOf(NumberDial()) }
+    fun commit() {
+        val n = dial.number
+        dial = NumberDial()
+        if (n != null) jump(Zap.Number(n))
+    }
+    LaunchedEffect(dial) {
+        val due = dial.dueAt ?: return@LaunchedEffect
+        delay(due - System.currentTimeMillis())
+        commit()
+    }
+    BackHandler(dial.text.isNotEmpty()) { dial = NumberDial() }
 
     // Reads state holders only, so it is safe to keep across recompositions (see touchActions).
     val handle: (Action) -> Unit = remember {
@@ -102,10 +135,15 @@ fun PlayerScreen(
                 // Always, also while a stream is still starting: the newer index cancels the older load.
                 Action.Up, Action.ChannelUp -> if (total > 0) index = (index + 1).mod(total)
                 Action.Down, Action.ChannelDown -> if (total > 0) index = (index - 1).mod(total)
-                Action.Ok -> if (player.state.value.error != null) player.retry() else showInfo = !showInfo
+                Action.Ok -> when {
+                    dial.text.isNotEmpty() -> commit()
+                    player.state.value.error != null -> player.retry()
+                    else -> showInfo = !showInfo
+                }
                 Action.Menu -> showInfo = !showInfo
                 Action.PlayPause -> player.togglePause()
-                Action.Left, Action.Right -> {} // reserved: channel list / audio tracks
+                Action.Recall -> jump(Zap.Previous)
+                Action.Left, Action.Right -> {} // reserved: channel list / recent channels (LIVE-019/020)
             }
         }
     }
@@ -118,7 +156,13 @@ fun PlayerScreen(
             .background(Color.Black)
             .focusRequester(focus)
             // Consume every mapped key so D-pad presses never move focus to the list underneath.
-            .onKeyEvent { e -> e.toAction()?.also(handle) != null }
+            .onKeyEvent { e ->
+                val digit = if (e.type == KeyEventType.KeyDown) keyDigit(e.nativeKeyEvent.keyCode) else null
+                if (digit != null) {
+                    dial = dial.digit(digit, System.currentTimeMillis())
+                    true
+                } else e.toAction()?.also(handle) != null
+            }
             .focusable()
     ) {
         // The picture keeps its aspect ratio, black bars around it.
@@ -132,12 +176,25 @@ fun PlayerScreen(
             },
             modifier = (if (state.aspect > 0f) Modifier.aspectRatio(state.aspect) else Modifier.fillMaxSize())
                 .align(Alignment.Center),
-            onRelease = { player.setVideoView(null) },
+            onRelease = { player.releaseVideoView(it) },
         )
         Box(Modifier.matchParentSize().touchActions(handle))
         if (state.buffering && error == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
         if (shown != null && (showInfo || error != null)) {
             InfoBar(shown, index + 1, total, error, Modifier.align(Alignment.BottomStart))
+        }
+        // The clock is always there in the player (UI-009); the dialed number right under it (LIVE-009).
+        Column(Modifier.align(Alignment.TopEnd).padding(horizontal = 48.dp, vertical = 24.dp), horizontalAlignment = Alignment.End) {
+            Clock(
+                Modifier.background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 4.dp),
+                date = false,
+            )
+            if (dial.text.isNotEmpty()) Text(
+                dial.text, style = TvType.display,
+                modifier = Modifier.padding(top = 12.dp)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(50))
+                    .padding(horizontal = 24.dp, vertical = 4.dp),
+            )
         }
     }
     LaunchedEffect(Unit) { focus.requestFocus() }
@@ -164,7 +221,7 @@ private fun InfoBar(ch: Channel, number: Int, total: Int, error: String?, modifi
             .padding(start = 32.dp, end = 32.dp, top = 64.dp, bottom = 32.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ChannelLogo(ch, Modifier.size(width = 112.dp, height = 70.dp).clip(RoundedCornerShape(12.dp)))
+        ChannelLogo(ch, Modifier.size(width = 112.dp, height = 70.dp), top = 12.dp)
         Spacer(Modifier.width(20.dp))
         Column(Modifier.weight(1f)) {
             Text(ch.group, style = MaterialTheme.typography.labelLarge, color = c.primary, maxLines = 1)

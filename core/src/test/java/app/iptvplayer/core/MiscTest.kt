@@ -1,6 +1,10 @@
 package app.iptvplayer.core
 
+import app.iptvplayer.core.db.ChannelGroup
+import app.iptvplayer.core.db.decodeGroup
+import app.iptvplayer.core.db.encode
 import app.iptvplayer.core.db.matchesWords
+import app.iptvplayer.core.model.Programme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -41,5 +45,23 @@ class MiscTest {
         }
         assertTrue(finder(0, 0) && finder(n - 7, 0) && finder(0, n - 7))
         assertFalse(finder(n - 7, n - 7))
+    }
+
+    @Test
+    fun programmeTimes() {
+        val p = Programme(start = 0, stop = 90 * 60_000L, title = "Фильм")
+        assertEquals(0.5f, p.progress(45 * 60_000L), 0.001f)
+        assertEquals(0f, p.progress(-5), 0f)
+        assertEquals(1f, p.progress(100 * 60_000L), 0f)
+        assertEquals(42, p.minutesLeft(48 * 60_000L)) // 42 min left
+        assertEquals(1, p.minutesLeft(90 * 60_000L - 1)) // never "ещё 0 мин" while it is on
+    }
+
+    @Test
+    fun groupsSurviveAsStrings() {
+        for (g in listOf(ChannelGroup.All, ChannelGroup.Favorites, ChannelGroup.Recent, ChannelGroup.Archive,
+            ChannelGroup.Category("Кино: новинки"), ChannelGroup.Collection(7))) assertEquals(g, decodeGroup(g.encode()))
+        assertEquals(ChannelGroup.All, decodeGroup(null))
+        assertEquals(ChannelGroup.All, decodeGroup("collection:x"))
     }
 }

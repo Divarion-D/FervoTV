@@ -75,6 +75,13 @@ data class Settings(
     val epgShift: Int = Defaults.EPG_SHIFT,
     /** Order of channels in the live section (LIVE-016). */
     val channelSort: ChannelSort = Defaults.CHANNEL_SORT,
+    /** LIVE-006: the focused channel plays in a window next to the list, with or without sound. */
+    val preview: Boolean = Defaults.PREVIEW,
+    val previewSound: Boolean = Defaults.PREVIEW_SOUND,
+    /** SET-011: the live section opens on the last list and channel; off = on the first list. */
+    val rememberLive: Boolean = Defaults.REMEMBER_LIVE,
+    /** Rows or tiles in the live section (LIVE-005); null = by screen: rows on a wide one, tiles on a phone. */
+    val liveTiles: Boolean? = null,
 )
 
 /** LIVE-016. [PROVIDER] is the provider's order with the user's manual order (LIVE-013) on top of it. */

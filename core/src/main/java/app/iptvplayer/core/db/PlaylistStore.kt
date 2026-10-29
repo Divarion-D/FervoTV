@@ -42,6 +42,27 @@ sealed interface ChannelGroup {
     data class Collection(val id: Long) : ChannelGroup
 }
 
+/** As a string for saved state and settings; [decodeGroup] reads it back. */
+fun ChannelGroup.encode(): String = when (this) {
+    ChannelGroup.All -> "all"
+    ChannelGroup.Favorites -> "favorites"
+    ChannelGroup.Recent -> "recent"
+    ChannelGroup.Archive -> "archive"
+    is ChannelGroup.Category -> "category:$name"
+    is ChannelGroup.Collection -> "collection:$id"
+}
+
+/** Unknown or missing → [ChannelGroup.All]. */
+fun decodeGroup(v: String?): ChannelGroup = when {
+    v == "favorites" -> ChannelGroup.Favorites
+    v == "recent" -> ChannelGroup.Recent
+    v == "archive" -> ChannelGroup.Archive
+    v == null -> ChannelGroup.All
+    v.startsWith("category:") -> ChannelGroup.Category(v.removePrefix("category:"))
+    v.startsWith("collection:") -> v.removePrefix("collection:").toLongOrNull()?.let(ChannelGroup::Collection) ?: ChannelGroup.All
+    else -> ChannelGroup.All
+}
+
 /** Hidden channels (LIVE-012) are left out of the screens; the management screen asks for them. */
 enum class Visibility { VISIBLE, HIDDEN, ALL }
 
@@ -58,8 +79,8 @@ data class ChannelFilter(
     val visibility: Visibility = Visibility.VISIBLE,
 )
 
-/** A list with its count for the category column (LIVE-001, LIVE-010). */
-data class GroupCount(val group: ChannelGroup, val title: String, val count: Int)
+/** A list with its count for the category column (LIVE-001, LIVE-010); [hidden] = a hidden category (LIVE-012). */
+data class GroupCount(val group: ChannelGroup, val title: String, val count: Int, val hidden: Boolean = false)
 
 /** The saved channels of playlist sources: streaming import, lists for the screens. */
 class PlaylistStore(private val db: AppDb, private val clock: () -> Long = System::currentTimeMillis) {
@@ -148,8 +169,9 @@ class PlaylistStore(private val db: AppDb, private val clock: () -> Long = Syste
     /**
      * The category column (LIVE-010): "Избранное", "Недавние", "С архивом", "Все каналы", the user's collections,
      * then the provider's categories. Empty service lists are left out, except "Избранное" (it shows a hint).
+     * [withHidden] = hidden categories too (marked), to bring them back.
      */
-    fun groups(sourceKey: String): Flow<List<GroupCount>> {
+    fun groups(sourceKey: String, withHidden: Boolean = false): Flow<List<GroupCount>> {
         val service = db.changes(*SERVICE_TABLES).map {
             withContext(Dispatchers.IO) {
                 listOf(
@@ -165,8 +187,8 @@ class PlaylistStore(private val db: AppDb, private val clock: () -> Long = Syste
                 list.map { GroupCount(ChannelGroup.Collection(it.id), it.name, count(ChannelFilter(sourceKey, ChannelGroup.Collection(it.id)))) }
             }
         }
-        return combine(service, collections, categories(sourceKey)) { s, c, cats ->
-            s + c + cats.map { GroupCount(ChannelGroup.Category(it.name), it.title, it.count) }
+        return combine(service, collections, categories(sourceKey, withHidden)) { s, c, cats ->
+            s + c + cats.map { GroupCount(ChannelGroup.Category(it.name), it.title, it.count, it.hidden) }
         }.distinctUntilChanged()
     }
 

@@ -6,6 +6,8 @@ import app.iptvplayer.core.db.AppDb
 import app.iptvplayer.core.db.CategoryCount
 import app.iptvplayer.core.db.ChannelFilter
 import app.iptvplayer.core.db.ChannelGroup
+import app.iptvplayer.core.db.decodeGroup
+import app.iptvplayer.core.db.encode
 import app.iptvplayer.core.db.CollectionRow
 import app.iptvplayer.core.db.Edits
 import app.iptvplayer.core.db.EpgResult
@@ -107,6 +109,10 @@ class Repository(private val ctx: Context, db: AppDb = AppDb.get(ctx)) {
             channelSort = settingsPrefs.getString("channelSort", null)
                 ?.let { name -> ChannelSort.entries.find { it.name == name } }
                 ?: Defaults.CHANNEL_SORT,
+            preview = settingsPrefs.getBoolean("preview", Defaults.PREVIEW),
+            previewSound = settingsPrefs.getBoolean("previewSound", Defaults.PREVIEW_SOUND),
+            rememberLive = settingsPrefs.getBoolean("rememberLive", Defaults.REMEMBER_LIVE),
+            liveTiles = if (settingsPrefs.contains("liveTiles")) settingsPrefs.getBoolean("liveTiles", false) else null,
         )
         set(v) {
             settingsPrefs.edit()
@@ -117,33 +123,17 @@ class Repository(private val ctx: Context, db: AppDb = AppDb.get(ctx)) {
                 .putInt("epgDays", v.epgDays)
                 .putInt("epgShift", v.epgShift)
                 .putString("channelSort", v.channelSort.name)
+                .putBoolean("preview", v.preview)
+                .putBoolean("previewSound", v.previewSound)
+                .putBoolean("rememberLive", v.rememberLive)
+                .apply { if (v.liveTiles == null) remove("liveTiles") else putBoolean("liveTiles", v.liveTiles) }
                 .apply()
         }
 
     /** The list the live section was left on (LIVE-017); the channel is the most recent of [recentKeys]. */
     var lastGroup: ChannelGroup
-        get() {
-            val v = settingsPrefs.getString("lastGroup", null).orEmpty()
-            return when {
-                v == "favorites" -> ChannelGroup.Favorites
-                v == "recent" -> ChannelGroup.Recent
-                v == "archive" -> ChannelGroup.Archive
-                v.startsWith("category:") -> ChannelGroup.Category(v.removePrefix("category:"))
-                v.startsWith("collection:") -> v.removePrefix("collection:").toLongOrNull()?.let(ChannelGroup::Collection) ?: ChannelGroup.All
-                else -> ChannelGroup.All
-            }
-        }
-        set(g) {
-            val v = when (g) {
-                ChannelGroup.All -> "all"
-                ChannelGroup.Favorites -> "favorites"
-                ChannelGroup.Recent -> "recent"
-                ChannelGroup.Archive -> "archive"
-                is ChannelGroup.Category -> "category:${g.name}"
-                is ChannelGroup.Collection -> "collection:${g.id}"
-            }
-            settingsPrefs.edit().putString("lastGroup", v).apply()
-        }
+        get() = decodeGroup(settingsPrefs.getString("lastGroup", null))
+        set(g) = settingsPrefs.edit().putString("lastGroup", g.encode()).apply()
 
     /**
      * Should "Что нового" be offered for [version]? Once per new version, and only after an update ([updated]:
@@ -193,7 +183,7 @@ class Repository(private val ctx: Context, db: AppDb = AppDb.get(ctx)) {
     fun categories(s: Source, withHidden: Boolean = false): Flow<List<CategoryCount>> = store.categories(s.cacheKey(), withHidden)
 
     /** The category column: service lists, collections, categories (LIVE-010). */
-    fun groups(s: Source): Flow<List<GroupCount>> = store.groups(s.cacheKey())
+    fun groups(s: Source, withHidden: Boolean = false): Flow<List<GroupCount>> = store.groups(s.cacheKey(), withHidden)
 
     fun channels(f: ChannelFilter): Flow<PagingData<Channel>> = store.channels(f)
 

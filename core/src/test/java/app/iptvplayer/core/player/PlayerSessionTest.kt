@@ -4,6 +4,9 @@ import android.view.SurfaceView
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 
 /** Test engine: records calls, state is set by the test. */
 class FakeEngine : PlaybackEngine {
@@ -14,10 +17,12 @@ class FakeEngine : PlaybackEngine {
     override fun pause() { calls += "pause"; state.value = state.value.copy(paused = true) }
     override fun resume() { calls += "resume"; state.value = state.value.copy(paused = false) }
     override fun stop() { calls += "stop" }
-    override fun setVideoView(view: SurfaceView?) { calls += "view" }
+    override fun setMuted(muted: Boolean) { calls += "muted $muted" }
+    override fun setVideoView(view: SurfaceView?) { calls += if (view == null) "view null" else "view" }
     override fun release() { calls += "release" }
 }
 
+@RunWith(RobolectricTestRunner::class) // a real SurfaceView for the view swap
 class PlayerSessionTest {
     private val engine = FakeEngine()
     private val session = PlayerSession { engine }
@@ -68,5 +73,28 @@ class PlayerSessionTest {
         lazy.open(PlayItem("http://a/1.ts"))
         lazy.open(PlayItem("http://a/2.ts"))
         assertEquals(1, created)
+    }
+
+    @Test
+    fun sameItemGoesOnWithoutRestart() {
+        session.open(PlayItem("http://a/1.ts")) // preview
+        session.open(PlayItem("http://a/1.ts")) // full screen: the same stream
+        engine.state.value = engine.state.value.copy(error = PlaybackError(PlaybackError.Kind.Network, "x"))
+        session.open(PlayItem("http://a/1.ts")) // after an error it starts again
+        session.open(PlayItem("http://a/2.ts"))
+        assertEquals(listOf("play http://a/1.ts", "play http://a/1.ts", "play http://a/2.ts"), engine.calls)
+        assertEquals("http://a/2.ts", session.current?.url)
+    }
+
+    @Test
+    fun viewsSwapInAnyOrder() {
+        val ctx = RuntimeEnvironment.getApplication()
+        val preview = SurfaceView(ctx)
+        val full = SurfaceView(ctx)
+        session.setVideoView(preview)
+        session.setVideoView(full) // full screen attached first...
+        session.releaseVideoView(preview) // ...then the preview goes: the picture stays on full screen
+        session.releaseVideoView(full)
+        assertEquals(listOf("view", "view", "view null"), engine.calls)
     }
 }

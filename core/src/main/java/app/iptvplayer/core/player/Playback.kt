@@ -13,6 +13,9 @@ data class PlaybackState(
     val error: PlaybackError? = null,
     /** Width / height of the picture, 0 until the first frame is known. */
     val aspect: Float = 0f,
+    /** The picture's actual height in pixels and frame rate, 0 = not known yet ("1080p · 50" in the preview). */
+    val height: Int = 0,
+    val fps: Float = 0f,
 )
 
 /**
@@ -42,6 +45,9 @@ interface PlaybackEngine {
     fun pause()
     fun resume()
 
+    /** Sound off/on without touching the stream (the preview window, LIVE-006). */
+    fun setMuted(muted: Boolean)
+
     /** Drops the stream (network, decoders); the engine stays usable for the next [play]. */
     fun stop()
 
@@ -52,7 +58,7 @@ interface PlaybackEngine {
 }
 
 /**
- * One playback session for the whole app: it lives above the screens, so a screen (full screen now; preview and
+ * One playback session for the whole app: it lives above the screens, so a screen (the preview window, full screen;
  * the corner player later) only attaches its video view, and moving between them doesn't restart the stream.
  * The engine is created on first use: an app that never plays doesn't pay for it.
  */
@@ -61,10 +67,16 @@ class PlayerSession(newEngine: () -> PlaybackEngine) {
     private val engine by lazyEngine
     private var item: PlayItem? = null
     private var dropped = false // a live stream released in the background
+    private var view: SurfaceView? = null
 
     val state: StateFlow<PlaybackState> get() = engine.state
 
+    /** What is open now (null = nothing). */
+    val current: PlayItem? get() = item
+
+    /** Starts [item]; the same item already playing goes on as is (preview → full screen without a restart). */
     fun open(item: PlayItem) {
+        if (item == this.item && !dropped && engine.state.value.error == null) return
         this.item = item
         dropped = false
         engine.play(item)
@@ -94,7 +106,21 @@ class PlayerSession(newEngine: () -> PlaybackEngine) {
         if (engine.state.value.paused) engine.resume() else engine.pause()
     }
 
-    fun setVideoView(view: SurfaceView?) = engine.setVideoView(view)
+    fun setMuted(muted: Boolean) = engine.setMuted(muted)
+
+    /** Where the picture goes now; the previous view is let go. */
+    fun setVideoView(view: SurfaceView?) {
+        this.view = view
+        engine.setVideoView(view)
+    }
+
+    /**
+     * A screen's video view is going away: detached only if it is still the current one, so the order in which
+     * two screens swap views (preview ↔ full screen) doesn't matter.
+     */
+    fun releaseVideoView(view: SurfaceView) {
+        if (this.view === view) setVideoView(null)
+    }
 
     /** The player screen closed: the stream stops, the engine stays for the next channel. */
     fun close() {

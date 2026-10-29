@@ -72,7 +72,8 @@ class ExoEngine(ctx: Context) : PlaybackEngine {
 
             override fun onVideoSizeChanged(size: VideoSize) {
                 if (size.width > 0 && size.height > 0) {
-                    _state.update { it.copy(aspect = size.width * size.pixelWidthHeightRatio / size.height) }
+                    val fps = exo.videoFormat?.frameRate?.takeIf { it > 0 } ?: 0f
+                    _state.update { it.copy(aspect = size.width * size.pixelWidthHeightRatio / size.height, height = size.height, fps = fps) }
                 }
             }
 
@@ -96,7 +97,7 @@ class ExoEngine(ctx: Context) : PlaybackEngine {
     }
 
     override fun play(item: PlayItem) {
-        _state.update { it.copy(error = null) }
+        _state.update { it.copy(error = null, height = 0, fps = 0f) }
         exo.setMediaItem(MediaItem.fromUri(item.url))
         exo.prepare()
         exo.play()
@@ -111,6 +112,10 @@ class ExoEngine(ctx: Context) : PlaybackEngine {
     override fun pause() = exo.pause()
 
     override fun resume() = exo.play()
+
+    override fun setMuted(muted: Boolean) {
+        exo.volume = if (muted) 0f else 1f
+    }
 
     override fun stop() {
         exo.stop()
