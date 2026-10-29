@@ -27,3 +27,18 @@ class ExitGuard(private val windowMs: Long = Defaults.EXIT_CONFIRM_MS) {
         return exit
     }
 }
+
+/**
+ * Panels over the full-screen video (LIVE-019, LIVE-020): ◀ opens the channels of the list the channel was started
+ * from, ◀ again all categories; ▶ opens the recent channels. The opposite arrow goes back a step; Back closes.
+ */
+enum class VideoPanel {
+    None, Channels, Categories, Recent;
+
+    fun next(a: Action): VideoPanel = when (this) {
+        None -> when (a) { Action.Left -> Channels; Action.Right -> Recent; else -> this }
+        Channels -> when (a) { Action.Left -> Categories; Action.Right -> None; else -> this }
+        Categories -> if (a == Action.Right) Channels else this
+        Recent -> if (a == Action.Left) None else this
+    }
+}

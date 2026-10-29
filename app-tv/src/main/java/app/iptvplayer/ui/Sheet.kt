@@ -33,6 +33,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -61,12 +63,16 @@ import app.iptvplayer.core.model.Channel
 import app.iptvplayer.initialFocus
 import app.iptvplayer.remoteKeys
 
-/** One line of a sheet: [selected] non-null = a choice with a radio dot; [danger] = a destructive action. */
+/**
+ * One line of a sheet: [selected] non-null = a choice with a radio dot; [checked] non-null = an on/off option with a
+ * switch; [danger] = a destructive action.
+ */
 class SheetItem(
     @DrawableRes val icon: Int?,
     val label: String,
     val danger: Boolean = false,
     val selected: Boolean? = null,
+    val checked: Boolean? = null,
     val onClick: () -> Unit,
 )
 
@@ -169,6 +175,12 @@ private fun SheetLine(item: SheetItem, modifier: Modifier, onFocus: () -> Unit, 
             Spacer(Modifier.width(12.dp))
         }
         Text(item.label, style = TvType.label, color = fg, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (item.checked != null) {
+            Switch(
+                item.checked, onCheckedChange = null,
+                colors = if (focused) SwitchDefaults.colors(checkedTrackColor = Ext.onFocus, checkedThumbColor = Ext.focus) else SwitchDefaults.colors(),
+            )
+        }
         if (item.selected != null) {
             RadioButton(
                 item.selected, onClick = null,

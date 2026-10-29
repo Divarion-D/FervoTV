@@ -61,6 +61,14 @@ import androidx.compose.ui.unit.dp
 import app.iptvplayer.ui.AppTheme
 import app.iptvplayer.ui.BgTask
 import app.iptvplayer.ui.LiveScreen
+import app.iptvplayer.ui.PhoneNav
+import app.iptvplayer.ui.Section
+import app.iptvplayer.ui.isWideLayout
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.runtime.saveable.rememberSaveable
 import app.iptvplayer.core.Defaults
 import app.iptvplayer.core.net.onlineFlow
 import androidx.compose.runtime.collectAsState
@@ -111,6 +119,9 @@ private fun App(repo: Repository) {
     var lastAttempt by remember { mutableLongStateOf(0L) } // last playlist refresh tried in this run
     // Screens keep their state (filters, scroll, focused row) while another screen is open on top of them.
     val screens = rememberSaveableStateHolder()
+    // «Эфир» as the list or the programme grid (LIVE-022: the setting picks how it opens).
+    var guide by rememberSaveable { mutableStateOf(repo.settings.liveGuide) }
+    val wide = isWideLayout()
 
     // One playback session above the screens (spec 01 §6.3); released with the activity.
     val player = remember { PlayerSession { ExoEngine(ctx.applicationContext) } }
@@ -220,6 +231,29 @@ private fun App(repo: Repository) {
         }
     }
 
+    // Guide sources on their schedule (EPG-003), new ones right away; without network it waits for it.
+    val epgIds by remember { repo.epgSources() }.collectAsState(initial = emptyList())
+    val epgKey = epgIds.map { it.id }
+    LaunchedEffect(ready, epgKey) {
+        if (!ready || epgKey.isEmpty()) return@LaunchedEffect
+        while (true) {
+            val wait = repo.epgWaitMs() ?: return@LaunchedEffect
+            if (wait > 0) {
+                delay(wait)
+                continue
+            }
+            onlineFlow.first { it }
+            task = BgTask(ctx.getString(R.string.task_epg))
+            val failed = try {
+                repo.refreshDueEpg().isNotEmpty()
+            } catch (e: CancellationException) {
+                if (task?.ok == null) task = null
+                throw e
+            }
+            task = BgTask(ctx.getString(if (failed) R.string.task_epg_failed else R.string.task_epg_done), ok = !failed)
+        }
+    }
+
     // A task's result stays for a few seconds (UI-015).
     LaunchedEffect(task) {
         if (task?.ok != null) {
@@ -248,13 +282,24 @@ private fun App(repo: Repository) {
             },
         )
         settingsOpen -> screens.SaveableStateProvider("settings") {
-            SettingsScreen(
-                settings, src.label(), logoStatus, playlistStatus, refreshing,
-                onChange = { repo.settings = it; settings = it },
-                onEditSource = { editing = true },
-                onRefreshNow = { refreshRequest++ },
-                onClose = { settingsOpen = false; screens.removeState("settings") },
-            )
+            val close = { settingsOpen = false; screens.removeState("settings") }
+            val content: @Composable () -> Unit = {
+                SettingsScreen(
+                    settings, src.label(), logoStatus, playlistStatus, refreshing,
+                    onChange = { repo.settings = it; settings = it },
+                    onEditSource = { editing = true },
+                    onRefreshNow = { refreshRequest++ },
+                    onClose = close,
+                )
+            }
+            // Phone: Настройки are the «Ещё» tab, over the same bottom navigation.
+            if (wide) content() else Column(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f).consumeWindowInsets(WindowInsets.navigationBars)) { content() }
+                PhoneNav(Section.More) { s ->
+                    guide = s == Section.Guide
+                    close()
+                }
+            }
         }
         err != null -> Column(
             Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp),
@@ -293,6 +338,8 @@ private fun App(repo: Repository) {
                 repo, src, player, settings, online, task,
                 onSettings = { repo.settings = it; settings = it },
                 onOpenSettings = { settingsOpen = true },
+                guide = guide,
+                onGuide = { guide = it },
             )
         }
     }

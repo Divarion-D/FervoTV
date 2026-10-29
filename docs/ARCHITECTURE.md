@@ -3,7 +3,7 @@
 > Это описание **текущего** состояния (после шагов P0.1 — разбиение на модули, P0.2 — база данных и потоковый
 > импорт, P0.3 — интерфейс движка воспроизведения и остальные функции P0, P0.4 — замеры прокрутки сетки и тайм-аут буферизации,
 > P1.1 — слой данных P1: телегид, номера каналов, пользовательские данные каналов; P1.2 — раздел «Эфир» для TV:
-> строки, превью, боковое меню, меню действий; сетка телегида и телефонный UI — P1.3). Целевая архитектура —
+> строки, превью, боковое меню, меню действий; P1.3 — сетка телегида, панели поверх видео, телефон с нижней навигацией). Целевая архитектура —
 > [`docs/spec/01-architecture.md`](spec/01-architecture.md).
 
 Три Gradle-модуля:
@@ -12,7 +12,7 @@
 |---|---|---|
 | `core` | Android-библиотека **без Compose**: модели, источники и потоковые парсеры, база данных (Room, FTS, Paging), логотипы, HTTP, движок воспроизведения (интерфейс + Media3 ExoPlayer), команды ввода, QR-коды, `Defaults`, `Repository` | — |
 | `app-tv` | приложение (Compose): экраны, `MainActivity`, ресурсы. Media3 напрямую не видит — только интерфейс движка из `core`. Manifest с `LEANBACK_LAUNCHER` и обычным `LAUNCHER` | `core` |
-| `app-mobile` | то же приложение для телефонов: UI на уровне P1.1 (сетка карточек), manifest только с обычным `LAUNCHER`, без баннера; свой телефонный UI — шаг P1.3 | `core` |
+| `app-mobile` | то же приложение для телефонов: UI на уровне P1.1 (сетка карточек), manifest только с обычным `LAUNCHER`, без баннера; только собирается — телефонный UI P1.3 сделан в `app-tv`, который и ставится на телефоны | `core` |
 
 До конца P0 выпускается **один APK — `app-tv`** (он, как и раньше, ставится и на TV, и на телефоны);
 `app-mobile` собирается и проверяется lint, но в релиз пока не идёт. UI двух приложений разойдётся в P1.
@@ -43,8 +43,9 @@ core/src/main/java/app/iptvplayer/core/
   Qr.kt                    qrModules(text): QR-код (ZXing, только кодировщик) как матрица модулей
   db/Db.kt                 Room: AppDb (версия 2, MIGRATION_1_2), таблицы плейлиста source / category / channel / channel_fts,
                            PlaylistDao, ItemRow, changes() (поток изменений таблиц), searchText(), matchesWords()
-  db/PlaylistStore.kt      импорт пачками; ChannelFilter (ChannelGroup, сортировка, Visibility) → SQL; выдача: категории,
-                           список групп, строки с «сейчас/далее», строки сетки, канал по позиции / номеру / ключу;
+  db/PlaylistStore.kt      импорт пачками; ChannelFilter (ChannelGroup, сортировка, Visibility, guideOnly) → SQL; выдача: категории,
+                           список групп, строки с «сейчас/далее», строки сетки, канал по позиции / номеру / ключу,
+                           findProgrammes (поиск передач по названию для сетки);
                            ListSource — свой PagingSource (LIMIT/OFFSET + программа страницы); minuteTicks()
   db/EpgStore.kt           телегид: таблицы epg_source / epg_channel / programme / programme_stage, EpgDao; импорт XMLTV,
                            привязка каналов (rebind), автосопоставление, короткий EPG Xtream, запросы программы
@@ -53,7 +54,9 @@ core/src/main/java/app/iptvplayer/core/
   epg/Xmltv.kt             parseXmltv(input, wants, onChannel, onProgramme) — XmlPullParser потоково; unpacked() — gzip
                            по сигнатуре; parseXmltvTime() — время XMLTV с часовым поясом
   epg/EpgMatch.kt          EpgIndex (точная привязка), autoMatch / suggestEpg (похожесть названий) — чистая логика
-  epg/Guide.kt             nonOverlapping(), guideCells() — передачи строки сетки без наложений и пропусков
+  epg/Guide.kt             nonOverlapping(), guideCells() — передачи строки сетки без наложений и пропусков; математика
+                           сетки: floorTo, guideTicks (метки шкалы), openingView («сейчас» на трети), guideWindow (окно
+                           времени строк), focusCells (пропуски по 30 мин), guideStep (◀▶ пульта), viewRange; ago() — «5 мин назад»
   source/m3u/M3uParser.kt  parseM3u(reader, baseUrl, onEpgUrls) { channel } — построчно; parseM3u(text) -> List<Channel> для тестов
   source/xtream/Xtream.kt  loadXtream(source, onCategory, onChannel): список каналов читается JsonReader-ом по элементу;
                            xtreamXmltvUrl(), loadShortEpg() (get_short_epg)
@@ -62,7 +65,8 @@ core/src/main/java/app/iptvplayer/core/
   logos/Backdrop.kt        pickBackdrop(pixels, n): выбор подложки логотипа по пикселям (чистая функция)
   net/Http.kt              httpGet(url), httpStream(url) { … }: User-Agent, таймауты, редиректы http↔https; HttpException(code)
   input/Action.kt          Action, keyAction(keyCode) — таблица «клавиша → команда»; keyDigit() — цифры пульта
-  input/Remote.kt          NumberDial (набор номера, LIVE-009), ExitGuard (второй Back — выход, UI-007) — чистая логика
+  input/Remote.kt          NumberDial (набор номера, LIVE-009), ExitGuard (второй Back — выход, UI-007), VideoPanel (панели
+                           поверх видео ◀/▶, LIVE-019/020) — чистая логика
   net/Online.kt            onlineFlow(ctx): есть ли сеть (UI-016); разрешение ACCESS_NETWORK_STATE — в манифесте core
 core/schemas/…/AppDb/<версия>.json  экспорт схемы БД (Room) по версиям — основа для миграций, хранится в репозитории
 core/src/main/assets/CHANGELOG.md  журнал изменений: «## версия — дата» + строки «- …»; попадает в оба APK, показывается в приложении
@@ -76,7 +80,8 @@ core/src/test/java/app/iptvplayer/core/
 
 app-tv/src/main/java/app/iptvplayer/       (app-mobile/… — такая же копия)
   MainActivity.kt     App(): выбор экрана — Что нового / Setup / Настройки / загрузка / ошибка / «Эфир»; расписание обновления
-                      (без сети ждёт её); фоновая задача для плашки (BgTask); сеанс плеера (PlayerSession); «Что нового»
+                      плейлиста и телегида (без сети ждут её); фоновая задача для плашки (BgTask); сеанс плеера
+                      (PlayerSession); «Что нового»; вид раздела (список / сетка); на телефоне Настройки — вкладка «Ещё»
   Input.kt            Compose-часть ввода: KeyEvent.toAction() (→ keyAction), Modifier.remoteKeys() (короткое/долгое нажатие
                       для области фокуса), Modifier.touchActions(), isTv(), initialFocus()
   ui/SetupScreen.kt   ввод источника: SegmentedButton M3U/Xtream, поля с иконками
@@ -84,13 +89,20 @@ app-tv/src/main/java/app/iptvplayer/       (app-mobile/… — такая же �
   ui/Theme.kt         AppTheme: цветовая схема Material 3 (сгенерирована, см. «Дизайн»); Ext — роли Fervo (focus, now,
                       live…), TvType — TV-шкала текста с табличными цифрами (33-design §2)
   ui/Components.kt    focusRing, BackButton, IconLabel, ChoiceDialog, SettingItem, QrCode — общие элементы
-  ui/LiveScreen.kt    «Эфир»: состояние раздела (список, фокус по областям, превью, полный экран, меню), раскладки
-                      «широкий экран» (TV, планшет) и «телефон», Back по цепочке, переход к номеру / предыдущему каналу
-  ui/LiveParts.kt     детали «Эфира»: Rail, ToolButton, Clock, SearchField, CategoryItem / CategoryChips, ChannelRow,
+  ui/LiveScreen.kt    «Эфир» и «Телегид»: состояние раздела (список или сетка, фокус по областям, превью, полный экран,
+                      панели поверх видео, меню, инструменты сетки), раскладки «широкий экран» (TV, планшет) и «телефон»
+                      (нижняя навигация), Back по цепочке, переход к номеру / предыдущему / выбранному в панели каналу;
+                      isWideLayout(); раскладки — отдельные composable-лямбды: одна функция такого размера не проходит
+                      верификатор ART в debug-сборке (VerifyError)
+  ui/GuideGrid.kt     сетка телегида: GuideCursor (вид, строка, режим передач, момент фокуса; Saver), GuideGrid (шкала,
+                      строки-холсты, линия «сейчас», клавиши и касания), GuideDetails, GuideMissing, ToolChip
+  ui/VideoPanels.kt   панели поверх видео: ChannelsPanel, CategoriesPanel, RecentPanel (LIVE-019/020)
+  ui/LiveParts.kt     детали «Эфира»: Rail, PhoneNav (нижняя навигация телефона), ToolButton, Clock, SearchField, CategoryItem / CategoryChips, ChannelRow,
                       ChannelCard, VideoWindow, DetailsPanel, ScheduleList, Hints, TaskPill, Toast, EmptyState
   ui/Sheet.kt         ActionSheet (шторка справа / нижний лист), TextDialog, ConfirmDialog
   ui/ChannelLogo.kt   логотип канала (Coil): подложка из pickBackdrop и логотип запекаются в одну картинку (Bake); BrokenLogos
-  ui/PlayerScreen.kt  видео (SurfaceView) через PlayerSession, инфо-плашка, часы, набор номера, обработка Action
+  ui/PlayerScreen.kt  видео (SurfaceView) через PlayerSession, инфо-плашка, часы, набор номера, обработка Action;
+                      ◀ / ▶ и свайпы от краёв — панели поверх видео (слот overlay от «Эфира»)
 res/values/strings.xml, res/values-ru/strings.xml  новые строки интерфейса (UI-022): английский по умолчанию, русский
 app-tv/src/main/res/drawable/ic_*.xml   иконки Material Symbols Rounded (banner.xml — только в app-tv)
 .github/workflows/ci.yml       на каждый push/PR: testDebugUnitTest + lintDebug + assembleDebug всех модулей (оба debug APK — артефакт)
@@ -212,11 +224,13 @@ app-tv/src/main/res/drawable/ic_*.xml   иконки Material Symbols Rounded (b
   для нового источника телегида, `CHANNEL_SORT`), сеть (`USER_AGENT`, таймауты, редиректы, срок кэша логотипов), база
   (`IMPORT_BATCH_SIZE`, `CHANNEL_PAGE_SIZE`, `EPG_BATCH_SIZE`, `EPG_PAST_MS` — сколько прошлого хранится у каналов без архива,
   `RECENT_CHANNELS`), сопоставление телегида (`EPG_MATCH_SURE` / `_MARGIN` / `_MIN` / `_SUGGESTIONS`), короткий EPG
-  (`SHORT_EPG_LIMIT`, `SHORT_EPG_AHEAD_MS`), интерфейс (debounce поиска, время показа инфо, порог свайпа).
+  (`SHORT_EPG_LIMIT`, `SHORT_EPG_AHEAD_MS`), сетка (`GUIDE_DP_PER_HOUR` = 150, `GUIDE_SEARCH_LIMIT`), интерфейс (debounce
+  поиска, время показа инфо, порог свайпа).
 - `Settings` (Model.kt) — то, что меняет пользователь; поля по умолчанию берутся из `Defaults`.
   Хранятся в `SharedPreferences("settings")`: `autoLogos`, `logoSource`, `playlistRefresh`, `refreshDays`, `epgDays`, `epgShift`
   (общий сдвиг телегида, мин), `channelSort`, `preview`, `previewSound` (LIVE-006), `rememberLive` (SET-011), `liveTiles`
-  (вид «Эфира»; нет ключа — по экрану); там же `lastGroup` (LIVE-017, `Repository.lastGroup`, строкой `ChannelGroup.encode()`). Отдельно от источника
+  (вид «Эфира»; нет ключа — по экрану), `liveGuide` (LIVE-022: раздел открывается сеткой), `guideEmpty` (EPG-010: в сетке
+  и каналы без программы); там же `lastGroup` (LIVE-017, `Repository.lastGroup`, строкой `ChannelGroup.encode()`). Отдельно от источника
   плейлиста (`"iptv"`). Настройки источников телегида (User-Agent, расписание, сдвиг, порядок) — в строке `epg_source` базы.
 - **О приложении**: версия читается из установленного пакета (`PackageManager`), поэтому всегда совпадает с
   `versionName` / `versionCode` в корневом `build.gradle.kts`, а в debug-сборке помечается `· debug`.
@@ -459,7 +473,29 @@ EpgStore.import ◀── parseXmltv: XmlPullParser, по элементу ─�
   окне `[from, to)` (в экранном времени); `GuideRow.programmes` упорядочены и обрезаны без наложений
   (`nonOverlapping`), `guideCells(programmes, from, to)` даёт ячейки без пропусков (пропуск — ячейка «нет данных»):
   строку рисует один холст (`x = (start − from) × масштаб`), фокус — отдельный элемент. Окно времени и окно строк
-  подгружаются отдельно: новое окно времени = новый `guide(…)`.
+  подгружаются отдельно: новое окно времени = новый `guide(…)`; он начинается со строки, где курсор (`initialKey`),
+  держит не больше 360 строк (`maxSize`) и при дальнем прыжке грузит место прыжка, а не все страницы по пути.
+- **Экран сетки** (EPG-008…011, `ui/GuideGrid.kt`): масштаб `GUIDE_DP_PER_HOUR` = 150 dp/ч (решение владельца), при
+  открытии «сейчас» на трети ширины. Состояние — `GuideCursor`: начало вида, строка, режим (колонка каналов или
+  передачи), момент фокуса `at` (фокус — ячейка, в которую он попадает; при ▲▼ он сохраняется, поэтому курсор
+  встаёт на передачу соседнего канала, идущую в то же время). Окно времени строк — сутки вокруг вида
+  (`guideWindow`, 6 ч до и 18 ч после), меняется, когда вид подходит к краю ближе часа. Горизонтальная прокрутка
+  меняет только `viewStart`, который читают холсты при отрисовке: рекомпозиции нет. Холст строки рисует ячейки
+  прямоугольниками с заранее измеренным текстом (кэш на строку и окно), фокус — заливка поверх ячейки; шкала и
+  линия «сейчас» — по одному холсту над всеми строками. Вся сетка — один фокусируемый элемент: стрелки (с повтором
+  при удержании) двигают курсор (`guideStep`), OK / долгий OK / CH± — через `remoteKeys`; ▲ с первой строки и ◀ из
+  колонки каналов уходят обычным перемещением фокуса (панель инструментов, боковое меню). На телефоне — горизонтальное
+  перетаскивание, тап по ячейке и каналу. Видео в окне — тот же `PlayerSession`, что у превью «Эфира»; движение по
+  строкам его не меняет, первый OK на канале включает канал в окне, второй — во весь экран.
+- **Наблюдатели таблиц** (`ListSource`): подписка на `InvalidationTracker` и отписка идут в отдельном потоке
+  (`OBSERVERS`), а не в потоке, где Paging создаёт источник (главный): замок наблюдателей Room может держаться секунды,
+  пока его обновление ждёт пишущую транзакцию (импорт, подбор логотипов), — это давало ANR при открытии сетки.
+- **Инструменты сетки** (EPG-010): день (вчера … последний день телегида, тот же час суток), «Сейчас», категория
+  (те же списки, что в колонке «Эфира»), порядок (`ChannelSort`, «Каналы без программы» → `ChannelFilter.guideOnly`,
+  «Видео в окне» = настройка превью), поиск (`firstChannels` по FTS + `findProgrammes`: передачи списка, не
+  закончившиеся, по началу слов названия, сравнение в Kotlin — SQLite складывает регистр только у латиницы),
+  «Сопоставить» (`autoMatchEpg`). Без источников телегида — «Загрузить телегид из плейлиста» (`playlistEpgUrls` →
+  `addEpgSource`), а `App` скачивает новые и просроченные источники сам (`epgWaitMs` / `refreshDueEpg`, плашка задачи).
 - **Короткий EPG Xtream** (EPG-002, `loadShortEpg(source, channel)`): только для канала, который не покрыт XMLTV;
   `get_short_epg&stream_id=…&limit=SHORT_EPG_LIMIT`, base64-тексты, время из `start_timestamp`/`stop_timestamp`.
   Хранится как обычный телегид — в скрытом источнике `xtream:short_epg`, канал телегида = ключ канала, — так что
@@ -592,6 +628,11 @@ Back (пульт, кнопка, жест) ──▶ BackHandler
   - `Modifier.initialFocus()` — остальные экраны и диалоги.
 - **Переключение каналов**: CH±, PageUp/PageDown, медиаклавиши «следующий/предыдущий», ▲▼ и вертикальный свайп;
   работают всегда, в том числе пока поток ещё запускается (новый номер отменяет загрузку предыдущего).
+- **Панели поверх видео** (LIVE-019/020): ◀ / ▶ во весь экран и свайп внутрь от левого / правого края (внешняя пятая
+  часть ширины: самый край оставлен системному жесту «назад») идут в `VideoPanel.next`: ◀ — каналы списка, с которого
+  запущен канал, ещё ◀ — все списки раздела, ▶ — недавние; противоположная стрелка — шаг назад, Back и тап мимо панели
+  закрывают. Пока панель открыта, плеер не обрабатывает клавиши (их получает список панели). Выбор канала —
+  `Zap.Pick(key, список)`: раздел переходит на этот список, ▲▼ / CH± дальше листают его.
 - **Back** в `Action` не входит: `BackHandler` одинаково ловит кнопку пульта, кнопку телефона и жест «назад».
 
 ### Как добавить новый тип ввода
@@ -626,7 +667,7 @@ Back (пульт, кнопка, жест) ──▶ BackHandler
 
 ## Тесты
 
-`./gradlew testDebugUnitTest` (все тесты — в `core`, JVM; 74 теста). Тесты базы, `JsonReader` и `XmlPullParser` идут под **Robolectric**:
+`./gradlew testDebugUnitTest` (все тесты — в `core`, JVM; 91 тест). Тесты базы, `JsonReader` и `XmlPullParser` идут под **Robolectric**:
 Room, `android.util.JsonReader` и `android.util.Xml` требуют Android-классов, а Robolectric даёт настоящий SQLite (с FTS4) прямо в JVM —
 без устройства и эмулятора, на CI тем же `testDebugUnitTest`. Куча тестовой JVM ограничена 256 МБ (`core/build.gradle.kts`).
 - `M3uParserTest` — атрибуты, запятая в кавычках и в имени, `#EXTGRP`, CRLF/BOM/неизвестные теги, голый список URL,
@@ -639,6 +680,10 @@ Room, `android.util.JsonReader` и `android.util.Xml` требуют Android-к�
 - `ExoRecoveryTest` — HLS-повтор один раз, возврат к эфиру, прочие ошибки показываются; категории ошибок;
   тайм-аут буферизации (`StallWatch`: нет прогресса → ошибка, прогресс и новая буферизация сбрасывают отсчёт);
 - `KeyActionTest` — таблица клавиш (CH±, PageUp/Down, медиаклавиши, OK, Back не в `Action`);
+- `RemoteTest` — набор номера, второй Back, переходы панелей поверх видео;
+- `GuideTest` — метки шкалы по местному времени (и в поясе +5:45), «сейчас» на трети, окно времени строк, пропуски
+  по 30 мин, ◀▶ по передачам (сдвиг вида у обрезанной ячейки, прокрутка «ровно чтобы показать», края телегида),
+  диапазон дней, «5 мин назад / вчера»;
 - `MiscTest` — поиск категорий по началу слов, когда предлагать «Что нового», QR-код (размер, три метки по углам);
 - `BackdropTest` — выбор подложки логотипа по пикселям;
 - `M3uStreamTest` — разбор из `Reader` совпадает с разбором текста; 100 000 записей без роста кучи;
@@ -657,7 +702,8 @@ Room, `android.util.JsonReader` и `android.util.Xml` требуют Android-к�
 - `EpgMatchTest` — порядок точной привязки, автосопоставление (цифры должны совпадать), ячейки строки сетки;
 - `EpgStoreTest` (Robolectric) — импорт хранит только нужное в окне, «сейчас / далее» и прогресс в строках, итог
   «ничего не совпало», старая программа видна до конца импорта, сдвиг (общий / источника / канала), ручная привязка после
-  обновления плейлиста и повторная загрузка, `airing` / `schedule` / строки сетки, короткий EPG;
+  обновления плейлиста и повторная загрузка, `airing` / `schedule` / строки сетки, «только с программой» и поиск
+  передач (по словам, без закончившихся, со сдвигом), короткий EPG;
   **автосопоставление 400 каналов с телегидом на 3 000 каналов** — сейчас 0,3–0,9 с (критерий ≤ 5 с);
   **XMLTV 322 МБ в gzip**, генерируемый на лету (2 000 каналов × 500 передач, 400 нужны): рост кучи 0 КБ (критерий < 8 МБ),
   ~8 с на ПК, хранится 139 200 передач;

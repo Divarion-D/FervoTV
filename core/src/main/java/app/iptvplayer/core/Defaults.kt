@@ -46,6 +46,18 @@ object Defaults {
     /** "Запоминать категорию и канал" (SET-011, LIVE-017): the live section opens where it was left. */
     const val REMEMBER_LIVE = true
 
+    /** LIVE-022: the live section opens as the list (off) or the programme grid. */
+    const val LIVE_GUIDE = false
+
+    /** EPG-010: the grid lists channels without a programme too. */
+    const val GUIDE_EMPTY = true
+
+    /** EPG-008 (owner's decision, 33-design §10): the grid's scale, dp per hour. */
+    const val GUIDE_DP_PER_HOUR = 150
+
+    /** EPG-010 "Поиск" in the grid: programmes shown at most. */
+    const val GUIDE_SEARCH_LIMIT = 30
+
     // --- About ---
     const val AUTHOR = "Divarion-D"
     const val GITHUB_URL = "https://github.com/Divarion-D/FervoTV"

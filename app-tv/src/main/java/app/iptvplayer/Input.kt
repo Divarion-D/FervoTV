@@ -7,6 +7,8 @@ import app.iptvplayer.core.Defaults
 import app.iptvplayer.core.input.Action
 import app.iptvplayer.core.input.keyAction
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -69,7 +71,9 @@ fun Modifier.remoteKeys(handle: (Action, long: Boolean) -> Boolean): Modifier {
 }
 
 /**
- * Touch → [Action]: tap = Ok, vertical swipe = channel up/down.
+ * Touch → [Action]: tap = Ok, vertical swipe = channel up/down, a swipe in from the left or right edge = Left / Right
+ * (the panels over the video, LIVE-019/020). The edge is the outer fifth of the width: the system's own back gesture
+ * keeps the very edge.
  * The pointerInput blocks live for the modifier's lifetime, so [onAction] must read
  * state holders rather than capture values.
  */
@@ -81,6 +85,25 @@ fun Modifier.touchActions(onAction: (Action) -> Unit): Modifier = this
             onDragStart = { dy = 0f },
             onDragEnd = { if (abs(dy) > Defaults.SWIPE_THRESHOLD_DP.dp.toPx()) onAction(if (dy < 0) Action.ChannelUp else Action.ChannelDown) },
         ) { _, d -> dy += d }
+    }
+    .pointerInput(Unit) {
+        // From where the finger went down (a drag detector reports where it passed the slop, too late for a fast swipe);
+        // nothing is consumed, so taps and vertical swipes work as before.
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            val edge = size.width / 5
+            val x0 = down.position.x
+            if (x0 >= edge && x0 <= size.width - edge) return@awaitEachGesture
+            var end = down.position
+            while (true) {
+                val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                end = change.position
+                if (!change.pressed) break
+            }
+            val dx = end.x - x0
+            if (abs(dx) < Defaults.SWIPE_THRESHOLD_DP.dp.toPx() || abs(dx) < abs(end.y - down.position.y)) return@awaitEachGesture
+            if (dx > 0 && x0 < edge) onAction(Action.Left) else if (dx < 0 && x0 > size.width - edge) onAction(Action.Right)
+        }
     }
 
 fun Context.isTv(): Boolean =

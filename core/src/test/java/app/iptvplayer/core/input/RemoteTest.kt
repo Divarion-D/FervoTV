@@ -37,4 +37,18 @@ class RemoteTest {
         assertFalse(g.press(14_500)) // too late: this one is a new first press
         assertTrue(g.press(16_000))
     }
+
+    /** LIVE-019/020: ◀ channels → categories, ▶ recent; the opposite arrow steps back. */
+    @Test
+    fun panelsOverVideo() {
+        assertEquals(VideoPanel.Channels, VideoPanel.None.next(Action.Left))
+        assertEquals(VideoPanel.Categories, VideoPanel.Channels.next(Action.Left))
+        assertEquals(VideoPanel.Categories, VideoPanel.Categories.next(Action.Left))
+        assertEquals(VideoPanel.Channels, VideoPanel.Categories.next(Action.Right))
+        assertEquals(VideoPanel.None, VideoPanel.Channels.next(Action.Right))
+        assertEquals(VideoPanel.Recent, VideoPanel.None.next(Action.Right))
+        assertEquals(VideoPanel.Recent, VideoPanel.Recent.next(Action.Right))
+        assertEquals(VideoPanel.None, VideoPanel.Recent.next(Action.Left))
+        assertEquals(VideoPanel.Channels, VideoPanel.Channels.next(Action.Up)) // the list's own keys don't switch panels
+    }
 }

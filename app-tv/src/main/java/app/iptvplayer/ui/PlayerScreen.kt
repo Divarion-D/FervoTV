@@ -52,6 +52,8 @@ import kotlinx.coroutines.launch
 import app.iptvplayer.core.Defaults
 import app.iptvplayer.core.input.Action
 import app.iptvplayer.core.model.Channel
+import app.iptvplayer.core.db.ChannelGroup
+import androidx.compose.foundation.layout.BoxScope
 import app.iptvplayer.core.player.PlayItem
 import app.iptvplayer.core.player.PlayerSession
 import android.view.SurfaceView
@@ -66,6 +68,9 @@ import kotlinx.coroutines.delay
 sealed interface Zap {
     data class Number(val n: Int) : Zap
     data object Previous : Zap
+
+    /** A channel picked in a panel over the video (LIVE-019/020); [group] = the list it was picked from, null = any. */
+    data class Pick(val key: String, val group: ChannelGroup?) : Zap
 }
 
 /**
@@ -73,6 +78,8 @@ sealed interface Zap {
  * database. Channel up/down goes round the list; digits dial a number, Last/Recall goes back to the previous channel
  * ([find] answers where that channel is, null = none, already reported). Playback goes through [player], never an
  * engine directly; the live screen owns the session (open/close, background), this screen only shows it.
+ * ◀ / ▶ (and swipes from the screen's edges) go to [onSide]: the live screen opens its panels in [overlay], which
+ * switches channels through the `jump` it is given; while [panelOpen] the panel has the remote.
  */
 @Composable
 fun PlayerScreen(
@@ -83,6 +90,9 @@ fun PlayerScreen(
     channelAt: suspend (Int) -> Channel?,
     onIndexChange: (Int, Channel) -> Unit,
     find: suspend (Zap) -> Int?,
+    panelOpen: Boolean = false,
+    onSide: (Action) -> Unit = {},
+    overlay: @Composable BoxScope.(jump: (Zap) -> Unit) -> Unit = {},
 ) {
     var index by remember { mutableIntStateOf(startIndex) }
     var reopen by remember { mutableIntStateOf(0) } // a jump can land on the same index of another list
@@ -128,6 +138,8 @@ fun PlayerScreen(
     }
     BackHandler(dial.text.isNotEmpty()) { dial = NumberDial() }
 
+    val latestSide by rememberUpdatedState(onSide)
+    val panelNow by rememberUpdatedState(panelOpen)
     // Reads state holders only, so it is safe to keep across recompositions (see touchActions).
     val handle: (Action) -> Unit = remember {
         { a ->
@@ -143,7 +155,7 @@ fun PlayerScreen(
                 Action.Menu -> showInfo = !showInfo
                 Action.PlayPause -> player.togglePause()
                 Action.Recall -> jump(Zap.Previous)
-                Action.Left, Action.Right -> {} // reserved: channel list / recent channels (LIVE-019/020)
+                Action.Left, Action.Right -> latestSide(a) // channel list / recent channels (LIVE-019/020)
             }
         }
     }
@@ -157,6 +169,7 @@ fun PlayerScreen(
             .focusRequester(focus)
             // Consume every mapped key so D-pad presses never move focus to the list underneath.
             .onKeyEvent { e ->
+                if (panelNow) return@onKeyEvent false // the panel's list moves its own focus
                 val digit = if (e.type == KeyEventType.KeyDown) keyDigit(e.nativeKeyEvent.keyCode) else null
                 if (digit != null) {
                     dial = dial.digit(digit, System.currentTimeMillis())
@@ -196,8 +209,10 @@ fun PlayerScreen(
                     .padding(horizontal = 24.dp, vertical = 4.dp),
             )
         }
+        overlay(::jump)
     }
-    LaunchedEffect(Unit) { focus.requestFocus() }
+    // Back from a panel: the remote is the player's again.
+    LaunchedEffect(panelOpen) { if (!panelOpen) runCatching { focus.requestFocus() } }
 
     // Full-screen video: hide system bars while the player is open (swipe from the edge shows them briefly).
     val view = LocalView.current

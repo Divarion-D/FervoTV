@@ -112,4 +112,53 @@
     <string name="settings_preview_sound_summary">Off: the sound comes with full screen</string>
     <string name="settings_remember">Remember category and channel</string>
     <string name="settings_remember_summary">The section opens where you left it, also after a restart</string>
+
+    <!-- Programme grid (EPG-008…011, LIVE-022) -->
+    <string name="section_guide">Guide</string>
+    <string name="section_more">More</string>
+    <string name="view_guide">Programme grid</string>
+    <string name="guide_now">Now</string>
+    <string name="guide_day">Day</string>
+    <string name="day_yesterday">Yesterday</string>
+    <string name="day_today">Today</string>
+    <string name="day_tomorrow">Tomorrow</string>
+    <string name="guide_category">Category</string>
+    <string name="guide_show">Show</string>
+    <string name="guide_show_empty">Channels without a programme</string>
+    <string name="guide_video">Video in the window</string>
+    <string name="guide_search">Search the guide</string>
+    <string name="guide_search_hint">A channel or a programme</string>
+    <string name="guide_found_channels">Channels</string>
+    <string name="guide_found_programmes">Programmes</string>
+    <string name="guide_found_none">Nothing found for “%1$s”</string>
+    <string name="guide_hit">%1$s %2$s · %3$s</string>
+    <string name="guide_not_in_list">The channel isn\'t in this list</string>
+    <string name="guide_match">Match channels with the guide</string>
+    <string name="guide_matching">Matching channels with the guide…</string>
+    <string name="guide_match_done">Matched: %1$d, to check: %2$d</string>
+    <string name="guide_match_failed">Couldn\'t match: %1$s</string>
+    <string name="guide_no_data">No data</string>
+    <string name="guide_programme_times">%1$s–%2$s · %3$s · %4$s</string>
+    <string name="guide_none_title">No programme guide connected</string>
+    <string name="guide_none_hint_url">The playlist names its own guide (XMLTV)</string>
+    <string name="guide_none_hint">The playlist doesn\'t name a guide</string>
+    <string name="guide_take_from_playlist">Load the guide from the playlist</string>
+    <string name="hint_programmes">Programmes</string>
+    <string name="hint_window_full">In the window / full screen</string>
+    <string name="task_epg">Updating the programme guide</string>
+    <string name="task_epg_done">Programme guide updated</string>
+    <string name="task_epg_failed">Couldn\'t update the programme guide</string>
+
+    <!-- Panels over the video (LIVE-019/020) -->
+    <string name="panel_recent">Recent</string>
+    <string name="panel_recent_empty">Nothing watched yet</string>
+    <string name="search_categories">Search categories</string>
+    <string name="ago_just_now">just now</string>
+    <string name="ago_minutes">%1$d min ago</string>
+    <string name="ago_today">today %1$s</string>
+    <string name="ago_yesterday">yesterday %1$s</string>
+
+    <!-- Settings: Live (LIVE-022) -->
+    <string name="settings_open_guide">Open as the programme grid</string>
+    <string name="settings_open_guide_summary">Live opens as the guide grid instead of the list</string>
 </resources>

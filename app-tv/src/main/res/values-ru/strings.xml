@@ -105,4 +105,53 @@
     <string name="settings_preview_sound_summary">Выключен: звук появляется во весь экран</string>
     <string name="settings_remember">Запоминать категорию и канал</string>
     <string name="settings_remember_summary">Раздел открывается там, где вы его оставили, и после перезапуска</string>
+
+    <!-- Сетка телегида (EPG-008…011, LIVE-022) -->
+    <string name="section_guide">Телегид</string>
+    <string name="section_more">Ещё</string>
+    <string name="view_guide">Сетка телегида</string>
+    <string name="guide_now">Сейчас</string>
+    <string name="guide_day">День</string>
+    <string name="day_yesterday">Вчера</string>
+    <string name="day_today">Сегодня</string>
+    <string name="day_tomorrow">Завтра</string>
+    <string name="guide_category">Категория</string>
+    <string name="guide_show">Показывать</string>
+    <string name="guide_show_empty">Каналы без программы</string>
+    <string name="guide_video">Видео в окне</string>
+    <string name="guide_search">Поиск в телегиде</string>
+    <string name="guide_search_hint">Канал или передача</string>
+    <string name="guide_found_channels">Каналы</string>
+    <string name="guide_found_programmes">Передачи</string>
+    <string name="guide_found_none">По запросу «%1$s» ничего не найдено</string>
+    <string name="guide_hit">%1$s %2$s · %3$s</string>
+    <string name="guide_not_in_list">Этого канала нет в списке</string>
+    <string name="guide_match">Сопоставить каналы с телегидом</string>
+    <string name="guide_matching">Сопоставление каналов с телегидом…</string>
+    <string name="guide_match_done">Сопоставлено: %1$d, на проверку: %2$d</string>
+    <string name="guide_match_failed">Не удалось сопоставить: %1$s</string>
+    <string name="guide_no_data">Нет данных</string>
+    <string name="guide_programme_times">%1$s–%2$s · %3$s · %4$s</string>
+    <string name="guide_none_title">Телегид не подключён</string>
+    <string name="guide_none_hint_url">В плейлисте указан свой телегид (XMLTV)</string>
+    <string name="guide_none_hint">В плейлисте нет адреса телегида</string>
+    <string name="guide_take_from_playlist">Загрузить телегид из плейлиста</string>
+    <string name="hint_programmes">Передачи</string>
+    <string name="hint_window_full">В окне / во весь экран</string>
+    <string name="task_epg">Обновление телегида</string>
+    <string name="task_epg_done">Телегид обновлён</string>
+    <string name="task_epg_failed">Не удалось обновить телегид</string>
+
+    <!-- Панели поверх видео (LIVE-019/020) -->
+    <string name="panel_recent">Недавние</string>
+    <string name="panel_recent_empty">Вы ещё ничего не смотрели</string>
+    <string name="search_categories">Поиск категорий</string>
+    <string name="ago_just_now">только что</string>
+    <string name="ago_minutes">%1$d мин назад</string>
+    <string name="ago_today">сегодня %1$s</string>
+    <string name="ago_yesterday">вчера %1$s</string>
+
+    <!-- Настройки: Эфир (LIVE-022) -->
+    <string name="settings_open_guide">Открывать сеткой телегида</string>
+    <string name="settings_open_guide_summary">«Эфир» открывается сеткой телегида, а не списком</string>
 </resources>

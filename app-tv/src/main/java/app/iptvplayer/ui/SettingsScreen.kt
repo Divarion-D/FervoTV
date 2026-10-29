@@ -173,6 +173,10 @@ fun SettingsScreen(
                 R.drawable.ic_history, stringResource(R.string.settings_remember), stringResource(R.string.settings_remember_summary),
                 Modifier.row("rememberLive"), trailing = { Switch(settings.rememberLive, onCheckedChange = null) },
             ) { onChange(settings.copy(rememberLive = !settings.rememberLive)) }
+            SettingItem(
+                R.drawable.ic_guide, stringResource(R.string.settings_open_guide), stringResource(R.string.settings_open_guide_summary),
+                Modifier.row("liveGuide"), trailing = { Switch(settings.liveGuide, onCheckedChange = null) },
+            ) { onChange(settings.copy(liveGuide = !settings.liveGuide)) }
 
             SectionTitle("Логотипы каналов")
             SettingItem(

@@ -142,6 +142,7 @@ class UserStoreTest {
         assertEquals(listOf("Матч"), names(ChannelGroup.Collection(id)))
         assertEquals(listOf("Матч", "Первый"), names(ChannelGroup.Recent))
         assertEquals(listOf("http://d", "http://a"), runBlocking { user.recentKeys("k") }) // last and previous channel
+        assertEquals(listOf("http://d" to 2L, "http://a" to 1L), runBlocking { user.recent("k") }.map { it.ckey to it.watchedAt }) // LIVE-020
         assertEquals(listOf("Ёлки"), names(ChannelGroup.Archive))
 
         val groups = runBlocking { store.groups("k").first() }

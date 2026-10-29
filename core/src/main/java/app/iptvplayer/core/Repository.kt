@@ -15,6 +15,7 @@ import app.iptvplayer.core.db.EpgSource
 import app.iptvplayer.core.db.EpgStore
 import app.iptvplayer.core.db.GroupCount
 import app.iptvplayer.core.db.PlaylistStore
+import app.iptvplayer.core.db.ProgrammeHit
 import app.iptvplayer.core.db.UserStore
 import app.iptvplayer.core.epg.AutoMatch
 import app.iptvplayer.core.epg.EpgEntry
@@ -113,6 +114,8 @@ class Repository(private val ctx: Context, db: AppDb = AppDb.get(ctx)) {
             previewSound = settingsPrefs.getBoolean("previewSound", Defaults.PREVIEW_SOUND),
             rememberLive = settingsPrefs.getBoolean("rememberLive", Defaults.REMEMBER_LIVE),
             liveTiles = if (settingsPrefs.contains("liveTiles")) settingsPrefs.getBoolean("liveTiles", false) else null,
+            liveGuide = settingsPrefs.getBoolean("liveGuide", Defaults.LIVE_GUIDE),
+            guideEmpty = settingsPrefs.getBoolean("guideEmpty", Defaults.GUIDE_EMPTY),
         )
         set(v) {
             settingsPrefs.edit()
@@ -126,6 +129,8 @@ class Repository(private val ctx: Context, db: AppDb = AppDb.get(ctx)) {
                 .putBoolean("preview", v.preview)
                 .putBoolean("previewSound", v.previewSound)
                 .putBoolean("rememberLive", v.rememberLive)
+                .putBoolean("liveGuide", v.liveGuide)
+                .putBoolean("guideEmpty", v.guideEmpty)
                 .apply { if (v.liveTiles == null) remove("liveTiles") else putBoolean("liveTiles", v.liveTiles) }
                 .apply()
         }
@@ -190,8 +195,13 @@ class Repository(private val ctx: Context, db: AppDb = AppDb.get(ctx)) {
     /** Live rows with now/next (EPG-006); the shift of [settings] is applied. */
     fun items(f: ChannelFilter): Flow<PagingData<ChannelItem>> = store.items(f, settings.epgShift)
 
-    /** Programme grid rows for [from, to) (EPG-008). */
-    fun guide(f: ChannelFilter, from: Long, to: Long): Flow<PagingData<GuideRow>> = store.guide(f, settings.epgShift, from, to)
+    /** Programme grid rows for [from, to) (EPG-008); the first page starts at row [initialKey]. */
+    fun guide(f: ChannelFilter, from: Long, to: Long, initialKey: Int? = null): Flow<PagingData<GuideRow>> =
+        store.guide(f, settings.epgShift, from, to, initialKey)
+
+    /** EPG-010 "Поиск" in the grid: programmes of the list by title, from [from] on, soonest first (channel key, programme). */
+    suspend fun findProgrammes(f: ChannelFilter, text: String, from: Long): List<ProgrammeHit> =
+        store.findProgrammes(f, settings.epgShift, text, from, Defaults.GUIDE_SEARCH_LIMIT)
 
     fun airing(s: Source, key: String): Flow<Airing> = store.airing(s.cacheKey(), key, settings.epgShift)
 
@@ -199,6 +209,8 @@ class Repository(private val ctx: Context, db: AppDb = AppDb.get(ctx)) {
         store.schedule(s.cacheKey(), key, settings.epgShift, from, to)
 
     suspend fun channelAt(f: ChannelFilter, index: Int): Channel? = store.channelAt(f, index)
+
+    suspend fun firstChannels(f: ChannelFilter, n: Int): List<ChannelItem> = store.first(f, n)
 
     suspend fun channel(s: Source, key: String): ChannelItem? = store.channel(s.cacheKey(), key)
 
@@ -234,6 +246,10 @@ class Repository(private val ctx: Context, db: AppDb = AppDb.get(ctx)) {
 
     /** Keys of the last watched channels of [s], most recent first: [0] is the last channel, [1] the previous one. */
     suspend fun recentKeys(s: Source): List<String> = user.recentKeys(s.cacheKey())
+
+    /** LIVE-020: the last watched channels of [s] with the time each was watched, most recent first. */
+    suspend fun recent(s: Source): List<Pair<ChannelItem, Long>> =
+        user.recent(s.cacheKey()).mapNotNull { r -> store.channel(s.cacheKey(), r.ckey)?.let { it to r.watchedAt } }
 
     // --- Guide (EPG-001…007) ---
 

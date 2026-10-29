@@ -193,6 +193,22 @@ class EpgStoreTest {
         assertEquals("Новости", guide[0].item.now?.title)
     }
 
+    /** EPG-010: channels without a guide can be left out; "Поиск" finds programmes of the list by title. */
+    @Test
+    fun guideOnlyAndProgrammeSearch() {
+        importPlaylist()
+        importGuide()
+        val f = ChannelFilter("k")
+        assertEquals(listOf("Первый", "Второй HD"), items(f = f.copy(guideOnly = true)).map { it.channel.name })
+        val found = runBlocking { store.findProgrammes(f, 0, "кин", now, 10) }
+        assertEquals(listOf(Triple("http://a", "Первый", "Кино")), found.map { Triple(it.key, it.channel, it.programme.title) })
+        assertEquals(time("2026-10-28T12:30"), found[0].programme.start)
+        // Ended ones aren't found; every word has to match; the shift moves the times.
+        assertEquals(emptyList<String>(), runBlocking { store.findProgrammes(f, 0, "утро", now, 10) }.map { it.programme.title })
+        assertEquals(listOf("Второй далее"), runBlocking { store.findProgrammes(f, 0, "вто дал", now, 10) }.map { it.programme.title })
+        assertEquals(time("2026-10-28T13:30"), runBlocking { store.findProgrammes(f, 60, "кино", now, 10) }.single().programme.start)
+    }
+
     /** EPG-002: a stored short EPG binds an Xtream channel no XMLTV covers. */
     @Test
     fun shortEpg() {

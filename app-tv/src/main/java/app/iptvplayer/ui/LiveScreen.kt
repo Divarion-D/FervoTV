@@ -3,8 +3,25 @@ package app.iptvplayer.ui
 import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.unit.Dp
+import app.iptvplayer.core.epg.DAY_MS
+import app.iptvplayer.core.epg.HOUR_MS
+import app.iptvplayer.core.epg.floorTo
+import app.iptvplayer.core.epg.guideWindow
+import app.iptvplayer.core.epg.openingView
+import app.iptvplayer.core.input.VideoPanel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -93,15 +110,24 @@ import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
 /** Where the remote's focus is: decides Back, the key hints and where ▶ from the rail goes back to. */
-private enum class Area { Rail, Top, Categories, List, Schedule }
+private enum class Area { Rail, Top, Categories, List, Schedule, Grid }
 
 /** An open sheet: title, the channel it is about (logo in the header), its groups of lines. */
 private class SheetSpec(val title: String, val channel: ChannelItem?, val groups: List<SheetGroup>)
 
 private val GroupSaver = Saver<ChannelGroup, String>({ it.encode() }, ::decodeGroup)
 
+/** TV, and any screen from 600 dp held in landscape (tablet, phone on its side); the rest gets the phone layout. */
+@Composable
+fun isWideLayout(): Boolean {
+    val ctx = LocalContext.current
+    val conf = LocalConfiguration.current
+    return remember { ctx.isTv() } || (conf.screenWidthDp >= 600 && conf.screenWidthDp > conf.screenHeightDp)
+}
+
 /**
- * «Эфир» (33-design 6.1). Wide screen (TV, tablet): rail, categories, channel rows (or tiles), the preview window
+ * «Эфир» (33-design 6.1) and, with [guide], «Телегид» (6.2, LIVE-022): the same list shown as the programme grid,
+ * with the same category, preview window, full screen and menus. Wide screen (TV, tablet): rail, categories, channel rows (or tiles), the preview window
  * with the programme, a top bar with tools and the clock, key hints on TV. Phone: search and tools on top, the
  * preview window once a channel is tapped, category chips, rows or tiles; every action is a tap or a long press.
  *
@@ -120,13 +146,16 @@ fun LiveScreen(
     task: BgTask?,
     onSettings: (Settings) -> Unit,
     onOpenSettings: () -> Unit,
+    guide: Boolean = false,
+    onGuide: (Boolean) -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val tv = remember { ctx.isTv() }
     val conf = LocalConfiguration.current
     // Wide layout: TV, and any screen from 600 dp held in landscape (tablet, phone on its side); a phone in landscape
     // (height under 480 dp) gets it compact: no rail (Настройки go to the top bar), narrower columns, small margins.
-    val wide = tv || (conf.screenWidthDp >= 600 && conf.screenWidthDp > conf.screenHeightDp)
+    val wide = isWideLayout()
+    val guideNow by rememberUpdatedState(guide)
     val compact = !tv && conf.screenHeightDp < 480
     val useTiles = settings.liveTiles ?: !wide // LIVE-005: rows on a wide screen, tiles on a phone by default
     val tilesNow by rememberUpdatedState(useTiles)
@@ -165,9 +194,11 @@ fun LiveScreen(
         search = query.trim()
     }
     // By source key and list, not row ids: the same filter keeps working when a refresh replaces the rows.
-    val filter = ChannelFilter(
-        source.cacheKey(), group, search, settings.channelSort, if (showHidden) Visibility.ALL else Visibility.VISIBLE,
+    fun filterFor(g: ChannelGroup, s: String = "") = ChannelFilter(
+        source.cacheKey(), g, s, settings.channelSort, if (showHidden) Visibility.ALL else Visibility.VISIBLE,
+        guideOnly = guide && !settings.guideEmpty,
     )
+    val filter = filterFor(group, search)
     val currentFilter by rememberUpdatedState(filter)
     val items = remember(filter, settings.epgShift) { repo.items(filter) }.collectAsLazyPagingItems()
     val now by remember { minuteTicks() }.collectAsState(System.currentTimeMillis()) // one tick for all rows
@@ -195,6 +226,29 @@ fun LiveScreen(
     val focusedCat = remember { intArrayOf(0) }
     var focusedProgramme by remember { mutableStateOf<Programme?>(null) }
     var selected by remember { mutableStateOf<ChannelItem?>(null) } // focused (TV) or tapped (phone) channel
+
+    // --- Programme grid (EPG-008…011) ---
+    val cursor = rememberSaveable(saver = GuideCursor.Saver) { GuideCursor(openingView(System.currentTimeMillis(), 4 * HOUR_MS)) }
+    val gridFocus = remember { FocusRequester() }
+    val railGuide = remember { FocusRequester() }
+    var window by remember { mutableStateOf(guideWindow(cursor.viewStart, cursor.span, null)) }
+    LaunchedEffect(cursor) {
+        snapshotFlow { cursor.viewStart to cursor.span }.collect { (v, sp) -> window = guideWindow(v, sp, window) }
+    }
+    LaunchedEffect(cursor) { snapshotFlow { cursor.row }.collect { focusedRow[0] = it } }
+    val guideRows = if (guide) {
+        remember(filter, window, settings.epgShift) { repo.guide(filter, window.from, window.to, (cursor.row - 10).coerceAtLeast(0)) }
+            .collectAsLazyPagingItems()
+    } else null
+    val epgSources by remember { repo.epgSources() }.collectAsState(initial = null)
+    var epgUrls by remember { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(source) { epgUrls = runCatching { repo.playlistEpgUrls(source) }.getOrDefault(emptyList()) }
+
+    // --- Panels over the full-screen video (LIVE-019/020) ---
+    var panel by remember { mutableStateOf(VideoPanel.None) }
+    var panelGroup by remember { mutableStateOf<ChannelGroup>(ChannelGroup.All) }
+    var panelStart by remember { mutableStateOf<Int?>(null) }
+    var recent by remember { mutableStateOf<List<Pair<ChannelItem, Long>>?>(null) }
 
     // --- Playback, sheets, messages ---
     var preview by remember { mutableStateOf<ChannelItem?>(null) } // the channel in the window
@@ -246,6 +300,7 @@ fun LiveScreen(
 
     fun closeFullscreen() {
         fullscreen = false
+        panel = VideoPanel.None
         refocus = true
         val key = returnKey
         if (!settings.preview || key == null) {
@@ -264,7 +319,7 @@ fun LiveScreen(
     // TV: the focused channel starts in the window after a pause, so scrolling doesn't open every stream.
     LaunchedEffect(selected?.channel?.key) {
         val item = selected ?: return@LaunchedEffect
-        if (!tv || fullscreen) return@LaunchedEffect
+        if (!tv || fullscreen || guideNow) return@LaunchedEffect // the grid plays a channel on OK (EPG-011)
         if (playingKey != item.channel.key) delay(Defaults.PREVIEW_DELAY_MS)
         showPreview(item)
     }
@@ -291,6 +346,14 @@ fun LiveScreen(
     suspend fun focusRow(index: Int) {
         val i = index.coerceIn(0, (items.itemCount - 1).coerceAtLeast(0))
         listTarget = i
+        if (guideNow) {
+            cursor.row = i
+            if (tv) {
+                withFrameNanos {}
+                runCatching { gridFocus.requestFocus() }
+            }
+            return
+        }
         if (tilesNow) gridState.scrollToItem(i) else listState.scrollToItem(i)
         if (tv) {
             withFrameNanos {}
@@ -350,6 +413,7 @@ fun LiveScreen(
             lastFilter = filter
             listTarget = 0
             focusedRow[0] = 0
+            cursor.row = 0
             listState.scrollToItem(0)
             gridState.scrollToItem(0)
         }
@@ -360,13 +424,21 @@ fun LiveScreen(
         val key = when (zap) {
             is Zap.Number -> repo.channelByNumber(source, zap.n)?.key ?: run { say(str(R.string.no_channel_number, zap.n)); return null }
             Zap.Previous -> repo.recentKeys(source).getOrNull(1) ?: run { say(str(R.string.no_previous_channel)); return null }
+            is Zap.Pick -> zap.key
         }
-        repo.indexOf(currentFilter, key)?.let { return it }
+        // Picked in another list over the video (LIVE-019): the section follows to that list.
+        val g = (zap as? Zap.Pick)?.group
+        if (g != null && g != group) {
+            query = ""
+            search = ""
+            group = g
+            repo.indexOf(filterFor(g), key)?.let { return it }
+        } else repo.indexOf(currentFilter, key)?.let { return it }
         // Not in the list on screen: the section switches to all channels (numbers belong to the whole source).
         query = ""
         search = ""
         group = ChannelGroup.All
-        return repo.indexOf(ChannelFilter(source.cacheKey(), sort = settings.channelSort), key)
+        return repo.indexOf(filterFor(ChannelGroup.All), key)
     }
 
     // --- Menus (LIVE-011…015, UI-011) ---
@@ -490,14 +562,19 @@ fun LiveScreen(
         )
     }
 
-    fun programmeMenu(item: ChannelItem, p: Programme) {
+    /** EPG-009: "Смотреть канал", "В избранное"; reminders, recording and catch-up come with their phases. */
+    fun programmeMenu(item: ChannelItem, p: Programme, index: Int) {
         val hm = android.text.format.DateFormat.getTimeFormat(ctx)
         val at = "${hm.format(p.start)}–${hm.format(p.stop)}"
+        val key = item.channel.key
         sheet = SheetSpec(
             p.title, item,
             listOf(
-                (at + (p.description?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: "")) to
-                    listOf(SheetItem(R.drawable.ic_play_arrow, str(R.string.watch_channel)) { watch(focusedRow[0], item) }),
+                (at + (p.description?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: "")) to listOf(
+                    SheetItem(R.drawable.ic_play_arrow, str(R.string.watch_channel)) { watch(index, item) },
+                    if (item.favorite) SheetItem(R.drawable.ic_favorite_fill, str(R.string.favorite_remove)) { scope.launch { repo.setFavorite(key, false) } }
+                    else SheetItem(R.drawable.ic_favorite, str(R.string.favorite_add)) { scope.launch { repo.setFavorite(key, true) } },
+                ),
             ),
         )
     }
@@ -522,6 +599,169 @@ fun LiveScreen(
             val i = repo.indexOf(currentFilter, p.channel.key) ?: focusedRow[0]
             if (preview?.channel?.key == p.channel.key && !fullscreen) watch(i, p) // another tap may have come first
         }
+    }
+
+    // --- The grid: OK, menus and tools (EPG-009…011) ---
+    /** First OK on a channel plays it in the window (moving along the rows doesn't), the second one opens full screen. */
+    fun gridChannel(index: Int, item: ChannelItem, long: Boolean) {
+        focusedRow[0] = index
+        val key = item.channel.key
+        when {
+            long -> channelMenu(item, index)
+            settings.preview && playingKey == key && player.state.value.error != null -> player.retry()
+            preview?.channel?.key == key && (!settings.preview || playingKey == key) -> watch(index, item)
+            else -> {
+                selected = item
+                showPreview(item)
+            }
+        }
+    }
+
+    /** The programme on now: watch the channel; one before or after it: its menu. A gap is the channel's. */
+    fun gridProgramme(index: Int, item: ChannelItem, p: Programme?, long: Boolean) {
+        if (p == null) return gridChannel(index, item, long)
+        focusedRow[0] = index
+        val t = System.currentTimeMillis()
+        if (!long && p.start <= t && t < p.stop) watch(index, item) else programmeMenu(item, p, index)
+    }
+
+    fun dayLabel(day: Long, today: Long): String = when ((day - today + DAY_MS / 2).floorDiv(DAY_MS)) {
+        -1L -> str(R.string.day_yesterday)
+        0L -> str(R.string.day_today)
+        1L -> str(R.string.day_tomorrow)
+        else -> SimpleDateFormat("EE, d MMM", Locale.getDefault()).format(Date(day)).replace(".", "")
+    }
+
+    fun today(t: Long) = floorTo(t, DAY_MS, zoneOffset(t))
+
+    fun guideNowView() {
+        val t = System.currentTimeMillis()
+        cursor.placed = true
+        cursor.show(t, t, settings.epgDays)
+    }
+
+    /** "День": yesterday … the guide's last day; another day opens at the same time of day. */
+    fun daySheet(shown: Long) {
+        val t = System.currentTimeMillis()
+        val today = today(t)
+        sheet = SheetSpec(
+            str(R.string.guide_day), null,
+            listOf(null to (-1 until settings.epgDays).map { today + it * DAY_MS }.map { d ->
+                SheetItem(R.drawable.ic_calendar, dayLabel(d, today), selected = d == shown) {
+                    if (d == today) guideNowView() else {
+                        val v = cursor.viewStart
+                        cursor.placed = true
+                        cursor.viewStart = (d + (v - floorTo(v, DAY_MS, zoneOffset(v)))).coerceIn(cursor.range(t, settings.epgDays))
+                        cursor.at = cursor.viewStart
+                    }
+                }
+            }),
+        )
+    }
+
+    /** "Категория": the same lists as the live section's column, collections included. */
+    fun categorySheet() {
+        sheet = SheetSpec(
+            str(R.string.guide_category), null,
+            listOf(null to groupsAll.orEmpty().map { g -> SheetItem(groupIcon(g.group), g.title, selected = g.group == group) { group = g.group } }),
+        )
+    }
+
+    /** The preview window on or off (the same setting as in the live section, EPG-011). */
+    fun togglePreview() {
+        val on = !settings.preview
+        onSettings(settings.copy(preview = on))
+        val p = preview
+        if (!on) {
+            if (playingKey != null) player.close()
+            playingKey = null
+        } else if (p != null) {
+            player.setMuted(!settings.previewSound)
+            player.open(PlayItem(p.channel.url))
+            playingKey = p.channel.key
+        }
+    }
+
+    /** "Порядок": the channel order, channels without a programme, the video window. */
+    fun guideOrderSheet() {
+        sheet = SheetSpec(
+            str(R.string.channel_order), null,
+            listOf(
+                null to ChannelSort.entries.map { s -> SheetItem(null, s.title, selected = s == settings.channelSort) { onSettings(settings.copy(channelSort = s)) } },
+                str(R.string.guide_show) to listOf(
+                    SheetItem(R.drawable.ic_visibility, str(R.string.guide_show_empty), checked = settings.guideEmpty) { onSettings(settings.copy(guideEmpty = !settings.guideEmpty)) },
+                    SheetItem(R.drawable.ic_live_tv, str(R.string.guide_video), checked = settings.preview) { togglePreview() },
+                ),
+            ),
+        )
+    }
+
+    /** A found channel or programme: the cursor goes there. */
+    fun guideJump(key: String, at: Long?) {
+        scope.launch {
+            val i = repo.indexOf(currentFilter, key) ?: run { say(str(R.string.guide_not_in_list)); return@launch }
+            focusedRow[0] = i
+            if (at != null) {
+                val t = System.currentTimeMillis()
+                cursor.placed = true
+                cursor.show(maxOf(at, t), t, settings.epgDays)
+                cursor.inRow = true
+            } else cursor.inRow = false
+            focusRow(i)
+        }
+    }
+
+    /** "Поиск" (EPG-010): channels and programmes of the list by name; picking one moves the cursor to it. */
+    fun guideSearch() {
+        dialog = {
+            TextDialog(str(R.string.guide_search), "", str(R.string.guide_search_hint), { text ->
+                val q = text.trim()
+                if (q.isNotEmpty()) scope.launch {
+                    val t = System.currentTimeMillis()
+                    val f = currentFilter
+                    val channels = repo.firstChannels(f.copy(search = q), Defaults.LIST_PAGE)
+                    val programmes = repo.findProgrammes(f, q, t)
+                    if (channels.isEmpty() && programmes.isEmpty()) {
+                        say(str(R.string.guide_found_none, q))
+                        return@launch
+                    }
+                    val hm = android.text.format.DateFormat.getTimeFormat(ctx)
+                    val today = today(t)
+                    sheet = SheetSpec(
+                        q, null,
+                        listOf(
+                            str(R.string.guide_found_channels) to channels.map { ch -> SheetItem(R.drawable.ic_tv, ch.channel.name) { guideJump(ch.channel.key, null) } },
+                            str(R.string.guide_found_programmes) to programmes.map { h ->
+                                val start = h.programme.start
+                                val day = today(start)
+                                val time = hm.format(Date(start)).let { if (day == today) it else dayLabel(day, today) + " " + it }
+                                SheetItem(R.drawable.ic_schedule, str(R.string.guide_hit, time, h.programme.title, h.channel)) { guideJump(h.key, start) }
+                            },
+                        ).filter { it.second.isNotEmpty() },
+                    )
+                }
+            }) { closeDialog() }
+        }
+    }
+
+    /** "Сопоставить" (EPG-005): sure pairs are bound at once; the review of the rest comes with the guide's screens. */
+    fun autoMatch() {
+        scope.launch {
+            say(str(R.string.guide_matching))
+            try {
+                val r = repo.autoMatchEpg(source)
+                say(str(R.string.guide_match_done, r.sure.size, r.unsure.size))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                say(str(R.string.guide_match_failed, e.message ?: e.toString()))
+            }
+        }
+    }
+
+    /** No guide yet: the playlist's own guide addresses (EPG-001 "Взять из плейлиста"); App downloads new sources. */
+    fun loadPlaylistGuide() {
+        scope.launch { epgUrls.forEach { repo.addEpgSource(it) } }
     }
 
     fun page(down: Boolean, long: Boolean, at: Int, count: Int, perRow: Int): Int = when {
@@ -581,7 +821,7 @@ fun LiveScreen(
         return when (a) {
             Action.Ok, Action.Menu -> {
                 val p = focusedProgramme ?: return true
-                if (!long && a == Action.Ok && p.start <= System.currentTimeMillis()) watch(focusedRow[0], item) else programmeMenu(item, p)
+                if (!long && a == Action.Ok && p.start <= System.currentTimeMillis()) watch(focusedRow[0], item) else programmeMenu(item, p, focusedRow[0])
                 true
             }
             Action.Left -> { leaveSchedule(); true }
@@ -595,13 +835,16 @@ fun LiveScreen(
         if (exit.press(System.currentTimeMillis())) (ctx as? Activity)?.finish()
         else say(str(if (tv) R.string.exit_again_tv else R.string.exit_again_touch))
     }
+    BackHandler(!wide && guide && !fullscreen) { onGuide(false) } // phone: «Телегид» → «Эфир», then exit
     BackHandler(!wide && preview != null && !fullscreen) {
         preview = null
         player.close()
         playingKey = null
     }
     BackHandler(tv && wide && area == Area.Categories && groupQuery.isEmpty()) { runCatching { railLive.requestFocus() } }
-    BackHandler(tv && wide && (area == Area.List || area == Area.Top) && query.isEmpty()) { focusSelectedCategory() }
+    BackHandler(tv && wide && !guide && (area == Area.List || area == Area.Top) && query.isEmpty()) { focusSelectedCategory() }
+    BackHandler(tv && wide && guide && (area == Area.Grid || area == Area.Top)) { runCatching { railGuide.requestFocus() } }
+    BackHandler(guide && cursor.inRow && area == Area.Grid && !fullscreen) { cursor.inRow = false }
     BackHandler(!fullscreen && groupQuery.isNotEmpty() && (!tv || area == Area.Categories)) {
         groupQuery = ""
         if (tv) runCatching { groupSearchFocus.requestFocus() }
@@ -613,6 +856,36 @@ fun LiveScreen(
     }
     BackHandler(scheduleMode && !fullscreen) { leaveSchedule() }
     BackHandler(fullscreen) { closeFullscreen() }
+    BackHandler(fullscreen && panel != VideoPanel.None) { panel = VideoPanel.None }
+
+    // Switching «Эфир» ⇄ «Телегид»: the same row in the other view.
+    var lastGuide by remember { mutableStateOf(guide) }
+    LaunchedEffect(guide) {
+        if (guide == lastGuide) return@LaunchedEffect
+        lastGuide = guide
+        if (guide) cursor.inRow = false
+        focusRow(focusedRow[0])
+    }
+
+    // Panels over the video: what they list.
+    val panelFilter = filterFor(panelGroup, if (panelGroup == group) search else "")
+    LaunchedEffect(panel, panelGroup) {
+        when (panel) {
+            VideoPanel.Channels -> {
+                panelStart = null
+                panelStart = returnKey?.let { repo.indexOf(panelFilter, it) } ?: 0
+            }
+            VideoPanel.Recent -> {
+                recent = null
+                recent = repo.recent(source)
+            }
+            else -> {}
+        }
+    }
+    fun openPanel(p: VideoPanel) {
+        if (p == VideoPanel.Channels && panel == VideoPanel.None) panelGroup = group // the list the channel was started from
+        panel = p
+    }
 
     // --- Parts shared by both layouts ---
     val channelArea: @Composable (Modifier, Boolean) -> Unit = { modifier, tall ->
@@ -663,9 +936,32 @@ fun LiveScreen(
     val orderLabel = stringResource(R.string.channel_order)
     // Back to this screen's default view = no saved choice, so each layout keeps its own default.
     val toggleView = { onSettings(settings.copy(liveTiles = (!useTiles).takeIf { it == wide })) }
+    val guideLabel = stringResource(R.string.section_guide)
+    val listLabel = stringResource(R.string.view_list)
 
-    Box(Modifier.fillMaxSize()) {
-        if (wide) {
+    // The grid's tools (EPG-010): day, now, category, order, search, matching.
+    val guideTools: @Composable (Dp) -> Unit = { h ->
+        val shownDay by remember { derivedStateOf { floorTo(cursor.viewStart + cursor.span / 3, DAY_MS, zoneOffset(cursor.viewStart)) } }
+        ToolChip(R.drawable.ic_calendar, dayLabel(shownDay, today(now)), height = h) { daySheet(shownDay) }
+        ToolButton(R.drawable.ic_schedule, stringResource(R.string.guide_now), size = h, onClick = ::guideNowView)
+        ToolChip(groupIcon(group), groupTitle, Modifier.widthIn(max = 160.dp), height = h, onClick = ::categorySheet)
+        ToolButton(R.drawable.ic_sort, orderLabel, size = h, onClick = ::guideOrderSheet)
+        ToolButton(R.drawable.ic_search, stringResource(R.string.guide_search), size = h, onClick = ::guideSearch)
+        if (epgSources?.isNotEmpty() == true) ToolButton(R.drawable.ic_link, stringResource(R.string.guide_match), size = h, onClick = ::autoMatch)
+    }
+    val guideDetails: @Composable (Modifier) -> Unit = { m ->
+        if (epgSources?.isEmpty() == true) GuideMissing(epgUrls.isNotEmpty(), m, ::loadPlaylistGuide)
+        else if (guideRows != null) GuideDetails(guideRows, window, cursor, now, m)
+    }
+    val guideGrid: @Composable (Modifier, Boolean) -> Unit = { m, tall ->
+        if (guideRows != null) GuideGrid(
+            guideRows, window, cursor, settings.epgDays, now, preview?.channel?.key, tall, gridFocus, m,
+            onFocusIn = { area = Area.Grid }, onChannel = ::gridChannel, onProgramme = ::gridProgramme,
+        )
+    }
+
+    // Each layout is its own composable lambda: one function this size fails ART's verifier in debug builds.
+    val wideLayout: @Composable BoxScope.() -> Unit = {
             val c = MaterialTheme.colorScheme
             Row(Modifier.fillMaxSize().then(if (tv) Modifier else Modifier.safeDrawingPadding())) {
                 if (!compact) Spacer(Modifier.width(80.dp)) // the rail is drawn over the content (it opens over it)
@@ -681,22 +977,43 @@ fun LiveScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                            Text(stringResource(R.string.section_live), style = TvType.titleSmall)
-                            Text(
-                                " " + stringResource(R.string.title_with_list, groupTitle), style = TvType.titleSmall.copy(fontWeight = FontWeight.Normal), color = c.onSurfaceVariant,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            )
+                        if (guide) {
+                            Text(guideLabel, style = TvType.titleSmall, maxLines = 1)
+                            Spacer(Modifier.weight(1f))
+                            guideTools(40.dp)
+                            ToolButton(R.drawable.ic_view_list, listLabel) { onGuide(false) } // LIVE-022: back to the list
+                        } else {
+                            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(R.string.section_live), style = TvType.titleSmall)
+                                Text(
+                                    " " + stringResource(R.string.title_with_list, groupTitle), style = TvType.titleSmall.copy(fontWeight = FontWeight.Normal), color = c.onSurfaceVariant,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            SearchField(query, { query = it }, searchHint, searchFocus, Modifier.width(240.dp), height = 40.dp)
+                            ToolButton(viewIcon, viewLabel, onClick = toggleView)
+                            ToolButton(R.drawable.ic_sort, orderLabel, onClick = ::sortMenu)
+                            ToolButton(R.drawable.ic_guide, stringResource(R.string.view_guide)) { onGuide(true) } // LIVE-022
                         }
-                        SearchField(query, { query = it }, searchHint, searchFocus, Modifier.width(240.dp), height = 40.dp)
-                        ToolButton(viewIcon, viewLabel, onClick = toggleView)
-                        ToolButton(R.drawable.ic_sort, orderLabel, onClick = ::sortMenu)
                         if (compact) ToolButton(R.drawable.ic_settings, stringResource(R.string.section_settings)) { fromSettings = true; onOpenSettings() }
                         if (!online) OfflineMark()
                         if (!compact) Clock() // a phone shows its own clock
                     }
                     Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
-                    Row(Modifier.weight(1f)) {
+                    if (guide) {
+                        // «Телегид» (6.2): the window and the focused programme over the grid.
+                        Row(Modifier.fillMaxWidth().height(if (compact) 72.dp else 96.dp)) {
+                            VideoWindow(
+                                preview, playingKey != null && playingKey == preview?.channel?.key, player, !online,
+                                if (!settings.preview) stringResource(R.string.preview_off) else null,
+                                Modifier.width(if (compact) 128.dp else 171.dp), ::openPreviewFull,
+                            )
+                            Spacer(Modifier.width(16.dp))
+                            guideDetails(Modifier.weight(1f).fillMaxHeight())
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        guideGrid(Modifier.weight(1f).fillMaxWidth(), false)
+                    } else Row(Modifier.weight(1f)) {
                         // Categories (176)
                         Column(
                             Modifier.width(if (compact) 160.dp else 176.dp).fillMaxHeight().background(c.surfaceContainerLow, RoundedCornerShape(24.dp))
@@ -732,7 +1049,7 @@ fun LiveScreen(
                                 schedule, item.channel.archiveDays > 0, now, scheduleFocus, scheduleState,
                                 Modifier.weight(1f).fillMaxWidth().onFocusChanged { if (it.hasFocus) area = Area.Schedule }.remoteKeys(::scheduleKeys),
                                 onFocus = { focusedProgramme = it },
-                            ) { p -> if (p.start <= System.currentTimeMillis()) watch(focusedRow[0], item) else programmeMenu(item, p) }
+                            ) { p -> if (p.start <= System.currentTimeMillis()) watch(focusedRow[0], item) else programmeMenu(item, p, focusedRow[0]) }
                             else DetailsPanel(item, schedule, now, Modifier.weight(1f).fillMaxWidth())
                         }
                     }
@@ -749,6 +1066,9 @@ fun LiveScreen(
                                     Area.Schedule -> listOf(h(ok, R.string.hint_watch_or_details), h("◀", R.string.hint_to_channel))
                                     Area.Rail -> listOf(h(ok, R.string.hint_open), h("▶", R.string.hint_back), h(stringResource(R.string.key_back), R.string.hint_exit))
                                     Area.Top -> listOf(h(ok, R.string.hint_select), h("▼", R.string.hint_to_list))
+                                    Area.Grid -> if (cursor.inRow) listOf(
+                                        h(ok, R.string.hint_watch_or_details), h("◀ ▶", R.string.hint_programmes), h(stringResource(R.string.key_back), R.string.hint_to_channel), h(longOk, R.string.hint_menu),
+                                    ) else listOf(h("▶", R.string.hint_programmes), h(ok, R.string.hint_window_full), h(longOk, R.string.hint_menu))
                                 },
                                 Modifier,
                             )
@@ -759,7 +1079,14 @@ fun LiveScreen(
                 }
             }
             if (!compact) Rail(
-                listOf(RailEntry(R.drawable.ic_live_tv_fill, stringResource(R.string.section_live), true, railLive) { scope.launch { focusRow(focusedRow[0]) } }),
+                listOf(
+                    RailEntry(R.drawable.ic_live_tv_fill, stringResource(R.string.section_live), !guide, railLive) {
+                        if (guide) onGuide(false) else scope.launch { focusRow(focusedRow[0]) }
+                    },
+                    RailEntry(R.drawable.ic_guide, guideLabel, guide, railGuide) {
+                        if (!guide) onGuide(true) else scope.launch { focusRow(focusedRow[0]) }
+                    },
+                ),
                 listOf(RailEntry(R.drawable.ic_settings, stringResource(R.string.section_settings), false, railSettings) { fromSettings = true; onOpenSettings() }),
                 // Off TV the system bars overlap the screen edges: the rail keeps clear of them.
                 (if (tv) Modifier else Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.Start)))
@@ -768,7 +1095,7 @@ fun LiveScreen(
                         if (e.type != KeyEventType.KeyDown || e.key != Key.DirectionRight) return@onPreviewKeyEvent false
                         when (beforeRail) {
                             Area.Categories -> focusCategory(focusedCat[0])
-                            Area.Top -> runCatching { searchFocus.requestFocus() }
+                            Area.Top -> if (guide) scope.launch { focusRow(focusedRow[0]) } else runCatching { searchFocus.requestFocus() }
                             else -> scope.launch { focusRow(focusedRow[0]) }
                         }
                         true
@@ -779,15 +1106,22 @@ fun LiveScreen(
                     area = Area.Rail
                 }
             }
-        } else {
-            // Phone (6.7)
-            Column(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 16.dp)) {
-                Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    }
+    val phoneLayout: @Composable BoxScope.() -> Unit = {
+            // Phone (6.7): «Эфир» or «Телегид» over the bottom navigation.
+            Column(Modifier.fillMaxSize()) {
+            Column(Modifier.weight(1f).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)).padding(horizontal = 16.dp)) {
+                if (guide) Row(
+                    Modifier.padding(top = 8.dp).fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (!online) OfflineMark()
+                    guideTools(48.dp)
+                } else Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (!online) OfflineMark()
                     SearchField(query, { query = it }, searchHint, searchFocus, Modifier.weight(1f), height = 48.dp)
                     ToolButton(viewIcon, viewLabel, size = 48.dp, onClick = toggleView)
                     ToolButton(R.drawable.ic_sort, orderLabel, size = 48.dp, onClick = ::sortMenu)
-                    ToolButton(R.drawable.ic_settings, stringResource(R.string.section_settings), size = 48.dp) { fromSettings = true; onOpenSettings() }
                 }
                 preview?.let { p ->
                     VideoWindow(
@@ -799,11 +1133,28 @@ fun LiveScreen(
                         Spacer(Modifier.fillMaxWidth().height(6.dp).progressLine(cur.progress(now), Ext.nowTrack, Ext.now, 2.dp))
                     }
                 }
-                CategoryChips(groups, group, groupSearch, { group = it }, ::groupMenu)
-                channelArea(Modifier.weight(1f), true)
+                if (guide) {
+                    if (epgSources?.isEmpty() == true) guideDetails(Modifier.fillMaxWidth().padding(vertical = 8.dp))
+                    Spacer(Modifier.height(8.dp))
+                    guideGrid(Modifier.weight(1f).fillMaxWidth(), true)
+                } else {
+                    CategoryChips(groups, group, groupSearch, { group = it }, ::groupMenu)
+                    channelArea(Modifier.weight(1f), true)
+                }
             }
-            task?.let { TaskPill(it, Modifier.align(Alignment.BottomCenter).safeDrawingPadding().padding(bottom = 16.dp)) }
-        }
+            PhoneNav(if (guide) Section.Guide else Section.Live) { s ->
+                when (s) {
+                    Section.Live -> onGuide(false)
+                    Section.Guide -> onGuide(true)
+                    Section.More -> onOpenSettings()
+                }
+            }
+            }
+            task?.let { TaskPill(it, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 92.dp)) }
+            }
+
+    Box(Modifier.fillMaxSize()) {
+        if (wide) wideLayout() else phoneLayout()
 
         if (fullscreen) {
             PlayerScreen(
@@ -815,7 +1166,26 @@ fun LiveScreen(
                     scope.launch { repo.watched(ch.key) }
                 },
                 find = { find(it) },
-            )
+                panelOpen = panel != VideoPanel.None,
+                onSide = { a -> openPanel(panel.next(a)) },
+            ) { jump ->
+                val pick = { item: ChannelItem, g: ChannelGroup? ->
+                    panel = VideoPanel.None
+                    jump(Zap.Pick(item.channel.key, g))
+                }
+                val side = { a: Action -> openPanel(panel.next(a)); true }
+                val close = { panel = VideoPanel.None }
+                when (panel) {
+                    VideoPanel.Channels -> {
+                        val panelItems = remember(panelFilter, settings.epgShift) { repo.items(panelFilter) }.collectAsLazyPagingItems()
+                        val title = groupsAll?.find { it.group == panelGroup }?.title ?: stringResource(R.string.hint_channels)
+                        ChannelsPanel(title, panelItems, panelStart, returnKey, now, { pick(it, panelGroup) }, side, close)
+                    }
+                    VideoPanel.Categories -> CategoriesPanel(groupsAll.orEmpty(), panelGroup, { g -> panelGroup = g; openPanel(VideoPanel.Channels) }, side, close)
+                    VideoPanel.Recent -> RecentPanel(recent, returnKey, now, { pick(it, null) }, side, close)
+                    VideoPanel.None -> {}
+                }
+            }
         }
         sheet?.let { s ->
             ActionSheet(s.title, s.channel?.channel, s.groups, wide) {
@@ -824,7 +1194,7 @@ fun LiveScreen(
             }
         }
         toast?.let { (text, _) ->
-            Toast(text, Modifier.align(Alignment.BottomCenter).padding(bottom = if (wide) 84.dp else 96.dp))
+            Toast(text, Modifier.align(Alignment.BottomCenter).then(if (wide) Modifier.padding(bottom = 84.dp) else Modifier.navigationBarsPadding().padding(bottom = 136.dp))) // over the task pill
         }
     }
     dialog?.invoke()

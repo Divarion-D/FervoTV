@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 
 /** Which list of the live section (LIVE-010): service lists, a user collection or a provider category. */
@@ -77,7 +78,12 @@ data class ChannelFilter(
     val search: String = "",
     val sort: ChannelSort = ChannelSort.PROVIDER,
     val visibility: Visibility = Visibility.VISIBLE,
+    /** Only channels with a guide (EPG-010 "Показывать каналы без программы" off). */
+    val guideOnly: Boolean = false,
 )
+
+/** A programme found in the grid (EPG-010) and the channel it is on. */
+data class ProgrammeHit(val key: String, val channel: String, val programme: Programme)
 
 /** A list with its count for the category column (LIVE-001, LIVE-010); [hidden] = a hidden category (LIVE-012). */
 data class GroupCount(val group: ChannelGroup, val title: String, val count: Int, val hidden: Boolean = false)
@@ -211,8 +217,10 @@ class PlaylistStore(private val db: AppDb, private val clock: () -> Long = Syste
      * Rows of the programme grid (EPG-008): channels of the list (paged like [items]) with their programmes
      * overlapping [from, to) in screen time, ordered and cut so they don't overlap: ready to draw one canvas per row.
      */
-    fun guide(f: ChannelFilter, shift: Int, from: Long, to: Long, ticks: Flow<Long> = minuteTicks()): Flow<PagingData<GuideRow>> =
-        paged(ticks) { guideSource(f, shift, from, to) }
+    fun guide(f: ChannelFilter, shift: Int, from: Long, to: Long, initialKey: Int? = null, ticks: Flow<Long> = minuteTicks()): Flow<PagingData<GuideRow>> =
+        // Rows carry a day of programmes: far pages are dropped instead of kept for a 50 000-channel list, and a long
+        // jump (CH± held, a found channel) loads where it lands instead of every page on the way.
+        paged(ticks, initialKey, maxSize = Defaults.CHANNEL_PAGE_SIZE * 6, jump = true) { guideSource(f, shift, from, to) }
 
     internal fun guideSource(f: ChannelFilter, shift: Int, from: Long, to: Long) =
         listSource(f) { limit, offset, now -> guidePage(rows(f, limit, offset), shift, from, to, now) }
@@ -221,6 +229,9 @@ class PlaylistStore(private val db: AppDb, private val clock: () -> Long = Syste
     suspend fun channelAt(f: ChannelFilter, index: Int): Channel? = withContext(Dispatchers.IO) {
         rows(f, 1, index).firstOrNull()?.channel
     }
+
+    /** The first [n] channels of the list, without their programmes (search results). */
+    suspend fun first(f: ChannelFilter, n: Int): List<ChannelItem> = withContext(Dispatchers.IO) { rows(f, n, 0).map { it.item(null, null) } }
 
     /** Position of the channel [key] in the list (LIVE-017: focus where the user left), null if it isn't there. */
     suspend fun indexOf(f: ChannelFilter, key: String): Int? = withContext(Dispatchers.IO) {
@@ -270,6 +281,34 @@ class PlaylistStore(private val db: AppDb, private val clock: () -> Long = Syste
         nonOverlapping(epg.programmes(listOf(epgId), from - shiftMs, to - shiftMs).map { it.shifted(shiftMs) })
     }
 
+    /**
+     * EPG-010 "Поиск" in the grid: programmes of the list's channels whose title matches [text] like the channel search
+     * (every word starts a word of the title), not ended at [from], soonest first; times in screen time.
+     */
+    suspend fun findProgrammes(f: ChannelFilter, shift: Int, text: String, from: Long, limit: Int): List<ProgrammeHit> =
+        withContext(Dispatchers.IO) {
+            val (list, args) = f.sql(
+                "ch.ckey AS ckey, ch.epgId AS epgId, COALESCE(st.epgShift, es.shift) AS shift, COALESCE(st.name, ch.name) AS name",
+                order = false, where = " AND ch.epgId IS NOT NULL",
+            )
+            // Guide time: a shift can move a programme by up to ±14 h, so ask a bit wider and cut after shifting.
+            val sql = "SELECT q.ckey, q.shift, p.start, p.stop, p.title, p.description, q.name FROM programme p JOIN ($list) q ON q.epgId = p.channelId" +
+                " WHERE p.stop > ? ORDER BY p.start"
+            val out = LinkedHashMap<Pair<String, Long>, ProgrammeHit>()
+            // ponytail: titles are matched in Kotlin (SQLite folds only ASCII case), scanning the list's future guide once;
+            // an FTS table over programme titles if this gets slow on big guides.
+            db.query(SimpleSQLiteQuery(sql, (args + (from - SHIFT_MAX_MS)).toTypedArray())).use { c ->
+                while (c.moveToNext() && out.size < limit) {
+                    val title = c.getString(4)
+                    if (!matchesWords(title, text)) continue
+                    val ms = (if (c.isNull(1)) shift else c.getInt(1)) * 60_000L
+                    val p = Programme(c.getLong(2) + ms, c.getLong(3) + ms, title, c.getString(5))
+                    if (p.stop > from) out.getOrPut(c.getString(0) to p.start) { ProgrammeHit(c.getString(0), c.getString(6), p) }
+                }
+            }
+            out.values.sortedBy { it.programme.start }
+        }
+
     private fun rows(f: ChannelFilter, limit: Int, offset: Int): List<ItemRow> =
         dao.items(f.query(ITEM_COLUMNS, order = true, limit = " LIMIT $limit OFFSET $offset"))
 
@@ -305,11 +344,21 @@ class PlaylistStore(private val db: AppDb, private val clock: () -> Long = Syste
     private fun <T : Any> listSource(f: ChannelFilter, load: (limit: Int, offset: Int, now: Long) -> Pair<List<T>, Long>) =
         ListSource(db, f.tables(), { dao.count(f.query("COUNT(*)", order = false)) }, clock, load)
 
-    /** A Pager over [source]; [ticks] reload the pages once a programme they show has ended. */
-    private fun <T : Any> paged(ticks: Flow<Long>, source: () -> ListSource<T>) = channelFlow {
+    /**
+     * A Pager over [source]; [ticks] reload the pages once a programme they show has ended. [initialKey] = the row the
+     * first page starts at (a new time window of the grid opens where the user is), [maxSize] = rows kept loaded.
+     */
+    private fun <T : Any> paged(
+        ticks: Flow<Long>, initialKey: Int? = null, maxSize: Int = PagingConfig.MAX_SIZE_UNBOUNDED, jump: Boolean = false,
+        source: () -> ListSource<T>,
+    ) = channelFlow {
         val current = AtomicReference<ListSource<T>?>()
         launch { ticks.collect { t -> current.get()?.let { if (t >= it.validUntil) it.invalidate() } } }
-        Pager(PagingConfig(pageSize = Defaults.CHANNEL_PAGE_SIZE, enablePlaceholders = true)) { source().also(current::set) }
+        val config = PagingConfig(
+            pageSize = Defaults.CHANNEL_PAGE_SIZE, enablePlaceholders = true, maxSize = maxSize,
+            jumpThreshold = if (jump) Defaults.CHANNEL_PAGE_SIZE * 3 else PagingSource.LoadResult.Page.COUNT_UNDEFINED,
+        )
+        Pager(config, initialKey) { source().also(current::set) }
             .flow.collect { send(it) }
     }
 
@@ -385,8 +434,11 @@ internal class ListSource<T : Any>(
     }
 
     init {
-        db.invalidationTracker.addObserver(observer)
-        registerInvalidatedCallback { db.invalidationTracker.removeObserver(observer) }
+        // Not on the calling thread: Paging builds sources on the main thread, and the tracker's observer lock can be
+        // held for seconds by its refresh waiting for a write transaction (an import, logo matching) — an ANR.
+        // One thread for both keeps "add" before "remove".
+        OBSERVERS.execute { db.invalidationTracker.addObserver(observer) }
+        registerInvalidatedCallback { OBSERVERS.execute { db.invalidationTracker.removeObserver(observer) } }
     }
 
     override val jumpingSupported get() = true
@@ -417,6 +469,9 @@ internal class ListSource<T : Any>(
     }
 }
 
+/** Registers and removes the paging sources' table observers off the main thread, in order. */
+private val OBSERVERS = Executors.newSingleThreadExecutor { r -> Thread(r, "paging-observers").apply { isDaemon = true } }
+
 private val SERVICE_TABLES = arrayOf("source", "category", "channel", "channel_state", "category_state", "recent", "collection_channel")
 
 private val GUIDE_TABLES = arrayOf("source", "channel", "channel_state", "epg_channel", "epg_source", "programme")
@@ -445,7 +500,12 @@ private fun ChannelFilter.tables(): Array<String> =
  */
 private fun ChannelFilter.query(
     select: String, order: Boolean, where: String = "", whereArgs: List<Any> = emptyList(), limit: String = "",
-): SimpleSQLiteQuery {
+): SimpleSQLiteQuery = sql(select, order, where, whereArgs, limit).let { (sql, args) -> SimpleSQLiteQuery(sql, args.toTypedArray()) }
+
+/** [query] as SQL text and arguments, to be used inside a bigger query. */
+private fun ChannelFilter.sql(
+    select: String, order: Boolean, where: String = "", whereArgs: List<Any> = emptyList(), limit: String = "",
+): Pair<String, List<Any>> {
     val args = ArrayList<Any>()
     // A hidden category hides its channels from "Все" and "С архивом", not from the lists the user made.
     val hidden = if (group == ChannelGroup.All || group == ChannelGroup.Archive) "(COALESCE(st.hidden, 0) OR COALESCE(cs.hidden, 0))"
@@ -487,6 +547,7 @@ private fun ChannelFilter.query(
         Visibility.HIDDEN -> sql.append(" AND $hidden")
         Visibility.ALL -> {}
     }
+    if (guideOnly) sql.append(" AND ch.epgId IS NOT NULL")
     val words = searchText(search).split(' ').filter { it.isNotEmpty() }
     if (words.isNotEmpty()) {
         sql.append(" AND ch.id IN (SELECT rowid FROM channel_fts WHERE channel_fts MATCH ?)")
@@ -496,8 +557,10 @@ private fun ChannelFilter.query(
     args.addAll(whereArgs)
     if (order) sql.append(" ORDER BY ").append(orderBy())
     sql.append(limit)
-    return SimpleSQLiteQuery(sql.toString(), args.toTypedArray())
+    return sql.toString() to args
 }
+
+private const val SHIFT_MAX_MS = (Defaults.EPG_SHIFT_MAX + 60) * 60_000L
 
 private fun ChannelFilter.orderBy(): String {
     val base = when (group) {

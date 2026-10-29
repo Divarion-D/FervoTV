@@ -82,6 +82,10 @@ data class Settings(
     val rememberLive: Boolean = Defaults.REMEMBER_LIVE,
     /** Rows or tiles in the live section (LIVE-005); null = by screen: rows on a wide one, tiles on a phone. */
     val liveTiles: Boolean? = null,
+    /** LIVE-022: the live section opens as the programme grid instead of the list. */
+    val liveGuide: Boolean = Defaults.LIVE_GUIDE,
+    /** EPG-010: the grid lists channels without a programme too. */
+    val guideEmpty: Boolean = Defaults.GUIDE_EMPTY,
 )
 
 /** LIVE-016. [PROVIDER] is the provider's order with the user's manual order (LIVE-013) on top of it. */

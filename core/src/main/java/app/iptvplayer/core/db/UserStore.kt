@@ -184,6 +184,12 @@ abstract class UserDao {
     )
     abstract suspend fun recentKeys(sourceKey: String, limit: Int): List<String>
 
+    @Query(
+        """SELECT r.ckey, r.watchedAt FROM recent r WHERE EXISTS (SELECT 1 FROM channel ch WHERE ch.sourceId = $ACTIVE AND ch.ckey = r.ckey)
+        ORDER BY r.watchedAt DESC LIMIT :limit"""
+    )
+    abstract suspend fun recent(sourceKey: String, limit: Int): List<Recent>
+
     // --- LIVE-015 ---
     @Query(
         """SELECT DISTINCT ch.name || ' → ' || st.name FROM channel ch JOIN category cat ON cat.id = ch.categoryId
@@ -326,6 +332,9 @@ class UserStore(private val db: AppDb) {
     /** Keys of the last watched channels of the saved source, most recent first. */
     suspend fun recentKeys(sourceKey: String, limit: Int = Defaults.RECENT_CHANNELS): List<String> =
         dao.recentKeys(sourceKey, limit)
+
+    /** The same with the time each was watched (LIVE-020). */
+    suspend fun recent(sourceKey: String, limit: Int = Defaults.RECENT_CHANNELS): List<Recent> = dao.recent(sourceKey, limit)
 
     /** LIVE-015: what [reset] would undo for [category] (null = every category of the source). */
     fun edits(sourceKey: String, category: String?): Edits {

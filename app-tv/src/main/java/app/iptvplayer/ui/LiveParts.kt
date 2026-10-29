@@ -41,6 +41,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -175,6 +177,29 @@ private fun RailItem(e: RailEntry, expanded: Boolean) {
         if (expanded) {
             Spacer(Modifier.width(16.dp))
             Text(e.label, style = TvType.label, color = fg, maxLines = 1)
+        }
+    }
+}
+
+// --- Phone: bottom navigation (UI-007, 33-design 4.5) ---
+
+/** Sections of the phone's bottom bar; «Ещё» holds the settings for now. */
+enum class Section { Live, Guide, More }
+
+@Composable
+fun PhoneNav(current: Section, onSelect: (Section) -> Unit) {
+    NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+        for ((s, icon, label) in listOf(
+            Triple(Section.Live, if (current == Section.Live) R.drawable.ic_live_tv_fill else R.drawable.ic_live_tv, R.string.section_live),
+            Triple(Section.Guide, R.drawable.ic_guide, R.string.section_guide),
+            Triple(Section.More, R.drawable.ic_more, R.string.section_more),
+        )) {
+            NavigationBarItem(
+                selected = s == current,
+                onClick = { if (s != current) onSelect(s) },
+                icon = { Icon(painterResource(icon), contentDescription = null) },
+                label = { Text(stringResource(label)) },
+            )
         }
     }
 }
