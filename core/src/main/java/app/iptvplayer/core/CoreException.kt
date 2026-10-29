@@ -33,6 +33,9 @@ enum class ErrorCode {
     XTREAM_BAD_EPG,
     XTREAM_BAD_CHANNELS,
 
+    /** Xtream: the film / series list or a series' episodes aren't what was expected (SRC-011). */
+    XTREAM_BAD_LIBRARY,
+
     /** BAK-011: not a Fervo TV settings file. */
     BACKUP_FOREIGN,
 

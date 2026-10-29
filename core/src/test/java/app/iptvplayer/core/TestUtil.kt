@@ -5,6 +5,9 @@ import java.io.InputStream
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
 import java.io.Reader
+import java.net.ServerSocket
+import java.net.Socket
+import java.util.concurrent.CopyOnWriteArrayList
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -117,4 +120,68 @@ fun gzipped(src: InputStream): InputStream {
         }.use { src.copyTo(it, 1 shl 16) }
     }
     return input
+}
+
+/**
+ * M3U with [n] films (`type="movie"`) in 40 categories, generated while it's read. Film i: «|EN| Фильм i <word>
+ * (year)», where the word cycles through 20, so a word matches 1/20 of the catalogue.
+ */
+class SyntheticVodM3u(private val n: Int) : Reader() {
+    private var i = -1
+    private var chunk = "#EXTM3U\n"
+    private var pos = 0
+
+    override fun read(buf: CharArray, off: Int, len: Int): Int {
+        if (pos == chunk.length) {
+            if (++i >= n) return -1
+            chunk = "#EXTINF:-1 type=\"movie\" tvg-logo=\"http://p/$i.jpg\" group-title=\"Жанр ${i % 40}\",|EN| Фильм $i ${WORDS[i % 20]} (${1950 + i % 70})\n" +
+                "http://s/movie/$i.mkv\n"
+            pos = 0
+        }
+        val k = minOf(len, chunk.length - pos)
+        chunk.toCharArray(buf, off, pos, pos + k)
+        pos += k
+        return k
+    }
+
+    override fun close() {}
+
+    companion object {
+        val WORDS = listOf(
+            "приключения", "комедия", "драма", "детектив", "фантастика", "мелодрама", "триллер", "ужасы", "боевик", "семейный",
+            "история", "война", "мюзикл", "вестерн", "спорт", "биография", "аниме", "документальный", "криминал", "мистика",
+        )
+    }
+}
+
+/**
+ * A local HTTP server for tests (no real provider): every GET gets [answer] for its path with query → (status, body).
+ * [requests] = the paths asked, in order.
+ */
+class FakeServer(private val answer: (String) -> Pair<Int, String>) : AutoCloseable {
+    private val socket = ServerSocket(0)
+    val url = "http://127.0.0.1:${socket.localPort}"
+    val requests = CopyOnWriteArrayList<String>()
+
+    init {
+        thread(isDaemon = true) {
+            while (true) {
+                val c = runCatching { socket.accept() }.getOrNull() ?: break
+                thread(isDaemon = true) { c.use(::serve) }
+            }
+        }
+    }
+
+    private fun serve(c: Socket) {
+        val r = c.getInputStream().bufferedReader()
+        val line = r.readLine() ?: return
+        while (!r.readLine().isNullOrEmpty()) {}
+        val path = line.split(' ')[1]
+        requests += path
+        val (status, body) = answer(path)
+        val b = body.toByteArray()
+        c.getOutputStream().write("HTTP/1.1 $status X\r\nContent-Length: ${b.size}\r\nConnection: close\r\n\r\n".toByteArray() + b)
+    }
+
+    override fun close() = socket.close()
 }

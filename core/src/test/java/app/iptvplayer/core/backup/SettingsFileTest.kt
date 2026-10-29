@@ -8,7 +8,12 @@ import app.iptvplayer.core.Repository
 import app.iptvplayer.core.db.AppDb
 import app.iptvplayer.core.db.ChannelFilter
 import app.iptvplayer.core.db.ChannelGroup
+import app.iptvplayer.core.db.LibraryStore
 import app.iptvplayer.core.db.PlaylistStore
+import app.iptvplayer.core.db.VodFilter
+import app.iptvplayer.core.db.VodGroup
+import app.iptvplayer.core.model.VodEntry
+import app.iptvplayer.core.model.VodKind
 import app.iptvplayer.core.loadPage
 import app.iptvplayer.core.model.Channel
 import app.iptvplayer.core.model.ChannelSort
@@ -92,7 +97,26 @@ class SettingsFileTest {
             addToCollection(id, playlist[2].key)
             addToCollection(id, playlist[1].key)
             createCollection("Пустая")
+
+            // Films and series (P2.1): edits, a collection and watching go to the file too.
+            importLibrary(db)
+            val films = firstVod(VodFilter(account.cacheKey(), VodKind.MOVIE), 10)
+            val show = firstVod(VodFilter(account.cacheKey(), VodKind.SERIES), 10).single()
+            setVodFavorite(films[1].key, true)
+            setVodHidden(listOf(films[0].key), true)
+            renameVod(show.key, "Моё шоу")
+            renameVodCategory(account, VodKind.MOVIE, "Кино", "Фильмы")
+            reorderVod(account, VodKind.MOVIE, VodGroup.Category("Кино"), listOf(films[1].key, films[0].key))
+            addToVodCollection(createVodCollection(VodKind.SERIES, "Смотреть"), show.key)
+            savePosition(films[1], 120_000, 7_200_000)
+            setWatched(films[0], true)
         }
+    }
+
+    private fun importLibrary(db: AppDb) = LibraryStore(db).import(account.cacheKey(), account.userKey()) { lib ->
+        lib.item(VodEntry(VodKind.MOVIE, "${account.userKey()}|movie|1", "Первый фильм", "Кино", "http://iptv.example/movie/demo/secret/1.mp4"))
+        lib.item(VodEntry(VodKind.MOVIE, "${account.userKey()}|movie|2", "Второй фильм", "Кино", "http://iptv.example/movie/demo/secret/2.mp4"))
+        lib.item(VodEntry(VodKind.SERIES, "${account.userKey()}|series|3", "Шоу", "Сериалы"))
     }
 
     private fun save(repo: Repository, withPassword: Boolean): ByteArray =
@@ -124,6 +148,9 @@ class SettingsFileTest {
             loadPage { PlaylistStore(dbs.last()).itemSource(ChannelFilter(account.cacheKey(), ChannelGroup.Favorites), 0) }.data
         }
         assertEquals(listOf("Кино"), favorites.map { it.channel.name })
+        importLibrary(dbs.last())
+        val films = runBlocking { fresh.firstVod(VodFilter(account.cacheKey(), VodKind.MOVIE, VodGroup.Favorites), 10) }
+        assertEquals(listOf("Второй фильм" to 120_000L), films.map { it.name to it.progress?.position })
     }
 
     @Test
@@ -146,7 +173,7 @@ class SettingsFileTest {
         assertEquals(FORMAT_VERSION, m.getInt("formatVersion"))
         assertEquals("0.2", m.getString("appVersion"))
         assertTrue(m.getString("createdAt").matches(Regex("""\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ""")))
-        assertEquals("""["source","settings","guide","channels"]""", m.getJSONArray("parts").toString())
+        assertEquals("""["source","settings","guide","channels","library","watched"]""", m.getJSONArray("parts").toString())
     }
 
     @Test

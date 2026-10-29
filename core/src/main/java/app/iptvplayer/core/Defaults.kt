@@ -90,6 +90,18 @@ object Defaults {
     /** Channels loaded per page of the grid (Paging 3); the first load is 3 pages. */
     const val CHANNEL_PAGE_SIZE = 60
 
+    /** Films / series loaded per page of a catalogue (Paging 3). */
+    const val VOD_PAGE_SIZE = 60
+
+    /** An Xtream series' stored episodes are asked again (get_series_info) when older than this. */
+    const val EPISODES_MAX_AGE_MS = 24 * 3_600_000L
+
+    /** VOD-008: watched up to this share of the duration = watched. */
+    const val WATCHED_SHARE = 0.95
+
+    /** VOD-010: a position this close to the end isn't kept, the item counts as watched. */
+    const val END_MARGIN_MS = 10_000L
+
     /** Guide programmes written per transaction while importing XMLTV. */
     const val EPG_BATCH_SIZE = 2_000
 

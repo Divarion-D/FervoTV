@@ -210,6 +210,7 @@
     <string name="err_xtream_not_xtream">Xtream: the server doesn\'t answer like Xtream Codes</string>
     <string name="err_xtream_bad_epg">Xtream: the server didn\'t return a programme guide</string>
     <string name="err_xtream_bad_channels">Xtream: the server didn\'t return a channel list</string>
+    <string name="err_xtream_bad_library">Xtream: the server didn\'t return a list of films or episodes</string>
     <string name="err_backup_foreign">This isn\'t a Fervo TV settings file. Nothing was changed.</string>
     <string name="err_backup_corrupt">The file is damaged or incomplete. Nothing was changed.</string>
     <string name="err_backup_newer">The file was made by a newer version of Fervo TV (format %1$s). Update the app and try again. Nothing was changed.</string>

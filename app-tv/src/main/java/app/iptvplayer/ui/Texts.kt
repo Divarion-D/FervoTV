@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import app.iptvplayer.R
 import app.iptvplayer.core.CoreException
@@ -28,11 +29,17 @@ import java.util.Locale
  * (English, the fallback) and res/values-ru.
  */
 
-/** A text to show later, worded when shown (so a language switch rewords it). */
+/** A text to show later, worded when shown (so a language switch rewords it); a [DateTime] argument is formatted then too. */
 class Txt(@StringRes val id: Int, vararg val args: Any) {
     @Composable
-    fun text(): String = stringResource(id, *args)
+    fun text(): String {
+        val ctx = LocalContext.current
+        return stringResource(id, *args.map { if (it is DateTime) dateTimeText(ctx, it.ms) else it }.toTypedArray())
+    }
 }
+
+/** A moment for [Txt], written in the interface language's format when shown, not when the text was made. */
+class DateTime(val ms: Long)
 
 @StringRes
 fun ChannelSort.title(): Int = when (this) {
@@ -83,6 +90,7 @@ fun errorText(ctx: Context, e: Throwable): String = when (e) {
         ErrorCode.XTREAM_NOT_XTREAM -> ctx.getString(R.string.err_xtream_not_xtream)
         ErrorCode.XTREAM_BAD_EPG -> ctx.getString(R.string.err_xtream_bad_epg)
         ErrorCode.XTREAM_BAD_CHANNELS -> ctx.getString(R.string.err_xtream_bad_channels)
+        ErrorCode.XTREAM_BAD_LIBRARY -> ctx.getString(R.string.err_xtream_bad_library)
         ErrorCode.BACKUP_FOREIGN -> ctx.getString(R.string.err_backup_foreign)
         ErrorCode.BACKUP_CORRUPT -> ctx.getString(R.string.err_backup_corrupt)
         ErrorCode.BACKUP_NEWER -> ctx.getString(R.string.err_backup_newer, e.detail.orEmpty())

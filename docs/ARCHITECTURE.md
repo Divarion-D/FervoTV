@@ -3,7 +3,8 @@
 > Это описание **текущего** состояния (после шагов P0.1 — разбиение на модули, P0.2 — база данных и потоковый
 > импорт, P0.3 — интерфейс движка воспроизведения и остальные функции P0, P0.4 — замеры прокрутки сетки и тайм-аут буферизации,
 > P1.1 — слой данных P1: телегид, номера каналов, пользовательские данные каналов; P1.2 — раздел «Эфир» для TV:
-> строки, превью, боковое меню, меню действий; P1.3 — сетка телегида, панели поверх видео, телефон с нижней навигацией). Целевая архитектура —
+> строки, превью, боковое меню, меню действий; P1.3 — сетка телегида, панели поверх видео, телефон с нижней навигацией; P2.1 — слой данных видеотеки: фильмы,
+> сериалы, эпизоды, просмотр и история). Целевая архитектура —
 > [`docs/spec/01-architecture.md`](spec/01-architecture.md).
 
 Три Gradle-модуля:
@@ -47,7 +48,7 @@ core/src/main/java/app/iptvplayer/core/
                            (сеанс над экранами), WatchTimer — порог «Недавних» (минута без перерыва, LIVE-010)
   player/ExoEngine.kt      реализация на Media3 ExoPlayer; recovery() — HLS-повтор и возврат к эфиру, errorKind() — категория ошибки
   Qr.kt                    qrModules(text): QR-код (ZXing, только кодировщик) как матрица модулей
-  db/Db.kt                 Room: AppDb (версия 2, MIGRATION_1_2), таблицы плейлиста source / category / channel / channel_fts,
+  db/Db.kt                 Room: AppDb (версия 3, MIGRATION_1_2, MIGRATION_2_3), таблицы плейлиста source / category / channel / channel_fts,
                            PlaylistDao, ItemRow, changes() (поток изменений таблиц), searchText(), matchesWords()
   db/PlaylistStore.kt      импорт пачками; ChannelFilter (ChannelGroup, сортировка, Visibility, guideOnly) → SQL; выдача: категории,
                            список групп, строки с «сейчас/далее», строки сетки, канал по позиции / номеру / ключу,
@@ -57,14 +58,26 @@ core/src/main/java/app/iptvplayer/core/
                            привязка каналов (rebind), автосопоставление, короткий EPG Xtream, запросы программы
   db/UserStore.kt          пользовательские данные: channel_state / category_state / channel_order / collection /
                            collection_channel / recent, UserDao; избранное, скрытие, имена, порядок, подборки, недавние, сброс
+  db/LibraryStore.kt       видеотека (P2.1): таблицы library / vod_category / vod / vod_fts / episode, LibraryDao; импорт
+                           пачками (Import: item, m3u — разбор M3U-сериалов), VodFilter (VodGroup, VodSort, Visibility) → SQL,
+                           groups / categories / items (свой ListSource) / first / item / indexOf, эпизоды, LibraryState
+  db/LibraryUser.kt        данные пользователя видеотеки: vod_state / vod_category_state / vod_order / vod_collection /
+                           vod_collection_item / watch, LibraryUserDao; избранное, скрытие, имена, порядок, подборки, сброс,
+                           позиции и отметки (finished()), история, недосмотренное, dump / replace для файла настроек
+  model/Library.kt         VodKind, VodSort, VodItem, Episode, Progress; VodEntry / EpisodeEntry — что отдаёт источник
+  source/Titles.kt         чистая логика видеотеки: cleanTitle (VOD-007), episodeMark / episodeTitle / showKey (SRC-010),
+                           m3uSection — раздел записи M3U, yearOf
+  source/xtream/XtreamLibrary.kt  loadXtreamLibrary (категории, get_vod_streams, get_series — по элементу), loadXtreamEpisodes
+                           (get_series_info), xtreamOfM3uUrl / xtreamAccepted (SRC-012)
   epg/Xmltv.kt             parseXmltv(input, wants, onChannel, onProgramme) — XmlPullParser потоково; unpacked() — gzip
                            по сигнатуре; parseXmltvTime() — время XMLTV с часовым поясом
   epg/EpgMatch.kt          EpgIndex (точная привязка), autoMatch / suggestEpg (похожесть названий) — чистая логика
   epg/Guide.kt             nonOverlapping(), guideCells() — передачи строки сетки без наложений и пропусков; математика
                            сетки: floorTo, guideTicks (метки шкалы), openingView («сейчас» на трети), guideWindow (окно
                            времени строк), focusCells (пропуски по 30 мин), guideStep (◀▶ пульта), viewRange; ago() — «5 мин назад»
-  source/m3u/M3uParser.kt  parseM3u(reader, baseUrl, onEpgUrls) { channel } — построчно; parseM3u(text) -> List<Channel> для тестов
-  source/xtream/Xtream.kt  loadXtream(source, onCategory, onChannel): список каналов читается JsonReader-ом по элементу;
+  source/m3u/M3uParser.kt  parseM3u(reader, baseUrl, onEpgUrls) { channel } — построчно; parseM3uEntries — то же с атрибутом
+                           `type` / `tvg-type` записи (M3uEntry); parseM3u(text) -> List<Channel> для тестов
+  source/xtream/Xtream.kt  checkXtream (проверка аккаунта), loadXtream(source, onCategory, onChannel): список каналов читается JsonReader-ом по элементу;
                            xtreamXmltvUrl(), loadShortEpg() (get_short_epg)
   source/PlaylistCache.kt  чтение старого playlist.tsv (только для переноса в БД), Source.cacheKey(), Source.userKey()
   logos/LogoIndex.kt       база логотипов iptv-org: скачивание, кэш, поиск по tvg-id / названию; normName()
@@ -82,8 +95,8 @@ core/src/test/java/app/iptvplayer/core/
   db/PlaylistStoreTest.kt, db/EpgStoreTest.kt, db/UserStoreTest.kt, db/MigrationTest.kt, epg/XmltvTest.kt, epg/EpgMatchTest.kt,
   logos/LogoIndexTest.kt, logos/BackdropTest.kt, player/PlayerSessionTest.kt (+ FakeEngine),
   player/ExoRecoveryTest.kt, player/WatchTimerTest.kt, input/KeyActionTest.kt, model/PlaylistRefreshTest.kt,
-  backup/SettingsFileTest.kt, MiscTest.kt;
-  TestUtil.kt (SyntheticM3u, SyntheticXmltv, gzipped, usedHeap, loadPage), source/LegacyCache.kt (playlist.tsv для фикстур)
+  backup/SettingsFileTest.kt, MiscTest.kt, source/TitlesTest.kt, source/xtream/XtreamLibraryTest.kt, db/LibraryStoreTest.kt;
+  TestUtil.kt (SyntheticM3u, SyntheticVodM3u, SyntheticXmltv, gzipped, usedHeap, loadPage, FakeServer — локальный HTTP), source/LegacyCache.kt (playlist.tsv для фикстур)
 
 app-tv/src/main/java/app/iptvplayer/       (app-mobile/… — такая же копия)
   MainActivity.kt     App(): выбор экрана — Что нового / Setup / Настройки / загрузка / ошибка / «Эфир»; расписание обновления
@@ -271,8 +284,10 @@ app-tv/src/main/res/drawable/ic_*.xml   иконки Material Symbols Rounded (b
 SetupScreen ──Source──▶ Repository.source (SharedPreferences "iptv")
                               │
 App: LaunchedEffect(source) ──▶ Repository.load(source)  [Dispatchers.IO]
-                              ├─ M3u:    httpStream / ContentResolver ─▶ parseM3u(reader) — по строке
-                              └─ Xtream: loadXtream ─▶ player_api.php — get_live_streams по элементу
+                              ├─ M3u:    httpStream / ContentResolver ─▶ parseM3uEntries(reader) — по строке;
+                              │          m3uSection: эфир ─▶ PlaylistStore, фильм / серия ─▶ LibraryStore (тот же проход)
+                              └─ Xtream: loadXtream ─▶ player_api.php — get_live_streams по элементу;
+                                         после импорта каналов — фоном loadXtreamLibrary ─▶ LibraryStore (libraryState)
                               ▼  каналы по одному
                         PlaylistStore.import ──пачки по 1000, транзакции──▶ SQLite (fervo.db)
                                                                               │ Flow / PagingData
@@ -289,12 +304,15 @@ ChannelsScreen ◀── categories(source) (счётчики) + channels(Channe
      Пока идёт импорт, на экране старые каналы; новые подменяют их одной транзакцией в конце. Ошибка при показанном
      списке — только сообщение (Toast) и текст в настройках, сохранённое остаётся рабочим без интернета;
   3. сохранённого нет (первый запуск или новый источник) — экран загрузки с кнопкой «Настройки», при ошибке — экран ошибки.
+     Перед загрузкой нового M3U `Repository.recognize()` (SRC-012): ссылка `…/get.php?username=…&password=…`, чей аккаунт
+     сервер подтвердил (`auth = 1`), сохраняется как Xtream, и загрузка идёт уже по нему; иначе — M3U без ошибки.
+     Уже сохранённые M3U-источники не переделываются: у Xtream другие ключи, правки пользователя потерялись бы.
   Экраны подписаны на базу: после подмены категории, счётчики и сетка обновляются сами, без сброса категории,
   поиска, прокрутки и фокуса (прокрутка в начало — только когда пользователь сам меняет фильтр).
 
 ### База данных (`core/db/`)
 
-Room 2.6 (SQLite), файл `fervo.db`, версия схемы **2**, схема каждой версии экспортируется в `core/schemas/` (каждое
+Room 2.6 (SQLite), файл `fervo.db`, версия схемы **3**, схема каждой версии экспортируется в `core/schemas/` (каждое
 изменение схемы — новая версия и миграция; разрушающего сброса нет: в базе пользовательские данные).
 
 Кэш источника (пересоздаётся каждым импортом):
@@ -341,6 +359,10 @@ Room 2.6 (SQLite), файл `fervo.db`, версия схемы **2**, схем�
 каналы остаются — офлайн-старт после обновления работает), `ckey` старых строк = URL (у Xtream правильный ключ придёт
 со следующим обновлением; в версии 1 пользовательских данных не было), новые таблицы. `MigrationTest` строит базу
 версии 1 по `1.json` так, как её создавал Room, и открывает текущей версией: Room сверяет схему после миграции.
+
+**Миграция 2 → 3** (`MIGRATION_2_3`, SQL скопирован из `3.json`): только новые таблицы видеотеки — каналы, правки,
+подборки, недавние и телегид не трогаются. `MigrationTest` строит базу версии 2 по `2.json` с правками всех видов,
+телегидом и недавними и проверяет их после миграции, затем пишет в новые таблицы.
 
 - **Строка `source` — это один импорт.** Импорт создаёт новую строку с `savedAt = null` и пишет её категории и каналы
   пачками (`Defaults.IMPORT_BATCH_SIZE` = 1000 каналов на транзакцию). Экраны видят только строку с `savedAt`, поэтому
@@ -421,6 +443,58 @@ Room 2.6 (SQLite), файл `fervo.db`, версия схемы **2**, схем�
   каждый канал читается из базы по номеру.
   Логотип грузит Coil (`AsyncImage`, кэш в памяти и на диске). При `logo == null` или ошибке загрузки показываются инициалы.
 - **Поворот экрана** не пересоздаёт Activity (`configChanges` в манифесте), поэтому поток не перезапускается.
+
+### Видеотека (`LibraryStore`, `LibraryUser`, P2.1)
+
+Отдельные таблицы и **своя строка импорта** `library` (а не `source`): видеотека Xtream загружается после каналов и в
+фоне (SRC-016), а неудачная или долгая загрузка видеотеки не трогает эфир. Живые запросы эфира не изменились.
+
+| Таблица | Столбцы | Индексы |
+|---|---|---|
+| `library` | `id`, `sourceKey` (= `Source.cacheKey()`), `savedAt` (null — импорт идёт) | `sourceKey` |
+| `vod_category` | `id`, `libraryId`, `kind` (`MOVIE` / `SERIES`), `name`, `position`, `ckey` (= `userKey|movie|имя` / `userKey|series|имя`) | `(libraryId, kind, name)` unique |
+| `vod` | фильмы и сериалы: `id`, `libraryId`, `categoryId`, `kind`, `position`, `name` (как у провайдера — подпись постера), `title` / `year` / `tags` (`cleanTitle`), `sortName`, `url` (у сериала null), `poster`, `backdrop`, `rating`, `added`, `plot`, `genre`, `ckey`, `episodesAt` | `(libraryId, kind, position)`, `(libraryId, categoryId, position)`, `(libraryId, ckey)`, `(libraryId, kind, sortName, position)`, `(libraryId, kind, added, position)` |
+| `vod_fts` | FTS4, `rowid` = `vod.id`, `name` = `searchText(name)` | — |
+| `episode` | `id`, `libraryId`, `seriesKey`, `season` (0 — спецвыпуски), `episode`, `position`, `name`, `title` (чистое, null — нет), `url`, `image`, `plot`, `duration` (мс), `released`, `ckey` | `(libraryId, seriesKey, season, episode)`, `(libraryId, ckey)` |
+
+Пользовательские (импорт не трогает, всё по устойчивым ключам): `vod_state` (`vkey`, `name`, `hidden`, `favorite` — место
+в избранном), `vod_category_state` (`ckey`, `name`, `hidden`, `position`), `vod_order` (`list` = ключ категории, `vkey`,
+`position`), `vod_collection` (`id`, `kind`, `name`, `position`) + `vod_collection_item`, `watch` (`vkey`, `kind`,
+`seriesKey`/`season`/`episode` у эпизода, `title`/`episodeTitle`/`image` — снимок для истории без каталога, `position`,
+`duration`, `watched`, `watchedAt`).
+
+**Устойчивые ключи видеотеки:** M3U — фильм и эпизод: URL потока; сериал: `userKey|series|showKey(название шоу)`.
+Xtream — `server|user|movie|stream_id`, `server|user|series|series_id`, эпизод — `ключ сериала|сезон|серия` (ни пароль,
+ни контейнер в ключ не входят).
+
+- **Импорт** — как у каналов: новая строка `library`, пачки по 1000 в транзакциях, в конце одна транзакция ставит
+  `savedAt` и удаляет прежние; ошибка или отмена удаляет недописанное. Пустая видеотека — нормальный итог. На каждую
+  пачку — один индексный запрос к прежней копии по ключам: дата первого появления переносится (`added` = дата провайдера,
+  иначе когда ключ впервые появился в Fervo TV — сортировка «по дате добавления», VOD-003), считаются «добавлено /
+  обновлено» (имя, URL, постер); «удалено» — одним запросом в конце. Итог — `LibraryResult`.
+- **M3U** (SRC-010): `m3uSection(type, url, name)` — `type`/`tvg-type` решает первым, затем путь `/movie/` / `/series/`,
+  затем расширение файла фильма (с маркером серии — эпизод); остальное — эфир. Эпизоды собираются в сериал по
+  `showKey` названия до маркера (без названия до маркера — по категории); запись без маркера — очередной эпизод 1-го
+  сезона. M3U только из фильмов — не ошибка «пустой плейлист» (`PlaylistStore.import(emptyOk)`).
+- **Xtream** (SRC-011): `Repository.load()` после каналов запускает `loadXtreamLibrary` в своей фоновой области
+  (`SupervisorJob` + IO, `libraryLock`); новый `load()` отменяет идущую. `libraryState: StateFlow<LibraryState?>` —
+  `Running(count)` / `Done(LibraryResult)` / `Failed(error)` для индикатора и итога. Эпизоды — `Repository.episodes(s,
+  series)`: при первом открытии `get_series_info`, потом из базы, заново — старше `Defaults.EPISODES_MAX_AGE_MS` (сутки)
+  или по `refresh`; неудачная перезагрузка оставляет сохранённые, неудачная первая — бросает (у `HttpException` код
+  ответа). Загруженные эпизоды переносятся в новую копию при обновлении, пока их сериал есть у провайдера. Ответы
+  разбираются по элементу; поля — текст или число, `null`, `[]` вместо объекта, `episodes` объектом по сезонам или
+  списком списков; битая запись пропускает себя, не-список — `XTREAM_BAD_LIBRARY`.
+- **Выдача** (`Repository`): `vodGroups` (Избранное, Недавние — просмотренные, Все, подборки, категории), `vodCategories`,
+  `vod(VodFilter)` → `PagingData<VodItem>`, `vodCount`, `firstVod`, `vodItem`, `vodIndexOf`, `episodes`, `episode`;
+  у элемента — прогресс (`Progress`; у сериала — последнего начатого эпизода). Правила скрытия и поиска — как у каналов.
+- **Правки** — `setVodFavorite`, `setVodHidden`, `renameVod`, `setVodCategoriesHidden`, `renameVodCategory`,
+  `reorderVodCategories`, `reorderVod`, подборки `…VodCollection…`, `vodEdits` / `resetVodEdits`.
+- **Просмотр** — `savePosition(фильм | сериал + эпизод, позиция, длительность)`: от 95% или в последние 10 с —
+  «просмотрено» и позиция 0 (`finished()`); `setWatched` (фильм, эпизод, сезон; снятие отметки удаляет строку), `watch(key)`,
+  `history(kind)` → `PagingData<Watch>`, `unfinished(limit)` (начатые фильмы и последний эпизод каждого сериала, без
+  скрытых), `forget(keys)`, `clearHistory()`.
+- **Скорость** (синтетика, 150 000 фильмов, ПК): импорт ~11 с без роста кучи; первая страница ~70 мс, страница на
+  140 000 ~140 мс, по названию и по дате ~70 мс, категория ~20 мс, поиск ~40–55 мс, категории со счётчиками ~140 мс.
 
 ### Хранение источника
 
@@ -683,7 +757,9 @@ Back (пульт, кнопка, жест) ──▶ BackHandler
 ## Файл настроек (BAK-011)
 
 - Формат (`core/backup/SettingsFile.kt`) — тот же `.fervo`, что расширит BAK-001: ZIP, `manifest.json` (`format`,
-  `formatVersion` = 1, `appVersion`, `createdAt`, `parts`) и по JSON на часть: `source`, `settings`, `guide`, `channels`.
+  `formatVersion` = 1, `appVersion`, `createdAt`, `parts`) и по JSON на часть: `source`, `settings`, `guide`, `channels`,
+  с P2.1 — `library` (правки фильмов и сериалов, их категорий, порядок, подборки) и `watched` (позиции, отметки, история);
+  версия формата та же — старые версии новые части пропускают.
   Правки — по устойчивым ключам каналов и категорий; содержимое плейлиста, программа и картинки не сохраняются.
 - Чтение проверяет весь файл до применения: не ZIP / нет манифеста / чужой `format` → `BACKUP_FOREIGN`, оборванный, битый
   JSON, часть из `parts` отсутствует → `BACKUP_CORRUPT`, `formatVersion` больше своего → `BACKUP_NEWER`; не больше 16 МБ.
@@ -715,7 +791,8 @@ Back (пульт, кнопка, жест) ──▶ BackHandler
 
 | Задача | Где |
 |---|---|
-| VOD / сериалы Xtream | `Xtream.kt`: `get_vod_categories`, `get_vod_streams`, `get_series`, `get_series_info`; URL `/movie/U/P/{id}.{ext}`, `/series/U/P/{id}.{ext}` |
+| Экраны видеотеки (P2.2/P2.3) | только `Repository`: `vodGroups`, `vod`, `episodes`, правки, `savePosition`, `unfinished`, `history`, `libraryState` — см. «Видеотека» |
+| Подробности фильма (VOD-004) | `get_vod_info` в `XtreamLibrary.kt` — запрос по открытию карточки, без хранения (схема не меняется) |
 | Экраны P1 (эфир, телегид, меню канала) | только `Repository`: `groups`, `items`, `guide`, `airing`, `schedule`, пользовательские данные, телегид — см. выше |
 | Несколько плейлистов (P4) | `Repository`: список `Source` вместо одного; пользовательские таблицы уже по глобальным ключам; приоритет телегидов — `epg_source.position` |
 | Профили (P5) | столбец профиля в `channel_state`, `category_state`, `channel_order`, `collection*`, `recent` |
@@ -726,7 +803,7 @@ Back (пульт, кнопка, жест) ──▶ BackHandler
 
 ## Тесты
 
-`./gradlew testDebugUnitTest` (тесты `core` — JVM, 99; в `app-tv` — 2: `NoUiTextInCodeTest`). Тесты базы, `JsonReader` и `XmlPullParser` идут под **Robolectric**:
+`./gradlew testDebugUnitTest` (тесты `core` — JVM, 121; в `app-tv` — 2: `NoUiTextInCodeTest`). Тесты базы, `JsonReader` и `XmlPullParser` идут под **Robolectric**:
 Room, `android.util.JsonReader` и `android.util.Xml` требуют Android-классов, а Robolectric даёт настоящий SQLite (с FTS4) прямо в JVM —
 без устройства и эмулятора, на CI тем же `testDebugUnitTest`. Куча тестовой JVM ограничена 256 МБ (`core/build.gradle.kts`).
 - `M3uParserTest` — атрибуты, запятая в кавычках и в имени, `#EXTGRP`, CRLF/BOM/неизвестные теги, голый список URL,
@@ -776,8 +853,18 @@ Room, `android.util.JsonReader` и `android.util.Xml` требуют Android-к�
 - `UserStoreTest` (Robolectric) — избранное и его порядок, скрытие и переименование каналов и категорий, ручной порядок
   с новыми каналами провайдера, подборки, недавние, служебные списки — **после повторного импорта**; сброс (LIVE-015);
   сортировки, номера, канал по номеру, позиция канала;
-- `MigrationTest` (Robolectric) — база версии 1 из `1.json` с каналами открывается версией 2: схема сверена Room,
-  каналы, поиск и пользовательские данные работают.
+- `MigrationTest` (Robolectric) — база версии 1 из `1.json` с каналами открывается текущей: схема сверена Room,
+  каналы, поиск и пользовательские данные работают; база версии 2 с правками, подборками, недавними и телегидом — всё
+  на месте после 2 → 3, новые таблицы работают;
+- `TitlesTest` — таблицы: чистые названия (метки, год, «1917», «2012 (2009)», «Blade Runner 2049»), маркеры серий
+  (`S1E5`, `S01.E05`, `1x05`, Season/Сезон, «E05», сезон 0), названия эпизодов, раздел записи M3U;
+- `XtreamLibraryTest` (Robolectric) — `get_vod_streams` / `get_series` / `get_series_info` с битыми полями и записями,
+  эпизоды списком списков, не-список; SRC-012 — разбор ссылки и проверка аккаунта (`FakeServer`); вся видеотека по порядку;
+- `LibraryStoreTest` (Robolectric, через `Repository` и `FakeServer`) — M3U делится на эфир, фильмы и сериалы; M3U из одних
+  фильмов; правки, подборка, позиции и «дата добавления» **после обновления** с итогом добавлено/обновлено/удалено;
+  Xtream: видеотека в фоне, эпизоды по открытию с кэшем и переносом, код ошибки; SRC-012 в `recognize`; сортировки,
+  поиск «челов-пау», скрытие, сброс, ручной порядок; просмотр, недосмотренное, история, отметки;
+  **150 000 фильмов** через парсер M3U — рост кучи < 8 МБ (сейчас 0–13 КБ), страницы и поиск < 200 мс (см. «Видеотека»);
 
 Проверка на реальных данных (P1.1, вручную, временным тестом): публичный XMLTV на 447 МБ (48 МБ gzip, `+0300`) с
 плейлистом ruiptv — 5,3 с на ПК, 3 205 каналов телегида, 24 446 передач, 193 из 215 каналов привязаны по названию,

@@ -103,13 +103,14 @@ class PlaylistStore(private val db: AppDb, private val clock: () -> Long = Syste
      * the new ones replace them in one transaction. A failure (or cancellation) drops what was written, so an empty
      * or broken answer never replaces good data. One import at a time (the caller serializes them).
      * [userKey] = `Source.userKey()`, the prefix of category keys; [epgIndex] binds the channels to the guide as
-     * they are written. Blocking; returns the number of channels.
+     * they are written. Blocking; returns the number of channels. No channels is an error unless [emptyOk].
      */
     fun import(
         sourceKey: String,
         savedAt: Long = System.currentTimeMillis(),
         userKey: String = sourceKey,
         epgIndex: EpgIndex = epg.index(),
+        emptyOk: () -> Boolean = { false },
         fill: (Import) -> Unit,
     ): Int {
         dao.unfinishedSources().forEach(dao::deleteSource) // left by a killed process
@@ -119,7 +120,8 @@ class PlaylistStore(private val db: AppDb, private val clock: () -> Long = Syste
             fill(import)
             import.flush()
             // Almost always a broken/blocked response rather than a real empty playlist.
-            if (import.count == 0) throw CoreException(ErrorCode.PLAYLIST_EMPTY)
+            // [emptyOk]: an M3U of films only has no channels, and that's fine (SRC-010).
+            if (import.count == 0 && !emptyOk()) throw CoreException(ErrorCode.PLAYLIST_EMPTY)
             db.runInTransaction {
                 dao.complete(id, savedAt, import.headerEpgUrls.joinToString("\n"))
                 dao.otherSources(id).forEach(dao::deleteSource)

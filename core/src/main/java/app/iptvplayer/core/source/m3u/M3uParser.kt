@@ -18,7 +18,14 @@ fun parseM3u(text: String, baseUrl: String? = null): List<Channel> =
  * with the playlist. The caller closes [reader]. [onEpgUrls] gets the XMLTV addresses of each `#EXTM3U` header
  * (`url-tvg` / `x-tvg-url`, comma-separated lists split).
  */
-fun parseM3u(reader: Reader, baseUrl: String? = null, onEpgUrls: (List<String>) -> Unit = {}, onChannel: (Channel) -> Unit) {
+fun parseM3u(reader: Reader, baseUrl: String? = null, onEpgUrls: (List<String>) -> Unit = {}, onChannel: (Channel) -> Unit) =
+    parseM3uEntries(reader, baseUrl, onEpgUrls) { onChannel(it.channel) }
+
+/** An entry of the playlist: its fields as a [Channel] and its `type` / `tvg-type` attribute (SRC-010: film, series). */
+class M3uEntry(val channel: Channel, val type: String?)
+
+/** [parseM3u] with each entry's type, to sort live channels from films and episodes. */
+fun parseM3uEntries(reader: Reader, baseUrl: String? = null, onEpgUrls: (List<String>) -> Unit = {}, onEntry: (M3uEntry) -> Unit) {
     var info: String? = null
     var extGroup: String? = null
     var first = true
@@ -33,7 +40,7 @@ fun parseM3u(reader: Reader, baseUrl: String? = null, onEpgUrls: (List<String>) 
             line.startsWith("#") -> {}
             else -> {
                 // A broken entry skips only itself.
-                runCatching { toChannel(info, extGroup, line, baseUrl) }.onSuccess(onChannel)
+                runCatching { toEntry(info, extGroup, line, baseUrl) }.onSuccess(onEntry)
                 info = null
                 extGroup = null
             }
@@ -41,7 +48,7 @@ fun parseM3u(reader: Reader, baseUrl: String? = null, onEpgUrls: (List<String>) 
     }
 }
 
-private fun toChannel(info: String?, extGroup: String?, url: String, baseUrl: String?): Channel {
+private fun toEntry(info: String?, extGroup: String?, url: String, baseUrl: String?): M3uEntry {
     val attrs = info?.let { ATTR.findAll(it).associate { m -> m.groupValues[1].lowercase() to m.groupValues[2] } }.orEmpty()
     val name = info?.let(::displayName).orEmpty()
         .ifBlank { attrs["tvg-name"].orEmpty() }
@@ -51,13 +58,14 @@ private fun toChannel(info: String?, extGroup: String?, url: String, baseUrl: St
         ?: NO_GROUP
     // Some providers use a non-standard `logo` attribute, often with a relative path.
     val logo = (attrs["tvg-logo"] ?: attrs["logo"])?.ifBlank { null }?.let { resolve(baseUrl, it) }
-    return Channel(
+    val channel = Channel(
         name, url, group, logo, attrs["tvg-id"]?.ifBlank { null },
         number = attrs["tvg-chno"]?.trim()?.toIntOrNull()?.takeIf { it > 0 },
         // Archive depth in days: catchup-days is the common one, tvg-rec and timeshift are older spellings.
         archiveDays = listOf("catchup-days", "tvg-rec", "timeshift").firstNotNullOfOrNull { attrs[it]?.trim()?.toIntOrNull() }
             ?.coerceAtLeast(0) ?: 0,
     )
+    return M3uEntry(channel, (attrs["type"] ?: attrs["tvg-type"])?.ifBlank { null })
 }
 
 private fun epgUrls(header: String): List<String> {

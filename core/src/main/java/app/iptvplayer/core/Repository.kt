@@ -43,9 +43,35 @@ import app.iptvplayer.core.source.xtream.xtreamStreamId
 import app.iptvplayer.core.source.xtream.xtreamXmltvUrl
 import app.iptvplayer.core.source.readCacheChannels
 import app.iptvplayer.core.source.readCacheHeader
-import app.iptvplayer.core.source.m3u.parseM3u
 import app.iptvplayer.core.source.xtream.loadXtream
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
 import androidx.paging.PagingData
+import app.iptvplayer.core.db.LibraryResult
+import app.iptvplayer.core.db.LibraryState
+import app.iptvplayer.core.db.LibraryStore
+import app.iptvplayer.core.db.LibraryUser
+import app.iptvplayer.core.db.VodCollection
+import app.iptvplayer.core.db.VodFilter
+import app.iptvplayer.core.db.VodGroup
+import app.iptvplayer.core.db.VodGroupCount
+import app.iptvplayer.core.db.Watch
+import app.iptvplayer.core.model.Episode
+import app.iptvplayer.core.model.VodItem
+import app.iptvplayer.core.model.VodKind
+import app.iptvplayer.core.source.m3u.parseM3uEntries
+import app.iptvplayer.core.source.m3uSection
+import app.iptvplayer.core.source.xtream.loadXtreamEpisodes
+import app.iptvplayer.core.source.xtream.loadXtreamLibrary
+import app.iptvplayer.core.source.xtream.xtreamAccepted
+import app.iptvplayer.core.source.xtream.xtreamOfM3uUrl
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
@@ -67,6 +93,19 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
     private val store = PlaylistStore(db)
     private val epg = EpgStore(db)
     private val user = UserStore(db)
+    private val library = LibraryStore(db)
+    private val libraryUser = LibraryUser(db)
+
+    /** Library imports, one at a time; taken after [importLock] when both are needed (M3U). */
+    private val libraryLock = Mutex()
+
+    /** The Xtream library import runs here, after [load] has returned (SRC-016). */
+    private val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile private var libraryJob: Job? = null
+    private val libraryProgress = MutableStateFlow<LibraryState?>(null)
+
+    /** SRC-016: the library import of the source — running (with a count), done (with what changed) or failed; null = none yet. */
+    val libraryState: StateFlow<LibraryState?> = libraryProgress.asStateFlow()
 
     /** Imports (download, legacy-cache migration) write one at a time. */
     private val importLock = Mutex()
@@ -172,30 +211,97 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
         store.savedAt(s.cacheKey())
     }
 
-    /** Downloads (or reads) the playlist and streams it into the database, replacing the saved channels. Returns their number. */
+    /**
+     * Downloads (or reads) the playlist and streams it into the database, replacing the saved channels. Returns their
+     * number. M3U films and series (SRC-010) go to the library in the same pass; an Xtream account's library is
+     * imported after it in the background ([libraryState], SRC-011, SRC-016), the channels are usable meanwhile.
+     */
     suspend fun load(s: Source): Int = withContext(Dispatchers.IO) {
         val job = coroutineContext
-        importLock.withLock {
-            store.import(s.cacheKey(), userKey = s.userKey(), epgIndex = epg.index()) { import ->
-                val add = { ch: Channel -> job.ensureActive(); import.channel(ch) }
-                when (s) {
-                    is Source.M3u -> if (s.url.startsWith("content://")) {
-                        // Permission revoked, file moved or USB drive removed: the user has to pick it again.
-                        val input = try {
-                            ctx.contentResolver.openInputStream(Uri.parse(s.url))
-                        } catch (e: SecurityException) {
-                            null
-                        } catch (e: FileNotFoundException) {
-                            null
-                        } ?: throw CoreException(ErrorCode.FILE_LOST)
-                        input.reader().use { parseM3u(it, s.url, import::epgUrls, add) }
-                    } else {
-                        httpStream(s.url) { input -> input.reader().use { parseM3u(it, s.url, import::epgUrls, add) } }
+        libraryJob?.cancel() // an older library import (maybe of another source) gives way
+        val count = importLock.withLock {
+            when (s) {
+                is Source.M3u -> libraryLock.withLock {
+                    var library = 0
+                    store.import(s.cacheKey(), userKey = s.userKey(), epgIndex = epg.index(), emptyOk = { library > 0 }) { import ->
+                        val r = importLibrary(s) { lib ->
+                            readM3u(s) { reader ->
+                                parseM3uEntries(reader, s.url, import::epgUrls) { e ->
+                                    job.ensureActive()
+                                    when (val kind = m3uSection(e.type, e.channel.url, e.channel.name)) {
+                                        null -> import.channel(e.channel)
+                                        else -> lib.m3u(e.channel, kind)
+                                    }
+                                }
+                            }
+                        }
+                        library = r.movies + r.series
                     }
-                    is Source.Xtream -> loadXtream(s, { import.category(it) }, add)
+                }
+                is Source.Xtream -> store.import(s.cacheKey(), userKey = s.userKey(), epgIndex = epg.index()) { import ->
+                    loadXtream(s, { import.category(it) }) { ch -> job.ensureActive(); import.channel(ch) }
                 }
             }
         }
+        if (s is Source.Xtream) startLibrary(s)
+        count
+    }
+
+    private fun readM3u(s: Source.M3u, read: (java.io.Reader) -> Unit) {
+        if (s.url.startsWith("content://")) {
+            // Permission revoked, file moved or USB drive removed: the user has to pick it again.
+            val input = try {
+                ctx.contentResolver.openInputStream(Uri.parse(s.url))
+            } catch (e: SecurityException) {
+                null
+            } catch (e: FileNotFoundException) {
+                null
+            } ?: throw CoreException(ErrorCode.FILE_LOST)
+            input.reader().use(read)
+        } else {
+            httpStream(s.url) { input -> input.reader().use(read) }
+        }
+    }
+
+    /** A library import with its state published; the caller holds [libraryLock]. */
+    private fun importLibrary(s: Source, fill: (LibraryStore.Import) -> Unit): LibraryResult {
+        libraryProgress.value = LibraryState.Running(0)
+        try {
+            val r = library.import(s.cacheKey(), s.userKey(), onProgress = { libraryProgress.value = LibraryState.Running(it) }, fill = fill)
+            libraryProgress.value = LibraryState.Done(r)
+            return r
+        } catch (e: CancellationException) {
+            libraryProgress.value = null
+            throw e
+        } catch (e: Exception) {
+            libraryProgress.value = LibraryState.Failed(e)
+            throw e
+        }
+    }
+
+    private fun startLibrary(s: Source.Xtream) {
+        libraryProgress.value = LibraryState.Running(0) // waiting for its turn counts as running
+        libraryJob = background.launch {
+            val job = coroutineContext
+            try {
+                libraryLock.withLock {
+                    importLibrary(s) { lib -> loadXtreamLibrary(s, lib::category) { job.ensureActive(); lib.item(it) } }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // In [libraryState]; the channels stay as they are.
+            }
+        }
+    }
+
+    /**
+     * SRC-012: an M3U link of an Xtream panel (`…/get.php?username=…&password=…`) whose account the server accepts
+     * becomes that Xtream source; anything else (another link, rejected, no network) stays as it is, without an error.
+     */
+    suspend fun recognize(s: Source): Source = withContext(Dispatchers.IO) {
+        val x = (s as? Source.M3u)?.let { xtreamOfM3uUrl(it.url) }
+        if (x != null && xtreamAccepted(x)) x else s
     }
 
     fun categories(s: Source, withHidden: Boolean = false): Flow<List<CategoryCount>> = store.categories(s.cacheKey(), withHidden)
@@ -275,6 +381,103 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
     /** LIVE-020: the last watched channels of [s] with the time each was watched, most recent first. */
     suspend fun recent(s: Source): List<Pair<ChannelItem, Long>> =
         user.recent(s.cacheKey()).mapNotNull { r -> store.channel(s.cacheKey(), r.ckey)?.let { it to r.watchedAt } }
+
+    // --- Library: films and series (SRC-010, SRC-011, VOD-001…012) ---
+
+    /** When the library of [s] was imported; null = not yet. */
+    suspend fun librarySavedAt(s: Source): Long? = library.savedAt(s.cacheKey())
+
+    /** The category column of a section: «Избранное», «Недавние», «Все», collections, categories (VOD-001). */
+    fun vodGroups(s: Source, kind: VodKind, withHidden: Boolean = false): Flow<List<VodGroupCount>> = library.groups(s.cacheKey(), kind, withHidden)
+
+    fun vodCategories(s: Source, kind: VodKind, withHidden: Boolean = false): Flow<List<CategoryCount>> =
+        library.categories(s.cacheKey(), kind, withHidden)
+
+    /** A catalogue, paged (VOD-001, VOD-003); search by word starts like the channels (HOME-010). */
+    fun vod(f: VodFilter): Flow<PagingData<VodItem>> = library.items(f)
+
+    /** Number of items of a list (HOME-008 counts). */
+    suspend fun vodCount(f: VodFilter): Int = io { library.count(f) }
+
+    /** The first [n] items of a list (HOME-007: up to 500 of each kind). */
+    suspend fun firstVod(f: VodFilter, n: Int): List<VodItem> = library.first(f, n)
+
+    suspend fun vodItem(s: Source, kind: VodKind, key: String): VodItem? = library.item(s.cacheKey(), kind, key)
+
+    suspend fun vodIndexOf(f: VodFilter, key: String): Int? = library.indexOf(f, key)
+
+    /**
+     * Episodes of [series] with their progress, specials (season 0) last. Xtream loads them on first opening
+     * (get_series_info) and again when older than [Defaults.EPISODES_MAX_AGE_MS] or [refresh]; a failed reload
+     * keeps the stored ones, a failed first load throws (HttpException carries the server's code, SRC-011).
+     */
+    suspend fun episodes(s: Source, series: VodItem, refresh: Boolean = false): List<Episode> = withContext(Dispatchers.IO) {
+        val key = s.cacheKey()
+        if (s is Source.Xtream) {
+            val at = library.episodesAt(key, series.key)
+            if (refresh || at == null || System.currentTimeMillis() - at > Defaults.EPISODES_MAX_AGE_MS) {
+                try {
+                    library.storeEpisodes(key, series.key, loadXtreamEpisodes(s, series.key, series.title))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    if (at == null) throw e
+                }
+            }
+        }
+        library.episodes(key, series.key)
+    }
+
+    /** An episode by key (from history or the home row), if stored. */
+    suspend fun episode(s: Source, key: String): Episode? = library.episode(s.cacheKey(), key)
+
+    suspend fun setVodFavorite(key: String, on: Boolean) = io { libraryUser.setFavorite(key, on) }
+    suspend fun setVodHidden(keys: List<String>, hidden: Boolean) = io { libraryUser.setHidden(keys, hidden) }
+    suspend fun renameVod(key: String, name: String?) = io { libraryUser.rename(key, name) }
+    suspend fun setVodCategoriesHidden(s: Source, kind: VodKind, names: List<String>, hidden: Boolean) =
+        io { libraryUser.setCategoriesHidden(s.cacheKey(), kind, names, hidden) }
+    suspend fun renameVodCategory(s: Source, kind: VodKind, name: String, title: String?) = io { libraryUser.renameCategory(s.cacheKey(), kind, name, title) }
+    suspend fun reorderVodCategories(s: Source, kind: VodKind, names: List<String>) = io { libraryUser.reorderCategories(s.cacheKey(), kind, names) }
+    suspend fun reorderVod(s: Source, kind: VodKind, group: VodGroup, keys: List<String>) = io { libraryUser.reorder(s.cacheKey(), kind, group, keys) }
+
+    fun vodCollections(kind: VodKind): Flow<List<VodCollection>> = libraryUser.collections(kind)
+    suspend fun createVodCollection(kind: VodKind, name: String): Long = io { libraryUser.createCollection(kind, name) }
+    suspend fun renameVodCollection(id: Long, name: String) = io { libraryUser.renameCollection(id, name) }
+    suspend fun reorderVodCollections(ids: List<Long>) = io { libraryUser.reorderCollections(ids) }
+    suspend fun deleteVodCollection(id: Long) = io { libraryUser.deleteCollection(id) }
+    suspend fun addToVodCollection(id: Long, key: String) = io { libraryUser.addToCollection(id, key) }
+    suspend fun removeFromVodCollection(id: Long, key: String) = io { libraryUser.removeFromCollection(id, key) }
+
+    suspend fun vodEdits(s: Source, kind: VodKind, category: String?): Edits = io { libraryUser.edits(s.cacheKey(), kind, category) }
+    suspend fun resetVodEdits(s: Source, kind: VodKind, category: String?) = io { libraryUser.reset(s.cacheKey(), kind, category) }
+
+    // --- Watching (VOD-008, VOD-010, HOME-002, HOME-013) ---
+
+    /** VOD-010: where a film stopped; near the end it becomes watched instead (VOD-008). Call it periodically too. */
+    suspend fun savePosition(movie: VodItem, position: Long, duration: Long) = io { libraryUser.savePosition(movie.watchRow(), position, duration) }
+
+    suspend fun savePosition(series: VodItem, episode: Episode, position: Long, duration: Long) =
+        io { libraryUser.savePosition(episode.watchRow(series), position, duration) }
+
+    /** VOD-008: mark a film watched / not watched. */
+    suspend fun setWatched(movie: VodItem, watched: Boolean) = io { libraryUser.setWatched(listOf(movie.watchRow()), watched) }
+
+    /** VOD-008: mark episodes (one, or a season's) watched / not watched. */
+    suspend fun setWatched(series: VodItem, episodes: List<Episode>, watched: Boolean) =
+        io { libraryUser.setWatched(episodes.map { it.watchRow(series) }, watched) }
+
+    suspend fun watch(key: String): Watch? = libraryUser.watch(key)
+
+    /** HOME-013: everything watched, the latest first; [kind] null = all. */
+    fun history(kind: VodKind? = null): Flow<PagingData<Watch>> =
+        Pager(PagingConfig(pageSize = Defaults.VOD_PAGE_SIZE)) { libraryUser.history(kind) }.flow
+
+    /** HOME-002: started films and the last episode of started series, the latest first. */
+    fun unfinished(limit: Int): Flow<List<Watch>> = libraryUser.unfinished(limit)
+
+    /** HOME-013 «Удалить» / «Очистить историю»: with their marks and positions. */
+    suspend fun forget(keys: List<String>) = io { libraryUser.forget(keys) }
+    suspend fun clearHistory() = io { libraryUser.clearHistory() }
 
     // --- Guide (EPG-001…007) ---
 
@@ -386,7 +589,10 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
 
     /** What a settings file holds, as it is now: the source, settings, guide sources and every channel edit. */
     suspend fun backup(): Backup = io {
-        Backup(source = source, settings = settings, guides = epg.sourceRows(), channels = user.dump())
+        Backup(
+            source = source, settings = settings, guides = epg.sourceRows(), channels = user.dump(),
+            library = libraryUser.dump(), watched = libraryUser.watched(),
+        )
     }
 
     /** Writes the settings file to [out] (and closes it); the Xtream password only [withPassword]. */
@@ -407,6 +613,8 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
             db.runInTransaction {
                 b.guides?.let(epg::replaceSources)
                 b.channels?.let(user::replace)
+                b.library?.let(libraryUser::replace)
+                b.watched?.let(libraryUser::replaceWatched)
                 epg.rebind()
             }
         }
@@ -429,6 +637,11 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
         store.applyAutoLogos(key) { ch -> job.ensureActive(); index?.find(ch) }
     }
 }
+
+private fun VodItem.watchRow() = Watch(key, VodKind.MOVIE, title = title, image = poster, watchedAt = 0)
+
+private fun Episode.watchRow(series: VodItem) =
+    Watch(key, VodKind.SERIES, series.key, season, episode, series.title, title, image ?: series.poster, watchedAt = 0)
 
 /** [seen] = the version the user last ran (null: none recorded, e.g. updated from 0.1, which didn't record it). */
 internal fun changelogDue(seen: String?, current: String, updated: Boolean): Boolean =

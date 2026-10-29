@@ -92,4 +92,13 @@ class M3uParserTest {
         assertEquals(listOf(3, 2, 0), channels.map { it.archiveDays })
         assertEquals(listOf("http://s/7", "http://s/0", "http://s/1"), channels.map { it.key }) // M3U key = stream URL
     }
+
+    /** SRC-010: the entry's `type` (or `tvg-type`) comes with it; no attribute = null. */
+    @Test
+    fun entryType() {
+        val text = "#EXTM3U\n#EXTINF:-1 type=\"movie\",A\nhttp://s/a.mp4\n#EXTINF:-1 tvg-type=\"series\",B\nhttp://s/b\n#EXTINF:-1 type=\"\",C\nhttp://s/c\n"
+        val types = ArrayList<Pair<String, String?>>()
+        parseM3uEntries(java.io.StringReader(text)) { types += it.channel.name to it.type }
+        assertEquals(listOf("A" to "movie", "B" to "series", "C" to null), types)
+    }
 }

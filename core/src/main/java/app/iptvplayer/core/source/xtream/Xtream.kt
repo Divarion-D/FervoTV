@@ -24,16 +24,7 @@ import java.net.URLEncoder
 fun loadXtream(s: Source.Xtream, onCategory: (String) -> Unit, onChannel: (Channel) -> Unit) {
     val base = s.server.trimEnd('/')
     val api = api(s)
-
-    // Some panels answer a wrong login with 401/403 or an HTML page instead of auth = 0.
-    val auth = try {
-        httpGet(api)
-    } catch (e: HttpException) {
-        if (e.code == 401 || e.code == 403) throw CoreException(ErrorCode.XTREAM_REJECTED) else throw e
-    }
-    val info = runCatching { JSONObject(auth) }.getOrNull() ?: throw CoreException(ErrorCode.XTREAM_NOT_XTREAM)
-    // optInt also accepts "1" as a string, which some panels return.
-    if (info.optJSONObject("user_info")?.optInt("auth") != 1) throw CoreException(ErrorCode.XTREAM_REJECTED)
+    checkXtream(s)
 
     val cats = JSONArray(httpGet("$api&action=get_live_categories")).objects()
         .associate { it.optString("category_id") to it.optString("category_name") }
@@ -46,7 +37,23 @@ fun loadXtream(s: Source.Xtream, onCategory: (String) -> Unit, onChannel: (Chann
     }
 }
 
-private fun api(s: Source.Xtream) = "${s.server.trimEnd('/')}/player_api.php?username=${enc(s.user)}&password=${enc(s.pass)}"
+/**
+ * The account check (player_api.php without an action): throws [ErrorCode.XTREAM_REJECTED] for a wrong login,
+ * [ErrorCode.XTREAM_NOT_XTREAM] when the server doesn't answer like Xtream Codes.
+ */
+fun checkXtream(s: Source.Xtream) {
+    // Some panels answer a wrong login with 401/403 or an HTML page instead of auth = 0.
+    val auth = try {
+        httpGet(api(s))
+    } catch (e: HttpException) {
+        if (e.code == 401 || e.code == 403) throw CoreException(ErrorCode.XTREAM_REJECTED) else throw e
+    }
+    val info = runCatching { JSONObject(auth) }.getOrNull() ?: throw CoreException(ErrorCode.XTREAM_NOT_XTREAM)
+    // optInt also accepts "1" as a string, which some panels return.
+    if (info.optJSONObject("user_info")?.optInt("auth") != 1) throw CoreException(ErrorCode.XTREAM_REJECTED)
+}
+
+internal fun api(s: Source.Xtream) = "${s.server.trimEnd('/')}/player_api.php?username=${enc(s.user)}&password=${enc(s.pass)}"
 
 /** The account's full guide (EPG-002): connected as an ordinary XMLTV source. */
 fun xtreamXmltvUrl(s: Source.Xtream) = "${s.server.trimEnd('/')}/xmltv.php?username=${enc(s.user)}&password=${enc(s.pass)}"
@@ -150,12 +157,12 @@ internal fun readLiveStreams(
 }
 
 /** Strings, numbers and booleans as text (panels mix "1" and 1); null, objects and arrays as null. */
-private fun JsonReader.scalar(): String? = when (peek()) {
+internal fun JsonReader.scalar(): String? = when (peek()) {
     JsonToken.STRING, JsonToken.NUMBER -> nextString()
     JsonToken.BOOLEAN -> nextBoolean().toString()
     else -> { skipValue(); null }
 }
 
-private fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
+internal fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 
-private fun JSONArray.objects() = (0 until length()).mapNotNull { optJSONObject(it) }
+internal fun JSONArray.objects() = (0 until length()).mapNotNull { optJSONObject(it) }

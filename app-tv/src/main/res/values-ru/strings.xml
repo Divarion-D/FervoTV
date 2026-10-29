@@ -203,6 +203,7 @@
     <string name="err_xtream_not_xtream">Xtream: сервер ответил не как Xtream Codes</string>
     <string name="err_xtream_bad_epg">Xtream: сервер вернул не телегид</string>
     <string name="err_xtream_bad_channels">Xtream: сервер вернул не список каналов</string>
+    <string name="err_xtream_bad_library">Xtream: сервер вернул не список фильмов или серий</string>
     <string name="err_backup_foreign">Это не файл настроек Fervo TV. Ничего не изменено.</string>
     <string name="err_backup_corrupt">Файл повреждён или неполный. Ничего не изменено.</string>
     <string name="err_backup_newer">Файл создан более новой версией Fervo TV (формат %1$s). Обновите приложение и попробуйте снова. Ничего не изменено.</string>

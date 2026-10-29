@@ -23,7 +23,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import app.iptvplayer.core.model.Settings
 import app.iptvplayer.ui.Txt
-import app.iptvplayer.ui.dateTimeText
+import app.iptvplayer.ui.DateTime
 import app.iptvplayer.ui.errorText
 import app.iptvplayer.ui.label
 import app.iptvplayer.ui.settingsFile
@@ -198,7 +198,7 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
             refreshing = false
         }
         if (ready) task = BgTask(ctx.getString(R.string.task_playlist_done), ok = true)
-        playlistStatus = Txt(R.string.playlist_updated_at, dateTimeText(ctx, System.currentTimeMillis()))
+        playlistStatus = Txt(R.string.playlist_updated_at, DateTime(System.currentTimeMillis()))
         ready = true
         startLogos(s)
     }
@@ -218,11 +218,18 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
         lastAttempt = 0L
         val savedAt = repo.savedAt(s)
         if (savedAt == null) {
+            // SRC-012: a new M3U link of an Xtream panel is kept as that account (with its films and series).
+            val recognized = repo.recognize(s)
+            if (recognized != s) {
+                repo.source = recognized
+                source = recognized // this effect starts again with it
+                return@LaunchedEffect
+            }
             refresh(s)
             return@LaunchedEffect
         }
         ready = true
-        playlistStatus = Txt(R.string.playlist_saved_at, dateTimeText(ctx, savedAt))
+        playlistStatus = Txt(R.string.playlist_saved_at, DateTime(savedAt))
         // Logo matching starts right away, in parallel with the first frame of the grid.
         startLogos(s)
     }

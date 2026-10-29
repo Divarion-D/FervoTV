@@ -189,20 +189,24 @@ data class ItemRow(
         SourceRow::class, CategoryRow::class, ChannelRow::class, ChannelFts::class,
         ChannelState::class, CategoryState::class, ChannelOrder::class, CollectionRow::class, CollectionChannel::class,
         Recent::class, EpgSource::class, EpgChannel::class, ProgrammeRow::class, StagedProgramme::class,
+        LibraryRow::class, VodCategoryRow::class, VodRow::class, VodFts::class, EpisodeRow::class,
+        VodState::class, VodCategoryState::class, VodOrder::class, VodCollection::class, VodCollectionItem::class, Watch::class,
     ],
-    version = 2,
+    version = 3,
 )
 abstract class AppDb : RoomDatabase() {
     abstract fun playlist(): PlaylistDao
     abstract fun user(): UserDao
     abstract fun epg(): EpgDao
+    abstract fun library(): LibraryDao
+    abstract fun libraryUser(): LibraryUserDao
 
     companion object {
         @Volatile private var instance: AppDb? = null
 
         fun get(ctx: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(ctx.applicationContext, AppDb::class.java, "fervo.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build().also { instance = it }
         }
     }
@@ -231,6 +235,37 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         db.execSQL("UPDATE channel SET ckey = url")
     }
 }
+
+/** v2 → v3 (P2.1): the library and its user data, new tables only; channels, edits and guide stay as they are. */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) = MIGRATION_2_3_SQL.forEach(db::execSQL)
+}
+
+/** Copied from the exported schema `core/schemas/…/3.json`; checked by MigrationTest. */
+private val MIGRATION_2_3_SQL = listOf(
+    "CREATE TABLE IF NOT EXISTS `library` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `sourceKey` TEXT NOT NULL, `savedAt` INTEGER)",
+    "CREATE INDEX IF NOT EXISTS `index_library_sourceKey` ON `library` (`sourceKey`)",
+    "CREATE TABLE IF NOT EXISTS `vod_category` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `libraryId` INTEGER NOT NULL, `kind` TEXT NOT NULL, `name` TEXT NOT NULL, `position` INTEGER NOT NULL, `ckey` TEXT NOT NULL)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS `index_vod_category_libraryId_kind_name` ON `vod_category` (`libraryId`, `kind`, `name`)",
+    "CREATE TABLE IF NOT EXISTS `vod` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `libraryId` INTEGER NOT NULL, `categoryId` INTEGER NOT NULL, `kind` TEXT NOT NULL, `position` INTEGER NOT NULL, `name` TEXT NOT NULL, `title` TEXT NOT NULL, `sortName` TEXT NOT NULL, `year` INTEGER, `tags` TEXT NOT NULL, `url` TEXT, `poster` TEXT, `backdrop` TEXT, `rating` REAL, `added` INTEGER NOT NULL, `plot` TEXT, `genre` TEXT, `ckey` TEXT NOT NULL, `episodesAt` INTEGER)",
+    "CREATE INDEX IF NOT EXISTS `index_vod_libraryId_kind_position` ON `vod` (`libraryId`, `kind`, `position`)",
+    "CREATE INDEX IF NOT EXISTS `index_vod_libraryId_categoryId_position` ON `vod` (`libraryId`, `categoryId`, `position`)",
+    "CREATE INDEX IF NOT EXISTS `index_vod_libraryId_ckey` ON `vod` (`libraryId`, `ckey`)",
+    "CREATE INDEX IF NOT EXISTS `index_vod_libraryId_kind_sortName_position` ON `vod` (`libraryId`, `kind`, `sortName`, `position`)",
+    "CREATE INDEX IF NOT EXISTS `index_vod_libraryId_kind_added_position` ON `vod` (`libraryId`, `kind`, `added`, `position`)",
+    "CREATE VIRTUAL TABLE IF NOT EXISTS `vod_fts` USING FTS4(`name` TEXT NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS `episode` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `libraryId` INTEGER NOT NULL, `seriesKey` TEXT NOT NULL, `season` INTEGER NOT NULL, `episode` INTEGER NOT NULL, `position` INTEGER NOT NULL, `name` TEXT NOT NULL, `title` TEXT, `url` TEXT NOT NULL, `image` TEXT, `plot` TEXT, `duration` INTEGER, `released` TEXT, `ckey` TEXT NOT NULL)",
+    "CREATE INDEX IF NOT EXISTS `index_episode_libraryId_seriesKey_season_episode` ON `episode` (`libraryId`, `seriesKey`, `season`, `episode`)",
+    "CREATE INDEX IF NOT EXISTS `index_episode_libraryId_ckey` ON `episode` (`libraryId`, `ckey`)",
+    "CREATE TABLE IF NOT EXISTS `vod_state` (`vkey` TEXT NOT NULL, `name` TEXT, `hidden` INTEGER NOT NULL DEFAULT 0, `favorite` INTEGER, PRIMARY KEY(`vkey`))",
+    "CREATE TABLE IF NOT EXISTS `vod_category_state` (`ckey` TEXT NOT NULL, `name` TEXT, `hidden` INTEGER NOT NULL DEFAULT 0, `position` INTEGER, PRIMARY KEY(`ckey`))",
+    "CREATE TABLE IF NOT EXISTS `vod_order` (`list` TEXT NOT NULL, `vkey` TEXT NOT NULL, `position` INTEGER NOT NULL, PRIMARY KEY(`list`, `vkey`))",
+    "CREATE TABLE IF NOT EXISTS `vod_collection` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `kind` TEXT NOT NULL, `name` TEXT NOT NULL, `position` INTEGER NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS `vod_collection_item` (`collectionId` INTEGER NOT NULL, `vkey` TEXT NOT NULL, `position` INTEGER NOT NULL, PRIMARY KEY(`collectionId`, `vkey`))",
+    "CREATE TABLE IF NOT EXISTS `watch` (`vkey` TEXT NOT NULL, `kind` TEXT NOT NULL, `seriesKey` TEXT, `season` INTEGER, `episode` INTEGER, `title` TEXT NOT NULL, `episodeTitle` TEXT, `image` TEXT, `position` INTEGER NOT NULL, `duration` INTEGER NOT NULL, `watched` INTEGER NOT NULL, `watchedAt` INTEGER NOT NULL, PRIMARY KEY(`vkey`))",
+    "CREATE INDEX IF NOT EXISTS `index_watch_watchedAt` ON `watch` (`watchedAt`)",
+    "CREATE INDEX IF NOT EXISTS `index_watch_seriesKey` ON `watch` (`seriesKey`)",
+)
 
 /** Lowercase, ё→е, everything but letters and digits → space. Used for both the index and the query. */
 fun searchText(s: String): String = buildString(s.length) {

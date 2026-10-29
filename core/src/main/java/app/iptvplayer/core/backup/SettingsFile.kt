@@ -6,6 +6,12 @@ import app.iptvplayer.core.ErrorCode
 import app.iptvplayer.core.db.CategoryState
 import app.iptvplayer.core.db.ChannelState
 import app.iptvplayer.core.db.EpgSource
+import app.iptvplayer.core.db.LibraryData
+import app.iptvplayer.core.db.SavedVodCollection
+import app.iptvplayer.core.db.VodCategoryState
+import app.iptvplayer.core.db.VodState
+import app.iptvplayer.core.db.Watch
+import app.iptvplayer.core.model.VodKind
 import app.iptvplayer.core.db.SavedCollection
 import app.iptvplayer.core.db.UserData
 import app.iptvplayer.core.model.ChannelSort
@@ -38,6 +44,11 @@ import java.util.zip.ZipOutputStream
  *   channels.json  {"channels": [{"key", "name"?, "hidden"?, "favorite"?, "epg"?, "epgShift"?, "logo"?}],
  *                   "categories": [{"key", "name"?, "hidden"?, "position"?}],
  *                   "order": [{"list", "keys": […]}], "collections": [{"name", "keys": […]}]}
+ *   library.json   films and series (P2): {"items": [{"key", "name"?, "hidden"?, "favorite"?}],
+ *                   "categories": [{"key", "name"?, "hidden"?, "position"?}], "order": [{"list", "keys": […]}],
+ *                   "collections": [{"kind": "MOVIE"|"SERIES", "name", "keys": […]}]}
+ *   watched.json   {"items": [{"key", "kind", "series"?, "season"?, "episode"?, "title", "episodeTitle"?, "image"?,
+ *                   "position", "duration", "watched", "at"}]}  (VOD-008 marks, VOD-010 positions, history)
  *
  * Keys are the stable keys of channels and categories, so edits land on the channels of a fresh import.
  * Later versions (P5) add parts and fields; [FORMAT_VERSION] goes up only when old readers would misread a file.
@@ -62,6 +73,10 @@ data class Backup(
     /** Guide sources in priority order; only address, User-Agent, schedule and shift are kept. */
     val guides: List<EpgSource>? = null,
     val channels: UserData? = null,
+    /** Edits of films and series (P2). */
+    val library: LibraryData? = null,
+    /** Watched marks, positions and history of films and episodes (P2). */
+    val watched: List<Watch>? = null,
 )
 
 /** Writes [b] to [out] (and closes it). The Xtream password goes in only [withPassword]: the file isn't encrypted. */
@@ -71,6 +86,8 @@ fun writeBackup(out: OutputStream, b: Backup, withPassword: Boolean, appVersion:
     b.settings?.let { parts["settings"] = settingsJson(it) }
     b.guides?.let { list -> parts["guide"] = JSONObject().put("sources", JSONArray(list.map(::guideJson))) }
     b.channels?.let { parts["channels"] = channelsJson(it) }
+    b.library?.let { parts["library"] = libraryJson(it) }
+    b.watched?.let { list -> parts["watched"] = JSONObject().put("items", JSONArray(list.map(::watchJson))) }
     val created = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
     val manifest = JSONObject()
         .put("format", FORMAT)
@@ -113,6 +130,8 @@ fun readBackup(input: InputStream): Backup {
             settings = part("settings")?.let(::readSettings),
             guides = part("guide")?.getJSONArray("sources")?.objects()?.map(::readGuide),
             channels = part("channels")?.let(::readChannels),
+            library = part("library")?.let(::readLibrary),
+            watched = part("watched")?.getJSONArray("items")?.objects()?.map(::readWatch),
         )
     } catch (e: JSONException) {
         throw CoreException(ErrorCode.BACKUP_CORRUPT)
@@ -268,4 +287,49 @@ private fun readChannels(j: JSONObject) = UserData(
     collections = j.optJSONArray("collections")?.objects().orEmpty().map { c ->
         SavedCollection(c.getString("name"), c.getJSONArray("keys").strings())
     },
+)
+
+// --- library (P2) ---
+
+private fun libraryJson(d: LibraryData): JSONObject = JSONObject()
+    .put("items", JSONArray(d.items.map { s -> JSONObject().put("key", s.vkey).putOpt("name", s.name).put("hidden", s.hidden).putOpt("favorite", s.favorite) }))
+    .put("categories", JSONArray(d.categories.map { s ->
+        JSONObject().put("key", s.ckey).putOpt("name", s.name).put("hidden", s.hidden).putOpt("position", s.position)
+    }))
+    .put("order", JSONArray(d.order.map { (list, keys) -> JSONObject().put("list", list).put("keys", JSONArray(keys)) }))
+    .put("collections", JSONArray(d.collections.map { c ->
+        JSONObject().put("kind", c.kind.name).put("name", c.name).put("keys", JSONArray(c.items))
+    }))
+
+private fun readLibrary(j: JSONObject) = LibraryData(
+    items = j.optJSONArray("items")?.objects().orEmpty().map { c ->
+        VodState(nonBlank(c.getString("key")), c.optStringOrNull("name"), c.optBoolean("hidden"), c.optIntOrNull("favorite"))
+    },
+    categories = j.optJSONArray("categories")?.objects().orEmpty().map { c ->
+        VodCategoryState(nonBlank(c.getString("key")), c.optStringOrNull("name"), c.optBoolean("hidden"), c.optIntOrNull("position"))
+    },
+    order = j.optJSONArray("order")?.objects().orEmpty().associate { o -> nonBlank(o.getString("list")) to o.getJSONArray("keys").strings() },
+    collections = j.optJSONArray("collections")?.objects().orEmpty().map { c ->
+        SavedVodCollection(VodKind.valueOf(c.getString("kind")), c.getString("name"), c.getJSONArray("keys").strings())
+    },
+)
+
+private fun watchJson(w: Watch): JSONObject = JSONObject()
+    .put("key", w.vkey).put("kind", w.kind.name).putOpt("series", w.seriesKey).putOpt("season", w.season).putOpt("episode", w.episode)
+    .put("title", w.title).putOpt("episodeTitle", w.episodeTitle).putOpt("image", w.image)
+    .put("position", w.position).put("duration", w.duration).put("watched", w.watched).put("at", w.watchedAt)
+
+private fun readWatch(j: JSONObject) = Watch(
+    vkey = nonBlank(j.getString("key")),
+    kind = VodKind.valueOf(j.getString("kind")),
+    seriesKey = j.optStringOrNull("series"),
+    season = j.optIntOrNull("season"),
+    episode = j.optIntOrNull("episode"),
+    title = j.getString("title"),
+    episodeTitle = j.optStringOrNull("episodeTitle"),
+    image = j.optStringOrNull("image"),
+    position = j.optLong("position").coerceAtLeast(0),
+    duration = j.optLong("duration").coerceAtLeast(0),
+    watched = j.optBoolean("watched"),
+    watchedAt = j.getLong("at"),
 )
