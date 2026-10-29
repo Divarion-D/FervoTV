@@ -7,11 +7,18 @@ plugins {
 }
 
 /**
- * Release signing secrets: env vars on CI (FERVO_KEYSTORE, ...), ~/.gradle/gradle.properties locally (fervo.keystore, ...).
- * Never stored in the repo. Without them the release build is simply unsigned.
+ * Release signing secrets: env vars on CI (FERVO_KEYSTORE, ...), locally `signing/signing.properties` next to the
+ * keystore (git-ignored), or `fervo.*` Gradle properties. Never committed. Without them the release build is unsigned.
  */
+val signingDir = rootProject.file("signing")
+val localSigning = java.util.Properties().apply {
+    signingDir.resolve("signing.properties").takeIf { it.isFile }?.reader()?.use { load(it) }
+}
+
 fun secret(env: String, prop: String): String? =
     providers.environmentVariable(env).orElse(providers.gradleProperty(prop)).orNull
+        ?: localSigning.getProperty(prop.removePrefix("fervo."))
+            ?.let { if (prop == "fervo.keystore") signingDir.resolve(it).path else it }
 
 // app-tv and app-mobile: one version and one release signing for both.
 subprojects {

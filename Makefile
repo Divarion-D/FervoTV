@@ -1,5 +1,5 @@
 # Fervo TV — сборка, тесты и выпуск. `make` или `make help` — список целей.
-# Обёртка над ./gradlew. Ключ подписи release — из ~/.gradle/gradle.properties (fervo.*) или переменных FERVO_* (см. README).
+# Обёртка над ./gradlew. Ключ подписи release — из signing/ (в git не попадает) или переменных FERVO_* (см. README).
 
 JAVA_HOME    ?= $(HOME)/.local/share/jdk-17
 ANDROID_HOME ?= $(HOME)/Android/Sdk

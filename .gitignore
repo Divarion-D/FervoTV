@@ -6,3 +6,8 @@ local.properties
 .kotlin/
 .claude/worktrees/
 dist/
+
+# Release signing: keystore and passwords stay local (see README → «Ключ подписи»)
+signing/
+*.jks
+*.keystore
