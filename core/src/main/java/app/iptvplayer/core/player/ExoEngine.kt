@@ -6,6 +6,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.SurfaceView
 import androidx.annotation.OptIn
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -59,7 +60,7 @@ class ExoEngine(ctx: Context) : PlaybackEngine {
     init {
         exo.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
-                _state.update { it.copy(buffering = state == Player.STATE_BUFFERING) }
+                _state.update { it.copy(buffering = state == Player.STATE_BUFFERING, ended = state == Player.STATE_ENDED) }
                 main.removeCallbacks(checkStall)
                 if (state == Player.STATE_BUFFERING) {
                     stall.reset()
@@ -97,8 +98,9 @@ class ExoEngine(ctx: Context) : PlaybackEngine {
     }
 
     override fun play(item: PlayItem) {
-        _state.update { it.copy(error = null, height = 0, fps = 0f) }
-        exo.setMediaItem(MediaItem.fromUri(item.url))
+        _state.update { it.copy(error = null, height = 0, fps = 0f, ended = false) }
+        // Without a start position a live stream begins at its live edge; with one, a film resumes (VOD-010).
+        if (item.start > 0) exo.setMediaItem(MediaItem.fromUri(item.url), item.start) else exo.setMediaItem(MediaItem.fromUri(item.url))
         exo.prepare()
         exo.play()
     }
@@ -115,6 +117,14 @@ class ExoEngine(ctx: Context) : PlaybackEngine {
 
     override fun setMuted(muted: Boolean) {
         exo.volume = if (muted) 0f else 1f
+    }
+
+    override val position: Long get() = exo.currentPosition.coerceAtLeast(0)
+    override val duration: Long get() = exo.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0
+
+    override fun seekTo(ms: Long) {
+        _state.update { it.copy(ended = false) }
+        exo.seekTo(ms)
     }
 
     override fun stop() {

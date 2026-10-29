@@ -101,6 +101,7 @@ import app.iptvplayer.core.model.ChannelSort
 import app.iptvplayer.core.model.Programme
 import app.iptvplayer.core.model.Settings
 import app.iptvplayer.core.model.Source
+import app.iptvplayer.core.model.VodKind
 import app.iptvplayer.core.player.PlayItem
 import app.iptvplayer.core.player.PlayerSession
 import app.iptvplayer.core.source.cacheKey
@@ -150,6 +151,8 @@ fun LiveScreen(
     onOpenSettings: () -> Unit,
     guide: Boolean = false,
     onGuide: (Boolean) -> Unit = {},
+    library: Set<VodKind> = emptySet(),
+    onLibrary: (VodKind) -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val tv = remember { ctx.isTv() }
@@ -221,6 +224,7 @@ fun LiveScreen(
     val groupSearchFocus = remember { FocusRequester() }
     val railLive = remember { FocusRequester() }
     val railSettings = remember { FocusRequester() }
+    val railLibrary = remember { VodKind.entries.associateWith { FocusRequester() } }
     val scheduleFocus = remember { FocusRequester() }
     val scheduleState = rememberLazyListState()
     var area by remember { mutableStateOf(Area.List) }
@@ -796,7 +800,7 @@ fun LiveScreen(
         val i = focusedRow[0]
         return when (a) {
             Action.Ok, Action.Menu -> {
-                val item = items.peek(i) ?: return true
+                val item = (if (i in 0 until items.itemCount) items.peek(i) else null) ?: return true // a list reloading can be empty for a moment
                 if (long || a == Action.Menu) channelMenu(item, i) else activate(i, item, touch = false)
                 true
             }
@@ -1017,7 +1021,11 @@ fun LiveScreen(
                             ToolButton(R.drawable.ic_sort, orderLabel, onClick = ::sortMenu)
                             ToolButton(R.drawable.ic_guide, stringResource(R.string.view_guide)) { onGuide(true) } // LIVE-022
                         }
-                        if (compact) ToolButton(R.drawable.ic_settings, stringResource(R.string.section_settings)) { fromSettings = true; onOpenSettings() }
+                        if (compact) {
+                            // No rail on a phone held sideways: the other sections are buttons here.
+                            libraryRail(library, null, { railLibrary.getValue(it) }, onLibrary).forEach { ToolButton(it.icon, it.label, onClick = it.onClick) }
+                            ToolButton(R.drawable.ic_settings, stringResource(R.string.section_settings)) { fromSettings = true; onOpenSettings() }
+                        }
                         if (!online) OfflineMark()
                         if (!compact) Clock() // a phone shows its own clock
                     }
@@ -1108,7 +1116,7 @@ fun LiveScreen(
                     RailEntry(R.drawable.ic_guide, guideLabel, guide, railGuide) {
                         if (!guide) onGuide(true) else scope.launch { focusRow(focusedRow[0]) }
                     },
-                ),
+                ) + libraryRail(library, null, { railLibrary.getValue(it) }, onLibrary),
                 listOf(RailEntry(R.drawable.ic_settings, stringResource(R.string.section_settings), false, railSettings) { fromSettings = true; onOpenSettings() }),
                 // Off TV the system bars overlap the screen edges: the rail keeps clear of them.
                 (if (tv) Modifier else Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.Start)))
@@ -1178,10 +1186,12 @@ fun LiveScreen(
                     channelArea(Modifier.weight(1f), true)
                 }
             }
-            PhoneNav(if (guide) Section.Guide else Section.Live) { s ->
+            PhoneNav(if (guide) Section.Guide else Section.Live, library) { s ->
                 when (s) {
                     Section.Live -> onGuide(false)
                     Section.Guide -> onGuide(true)
+                    Section.Movies -> onLibrary(VodKind.MOVIE)
+                    Section.Series -> onLibrary(VodKind.SERIES)
                     Section.More -> onOpenSettings()
                 }
             }

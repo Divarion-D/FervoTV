@@ -99,3 +99,21 @@ data class EpisodeEntry(
     val duration: Long? = null,
     val released: String? = null,
 )
+
+/** VOD-010: continue at the saved position at once, ask, or always start over. */
+enum class ResumeMode { CONTINUE, ASK, START }
+
+/** VOD-006: how a series lists its episodes; kept per series. */
+data class SeriesView(val newestFirst: Boolean = false, val hideWatched: Boolean = false)
+
+/** Details of a film the list doesn't carry (Xtream get_vod_info, VOD-004); null fields = not given. */
+data class VodInfo(
+    /** ms. */
+    val duration: Long? = null,
+    val plot: String? = null,
+    val genre: String? = null,
+    val backdrop: String? = null,
+    val director: String? = null,
+    val cast: String? = null,
+    val released: String? = null,
+)

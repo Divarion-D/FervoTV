@@ -18,6 +18,8 @@ import app.iptvplayer.core.loadPage
 import app.iptvplayer.core.model.Channel
 import app.iptvplayer.core.model.ChannelSort
 import app.iptvplayer.core.model.PlaylistRefresh
+import app.iptvplayer.core.model.ResumeMode
+import app.iptvplayer.core.model.VodSort
 import app.iptvplayer.core.model.Source
 import app.iptvplayer.core.source.cacheKey
 import app.iptvplayer.core.source.userKey
@@ -81,6 +83,7 @@ class SettingsFileTest {
             settings = settings.copy(
                 playlistRefresh = PlaylistRefresh.EVERY_N_DAYS, refreshDays = 5, channelSort = ChannelSort.NAME,
                 logoSource = "https://logos.example/api", liveTiles = true, epgShift = 60, language = "en",
+                resume = ResumeMode.CONTINUE, autoNext = false, movieSort = VodSort.RATING, seriesList = true,
             )
             addEpgSource("https://guide.example/a.xml.gz")
             updateEpgSource(addEpgSource("https://guide.example/b.xml").copy(userAgent = "UA", shift = -30, refresh = PlaylistRefresh.WEEKLY))

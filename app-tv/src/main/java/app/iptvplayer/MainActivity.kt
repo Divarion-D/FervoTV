@@ -63,6 +63,11 @@ import androidx.compose.ui.unit.dp
 import app.iptvplayer.ui.AppTheme
 import app.iptvplayer.ui.BgTask
 import app.iptvplayer.ui.LiveScreen
+import app.iptvplayer.ui.LibraryScreen
+import app.iptvplayer.ui.librarySummary
+import app.iptvplayer.core.db.LibraryState
+import app.iptvplayer.core.model.VodKind
+import kotlinx.coroutines.flow.flowOf
 import app.iptvplayer.ui.PhoneNav
 import app.iptvplayer.ui.Section
 import app.iptvplayer.ui.isWideLayout
@@ -131,7 +136,27 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
     val screens = rememberSaveableStateHolder()
     // «Эфир» as the list or the programme grid (LIVE-022: the setting picks how it opens).
     var guide by rememberSaveable { mutableStateOf(repo.settings.liveGuide) }
+    // «Фильмы» / «Сериалы» open instead of «Эфир»; shown only when the source has them (VOD-001, UI-007).
+    var library by rememberSaveable { mutableStateOf<VodKind?>(null) }
+    val kinds by remember(source) { source?.let(repo::libraryKinds) ?: flowOf(emptySet()) }.collectAsState(initial = null)
+    val libraryKinds = kinds.orEmpty()
+    LaunchedEffect(kinds) {
+        val has = kinds ?: return@LaunchedEffect
+        if (library != null && library !in has) library = null // the source no longer has that section
+    }
     val wide = isWideLayout()
+
+    fun go(s: Section) {
+        when (s) {
+            Section.Live, Section.Guide -> {
+                library = null
+                guide = s == Section.Guide
+            }
+            Section.Movies -> library = VodKind.MOVIE
+            Section.Series -> library = VodKind.SERIES
+            Section.More -> settingsOpen = true
+        }
+    }
 
     // One playback session above the screens (spec 01 §6.3); released with the activity.
     val player = remember { PlayerSession { ExoEngine(ctx.applicationContext) } }
@@ -197,10 +222,28 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
         } finally {
             refreshing = false
         }
-        if (ready) task = BgTask(ctx.getString(R.string.task_playlist_done), ok = true)
+        if (ready) {
+            // An M3U's films and series came with it (SRC-016): what changed in them, when there are any.
+            val summary = (repo.libraryState.value as? LibraryState.Done)?.result?.takeIf { s is Source.M3u }?.let { librarySummary(ctx, it) }
+            task = BgTask(summary ?: ctx.getString(R.string.task_playlist_done), ok = true)
+        }
         playlistStatus = Txt(R.string.playlist_updated_at, DateTime(System.currentTimeMillis()))
         ready = true
         startLogos(s)
+    }
+
+    // SRC-016: an Xtream library imports in the background after the channels: its progress, then what changed.
+    // (An M3U's library comes with the playlist itself: its summary is the playlist's.)
+    LaunchedEffect(Unit) {
+        repo.libraryState.collect { st ->
+            if (source !is Source.Xtream) return@collect
+            task = when (st) {
+                is LibraryState.Running -> BgTask(if (st.count > 0) ctx.getString(R.string.task_library_count, st.count) else ctx.getString(R.string.task_library))
+                is LibraryState.Done -> BgTask(librarySummary(ctx, st.result) ?: ctx.getString(R.string.task_library_done), ok = true)
+                is LibraryState.Failed -> BgTask(ctx.getString(R.string.task_library_failed, errorText(ctx, st.error)), ok = false)
+                null -> task
+            }
+        }
     }
 
     // Logo settings changed: re-match against the saved channels.
@@ -308,6 +351,8 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
         settingsOpen = false
         screens.removeState("settings")
         screens.removeState("channels")
+        VodKind.entries.forEach { screens.removeState("library-$it") }
+        library = null
         if (source == old && !askPassword) refreshRequest++ // the same source: refresh it; another one loads by itself
     }
 
@@ -325,6 +370,8 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
                 // Another playlist: its screens start from scratch.
                 screens.removeState("settings")
                 screens.removeState("channels")
+                VodKind.entries.forEach { k -> screens.removeState("library-$k") }
+                library = null
             },
         )
         settingsOpen -> screens.SaveableStateProvider("settings") {
@@ -345,9 +392,9 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
             // Phone: Настройки are the «Ещё» tab, over the same bottom navigation.
             if (wide) content() else Column(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f).consumeWindowInsets(WindowInsets.navigationBars)) { content() }
-                PhoneNav(Section.More) { s ->
-                    guide = s == Section.Guide
+                PhoneNav(Section.More, libraryKinds) { s ->
                     close()
+                    go(s)
                 }
             }
         }
@@ -383,6 +430,17 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
                 IconLabel(R.drawable.ic_settings, stringResource(R.string.section_settings))
             }
         }
+        library != null -> {
+            val kind = library!!
+            screens.SaveableStateProvider("library-$kind") {
+                LibraryScreen(
+                    repo, src, player, settings, online, task, kind, libraryKinds,
+                    onSettings = ::changeSettings,
+                    onSection = ::go,
+                    onOpenSettings = { settingsOpen = true },
+                )
+            }
+        }
         else -> screens.SaveableStateProvider("channels") {
             LiveScreen(
                 repo, src, player, settings, online, task,
@@ -390,6 +448,8 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
                 onOpenSettings = { settingsOpen = true },
                 guide = guide,
                 onGuide = { guide = it },
+                library = libraryKinds,
+                onLibrary = { library = it },
             )
         }
     }

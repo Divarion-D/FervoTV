@@ -6,7 +6,12 @@ import app.iptvplayer.core.FakeServer
 import app.iptvplayer.core.Repository
 import app.iptvplayer.core.SyntheticVodM3u
 import app.iptvplayer.core.loadPage
+import app.iptvplayer.core.model.ResumeMode
+import app.iptvplayer.core.model.SeriesView
+import app.iptvplayer.core.model.Settings
 import app.iptvplayer.core.model.Source
+import app.iptvplayer.core.model.VodInfo
+import app.iptvplayer.core.model.VodItem
 import app.iptvplayer.core.model.VodEntry
 import app.iptvplayer.core.model.VodKind
 import app.iptvplayer.core.model.VodKind.MOVIE
@@ -46,7 +51,7 @@ class LibraryStoreTest {
 
     @Before
     fun open() {
-        listOf("iptv", "settings").forEach { ctx.getSharedPreferences(it, Context.MODE_PRIVATE).edit().clear().commit() }
+        listOf("iptv", "settings", "series").forEach { ctx.getSharedPreferences(it, Context.MODE_PRIVATE).edit().clear().commit() }
         db = Room.databaseBuilder(ctx, AppDb::class.java, File(tmp.root, "t.db").path).allowMainThreadQueries().build()
         repo = Repository(ctx, db)
     }
@@ -205,6 +210,66 @@ http://h/s/x2.ts
         db.openHelper.writableDatabase.execSQL("UPDATE vod SET episodesAt = NULL")
         val e = assertThrows(HttpException::class.java) { runBlocking { repo.episodes(s, show) } }
         assertEquals(503, e.code)
+    }
+
+    /** VOD-001 / UI-007: a section shows only when the source has films or series in it; hidden ones still count. */
+    @Test
+    fun sectionsFollowWhatTheSourceHas() {
+        fun kinds(s: Source) = runBlocking { repo.libraryKinds(s).first() }
+        playlist = "#EXTM3U\n#EXTINF:-1,Первый\nhttp://h/live/1.ts\n"
+        val live = m3u()
+        runBlocking { repo.load(live) }
+        assertEquals(emptySet<VodKind>(), kinds(live)) // the owner's case: live only, no «Фильмы» / «Сериалы»
+        playlist = "#EXTM3U\n#EXTINF:-1 type=\"movie\",A\nhttp://h/a.mp4\n"
+        val films = m3u()
+        runBlocking { repo.load(films) }
+        assertEquals(setOf(MOVIE), kinds(films))
+        runBlocking { repo.setVodHidden(listOf("http://h/a.mp4"), true) }
+        assertEquals(setOf(MOVIE), kinds(films))
+        playlist += "#EXTINF:-1 type=\"series\",Шоу S01E01\nhttp://h/s1.mp4\n"
+        val s = m3u() // another server: another source
+        runBlocking { repo.load(s) }
+        assertEquals(setOf(MOVIE, SERIES), kinds(s))
+        assertEquals(emptySet<VodKind>(), kinds(Source.M3u("http://other/none.m3u"))) // nothing imported
+    }
+
+    /** VOD-004: the film's duration and the rest from get_vod_info, once per run; M3U has no such call. */
+    @Test
+    fun filmDetailsFromXtream() {
+        val srv = serve { path ->
+            when {
+                "get_vod_info" in path -> 200 to """{"info":{"duration_secs":"6720","plot":"Сюжет","genre":"Драма","backdrop_path":["http://p/b.jpg"],"cast":"А, Б","director":"В","releasedate":"2001-05-01"},"movie_data":{"stream_id":7}}"""
+                else -> 200 to "[]"
+            }
+        }
+        val s = Source.Xtream(srv.url, "u", "p")
+        val film = VodItem("${srv.url}|u|movie|7", MOVIE, "Ф", "Ф", null, emptyList(), "К", null, null, null, 0, null, null, "http://x/7.mp4", false, false, null)
+        val info = runBlocking { repo.vodInfo(s, film) }!!
+        assertEquals(VodInfo(6_720_000, "Сюжет", "Драма", "http://p/b.jpg", "В", "А, Б", "2001-05-01"), info)
+        runBlocking { repo.vodInfo(s, film) }
+        assertEquals(1, srv.requests.count { "get_vod_info" in it && "vod_id=7" in it })
+        assertNull(runBlocking { repo.vodInfo(Source.M3u("http://h/list.m3u"), film) })
+        // `info: []` (nothing known) is no error.
+        val empty = serve { 200 to """{"info":[],"movie_data":{}}""" }
+        assertEquals(VodInfo(), runBlocking { repo.vodInfo(Source.Xtream(empty.url, "u", "p"), film.copy(key = "x|u|movie|8")) })
+    }
+
+    /** VOD-006 per series; VOD-002/003/009/010 settings are remembered (and the sort / view per section). */
+    @Test
+    fun seriesViewAndLibrarySettingsAreKept() {
+        assertEquals(SeriesView(), repo.seriesView("a"))
+        repo.setSeriesView("a", SeriesView(newestFirst = true, hideWatched = true))
+        repo.setSeriesView("b", SeriesView(hideWatched = true))
+        val again = Repository(ctx, db)
+        assertEquals(SeriesView(true, true), again.seriesView("a"))
+        assertEquals(SeriesView(false, true), again.seriesView("b"))
+        again.setSeriesView("a", SeriesView())
+        assertEquals(SeriesView(), repo.seriesView("a"))
+
+        assertEquals(Settings(), repo.settings)
+        val changed = Settings(resume = ResumeMode.START, autoNext = false, movieSort = VodSort.ADDED, seriesSort = VodSort.NAME, movieList = true)
+        repo.settings = changed
+        assertEquals(changed, Repository(ctx, db).settings)
     }
 
     /** SRC-012 at the repository: a confirmed account is returned as Xtream, anything else stays M3U. */

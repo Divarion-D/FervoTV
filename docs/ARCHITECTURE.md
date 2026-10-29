@@ -37,7 +37,8 @@ core/src/main/java/app/iptvplayer/core/
   Repository.kt            единственный вход для приложений: Source и Settings (prefs), lastGroup, zapped (последний и
                            предыдущий канал); load (импорт в БД), списки и строки каналов, телегид (источники, загрузка,
                            привязка, «сейчас/далее», сетка), пользовательские данные; matchLogos; migrateLegacyCache;
-                           offerChangelog; файл настроек: backup / saveSettingsFile / readSettingsFile / restore, passwordMissing
+                           offerChangelog; файл настроек: backup / saveSettingsFile / readSettingsFile / restore, passwordMissing;
+                           видеотека: libraryKinds (какие разделы есть), vodInfo (get_vod_info), seriesView / setSeriesView
   CoreException.kt         CoreException(code: ErrorCode, detail) — ошибки ядра кодами, без текста (UI-022)
   backup/SettingsFile.kt   формат `.fervo` (BAK-001/011): Backup (части source / settings / guide / channels), writeBackup,
                            readBackup — проверка всего файла до применения; FORMAT_VERSION
@@ -45,7 +46,8 @@ core/src/main/java/app/iptvplayer/core/
                            Source (M3u | Xtream), Settings (+ language), ChannelSort, PlaylistRefresh (waitMs — расписание),
                            NO_GROUP (значение-ключ, название даёт приложение)
   player/Playback.kt       PlaybackEngine (интерфейс движка), PlayItem, PlaybackState, PlaybackError (Kind), PlayerSession
-                           (сеанс над экранами), WatchTimer — порог «Недавних» (минута без перерыва, LIVE-010)
+                           (сеанс над экранами; у фильма — start, position / duration, seekTo, ended), WatchTimer — порог
+                           «Недавних» (минута без перерыва, LIVE-010)
   player/ExoEngine.kt      реализация на Media3 ExoPlayer; recovery() — HLS-повтор и возврат к эфиру, errorKind() — категория ошибки
   Qr.kt                    qrModules(text): QR-код (ZXing, только кодировщик) как матрица модулей
   db/Db.kt                 Room: AppDb (версия 3, MIGRATION_1_2, MIGRATION_2_3), таблицы плейлиста source / category / channel / channel_fts,
@@ -64,7 +66,10 @@ core/src/main/java/app/iptvplayer/core/
   db/LibraryUser.kt        данные пользователя видеотеки: vod_state / vod_category_state / vod_order / vod_collection /
                            vod_collection_item / watch, LibraryUserDao; избранное, скрытие, имена, порядок, подборки, сброс,
                            позиции и отметки (finished()), история, недосмотренное, dump / replace для файла настроек
-  model/Library.kt         VodKind, VodSort, VodItem, Episode, Progress; VodEntry / EpisodeEntry — что отдаёт источник
+  model/Library.kt         VodKind, VodSort, VodItem, Episode, Progress; VodEntry / EpisodeEntry — что отдаёт источник;
+                           ResumeMode (VOD-010), SeriesView (VOD-006), VodInfo (подробности фильма)
+  model/Watching.kt        чистые правила просмотра: resumeChoice (продолжить / спросить / с начала), порядок просмотра,
+                           nextEpisode / previousEpisode (через сезоны, спецвыпуски последними), continueEpisode, вкладки сезонов
   source/Titles.kt         чистая логика видеотеки: cleanTitle (VOD-007), episodeMark / episodeTitle / showKey (SRC-010),
                            m3uSection — раздел записи M3U, yearOf
   source/xtream/XtreamLibrary.kt  loadXtreamLibrary (категории, get_vod_streams, get_series — по элементу), loadXtreamEpisodes
@@ -95,11 +100,14 @@ core/src/test/java/app/iptvplayer/core/
   db/PlaylistStoreTest.kt, db/EpgStoreTest.kt, db/UserStoreTest.kt, db/MigrationTest.kt, epg/XmltvTest.kt, epg/EpgMatchTest.kt,
   logos/LogoIndexTest.kt, logos/BackdropTest.kt, player/PlayerSessionTest.kt (+ FakeEngine),
   player/ExoRecoveryTest.kt, player/WatchTimerTest.kt, input/KeyActionTest.kt, model/PlaylistRefreshTest.kt,
-  backup/SettingsFileTest.kt, MiscTest.kt, source/TitlesTest.kt, source/xtream/XtreamLibraryTest.kt, db/LibraryStoreTest.kt;
+  backup/SettingsFileTest.kt, MiscTest.kt, source/TitlesTest.kt, source/xtream/XtreamLibraryTest.kt, db/LibraryStoreTest.kt,
+  model/WatchingTest.kt;
   TestUtil.kt (SyntheticM3u, SyntheticVodM3u, SyntheticXmltv, gzipped, usedHeap, loadPage, FakeServer — локальный HTTP), source/LegacyCache.kt (playlist.tsv для фикстур)
 
 app-tv/src/main/java/app/iptvplayer/       (app-mobile/… — такая же копия)
-  MainActivity.kt     App(): выбор экрана — Что нового / Setup / Настройки / загрузка / ошибка / «Эфир»; расписание обновления
+  MainActivity.kt     App(): выбор экрана — Что нового / Setup / Настройки / загрузка / ошибка / «Эфир» / «Фильмы» / «Сериалы»
+                      (разделы видеотеки — только когда они есть у источника, libraryKinds); go(Section); плашка загрузки
+                      видеотеки Xtream и итог «добавлено / обновлено / удалено» (SRC-016); расписание обновления
                       плейлиста и телегида (без сети ждут её); фоновая задача для плашки (BgTask); сеанс плеера
                       (PlayerSession); «Что нового»; вид раздела (список / сетка); на телефоне Настройки — вкладка «Ещё»
   Language.kt         UI-022: LANGUAGES, applyLanguage / platformLanguage (Android 13+: язык приложения платформы),
@@ -125,11 +133,21 @@ app-tv/src/main/java/app/iptvplayer/       (app-mobile/… — такая же �
   ui/GuideGrid.kt     сетка телегида: GuideCursor (вид, строка, режим передач, момент фокуса; Saver), GuideGrid (шкала,
                       строки-холсты, линия «сейчас», клавиши и касания), GuideDetails, GuideMissing, ToolChip
   ui/VideoPanels.kt   панели поверх видео: ChannelsPanel, CategoriesPanel, RecentPanel (LIVE-019/020)
-  ui/LiveParts.kt     детали «Эфира»: Rail, PhoneNav (нижняя навигация телефона), ToolButton, Clock, SearchField, CategoryItem / CategoryChips, ChannelRow,
+  ui/LiveParts.kt     детали «Эфира»: Rail, PhoneNav (нижняя навигация телефона; Section), libraryRail, ToolButton, Clock (только в
+                      верхней панели разделов), SearchField, CategoryItem / CategoryChips, ChannelRow,
                       ChannelCard, VideoWindow, DetailsPanel, ScheduleList, Hints, TaskPill, Toast, EmptyState
   ui/Sheet.kt         ActionSheet (шторка справа / нижний лист), TextDialog, ConfirmDialog
   ui/ChannelLogo.kt   логотип канала (Coil): подложка из pickBackdrop и логотип запекаются в одну картинку (Bake); BrokenLogos
-  ui/PlayerScreen.kt  видео (SurfaceView) через PlayerSession, инфо-плашка, часы, набор номера, обработка Action;
+  ui/LibraryScreen.kt «Фильмы» / «Сериалы» (33-design 6.4): категории (те же CategoryItem / CategoryChips через
+                      VodGroup ↔ ChannelGroup), каталог постерами или списком (Paging, ключ — id строки), поиск, порядок,
+                      меню постера и категории, вопрос «продолжить / с начала»; раскладки широкий / телефон; страница и
+                      плеер рисуются вместо каталога (их фокус не утекает под них)
+  ui/VodParts.kt      Poster (Coil: размер по ячейке, скругление запечено в картинку, без постера — название), PosterCard,
+                      VodRow, подписи значений (VodSort, ResumeMode, «S1 · E2», «Эпизод N», время 1:05:09)
+  ui/VodPages.kt      FilmPage (VOD-004), SeriesPage (VOD-005/006: сезоны, эпизоды, меню сериала и эпизода, ошибка с кодом)
+  ui/VodPlayer.kt     фильм или эпизод во весь экран через тот же PlayerSession: полоса перемотки, ◀▶ ±10 с, CH± — эпизоды,
+                      сохранение позиции (каждые 10 с, в фоне, при выходе), карточка следующего эпизода (VOD-009)
+  ui/PlayerScreen.kt  видео (SurfaceView) через PlayerSession, инфо-плашка, набор номера, обработка Action (часов нет, UI-009);
                       ◀ / ▶ и свайпы от краёв — панели поверх видео (слот overlay от «Эфира»)
 res/values/strings.xml, res/values-ru/strings.xml  все строки интерфейса app-tv (UI-022): английский по умолчанию, русский;
                     множественные формы — <plurals>; res/xml/locales_config.xml — языки для системных настроек
@@ -260,7 +278,8 @@ app-tv/src/main/res/drawable/ic_*.xml   иконки Material Symbols Rounded (b
   Хранятся в `SharedPreferences("settings")`: `autoLogos`, `logoSource`, `playlistRefresh`, `refreshDays`, `epgDays`, `epgShift`
   (общий сдвиг телегида, мин), `channelSort`, `preview`, `previewSound` (LIVE-006), `rememberLive` (SET-011), `liveTiles`
   (вид «Эфира»; нет ключа — по экрану), `liveGuide` (LIVE-022: раздел открывается сеткой), `guideEmpty` (EPG-010: в сетке
-  и каналы без программы); там же `lastGroup` (LIVE-017, `Repository.lastGroup`, строкой `ChannelGroup.encode()`). Отдельно от источника
+  и каналы без программы), `resume` (VOD-010: продолжать / спрашивать / с начала), `autoNext` (VOD-009), `movieSort` /
+  `seriesSort` (VOD-003) и `movieList` / `seriesList` (VOD-002: вид каждого раздела видеотеки); там же `lastGroup` (LIVE-017, `Repository.lastGroup`, строкой `ChannelGroup.encode()`). Отдельно от источника
   плейлиста (`"iptv"`). Настройки источников телегида (User-Agent, расписание, сдвиг, порядок) — в строке `epg_source` базы.
 - **О приложении**: версия читается из установленного пакета (`PackageManager`), поэтому всегда совпадает с
   `versionName` / `versionCode` в корневом `build.gradle.kts`, а в debug-сборке помечается `· debug`.
@@ -505,6 +524,10 @@ Xtream — `server|user|movie|stream_id`, `server|user|series|series_id`, эпи
 - **Выдача** (`Repository`): `vodGroups` (Избранное, Недавние — просмотренные, Все, подборки, категории), `vodCategories`,
   `vod(VodFilter)` → `PagingData<VodItem>`, `vodCount`, `firstVod`, `vodItem`, `vodIndexOf`, `episodes`, `episode`;
   у элемента — прогресс (`Progress`; у сериала — последнего начатого эпизода). Правила скрытия и поиска — как у каналов.
+  `libraryKinds(s)` — поток разделов, в которых у источника что-то есть (`SELECT DISTINCT kind` по индексу; скрытые
+  считаются): по нему приложение показывает «Фильмы» / «Сериалы». `vodInfo(s, фильм)` — Xtream `get_vod_info`
+  (длительность, описание, режиссёр, актёры, фон), раз за запуск, в памяти; у M3U — null. `seriesView` — «сначала новые» /
+  «скрывать просмотренные» по ключу сериала в prefs `series` (не в файле настроек).
 - **Правки** — `setVodFavorite`, `setVodHidden`, `renameVod`, `setVodCategoriesHidden`, `renameVodCategory`,
   `reorderVodCategories`, `reorderVod`, подборки `…VodCollection…`, `vodEdits` / `resetVodEdits`.
 - **Просмотр** — `savePosition(фильм | сериал + эпизод, позиция, длительность)`: от 95% или в последние 10 с —
@@ -702,6 +725,11 @@ PlayerScreen ──open / retry / togglePause / background / foreground / close�
   - User-Agent — константа `Defaults.USER_AGENT`, один и тот же для плейлистов и потоков.
 - **Картинка**: `SurfaceView` в `AndroidView`, размер — `Modifier.aspectRatio(state.aspect)` по центру чёрного фона
   (`PlayerView` из media3-ui больше не нужен); `keepScreenOn` — экран не гаснет, пока открыт плеер.
+- **Фильмы и эпизоды** (P2.2): `PlayItem(live = false, start)` — движок начинает с `start` (у эфира 0 — с края эфира,
+  поведение эфира не изменилось); `position` / `duration` экран читает раз в 0,5 с, `seekTo`, `state.ended` — конец.
+  `VodPlayer` сохраняет позицию каждые `Defaults.VOD_SAVE_MS` (10 с), в `ON_STOP`, при смене эпизода и выходе
+  (`Repository.savePosition`, «просмотрено» решает ядро); за `AUTO_NEXT_MS` (30 с) до конца — карточка следующего
+  эпизода (`nextEpisode`), в конце — следующий или выход. Где начать, решает `resumeChoice` по настройке `Settings.resume`.
 - **Жизненный цикл** (`LifecycleStartEffect`): `ON_STOP` → `session.background()`: эфир (`PlayItem.live`, сейчас — все
   каналы) **освобождается** (`stop`: ни трафика, ни декодеров в фоне), остальное ставится на паузу; `ON_START` →
   `foreground()`: эфир готовится заново и идёт с текущего момента, остальное продолжается. Выход из плеера — `close()`.
@@ -821,7 +849,7 @@ Back (пульт, кнопка, жест) ──▶ BackHandler
 
 ## Тесты
 
-`./gradlew testDebugUnitTest` (тесты `core` — JVM, 121; в `app-tv` — 2: `NoUiTextInCodeTest`). Тесты базы, `JsonReader` и `XmlPullParser` идут под **Robolectric**:
+`./gradlew testDebugUnitTest` (тесты `core` — JVM, 135; в `app-tv` — 2: `NoUiTextInCodeTest`). Тесты базы, `JsonReader` и `XmlPullParser` идут под **Robolectric**:
 Room, `android.util.JsonReader` и `android.util.Xml` требуют Android-классов, а Robolectric даёт настоящий SQLite (с FTS4) прямо в JVM —
 без устройства и эмулятора, на CI тем же `testDebugUnitTest`. Куча тестовой JVM ограничена 256 МБ (`core/build.gradle.kts`).
 - `M3uParserTest` — атрибуты, запятая в кавычках и в имени, `#EXTGRP`, CRLF/BOM/неизвестные теги, голый список URL,
@@ -836,7 +864,9 @@ Room, `android.util.JsonReader` и `android.util.Xml` требуют Android-к�
 - `WatchTimerTest` — «Недавние»: минута без перерыва засчитывается один раз, перелистывание не засчитывается, пауза
   и другой канал начинают отсчёт заново;
 - `PlayerSessionTest` (+ `FakeEngine` — тестовый движок) — эфир освобождается в фоне и начинается заново, остальное
-  на паузе; пауза, повтор, закрытие; движок создаётся только при первом воспроизведении;
+  на паузе; пауза, повтор, закрытие; движок создаётся только при первом воспроизведении; фильм с места и перемотка;
+- `WatchingTest` — продолжить / спросить / с начала по настройке, порог «просмотрено», следующий эпизод через сезоны и
+  спецвыпуски до остановки, с какого эпизода продолжать сериал, вкладки сезонов и порядок / скрытие эпизодов;
 - `ExoRecoveryTest` — HLS-повтор один раз, возврат к эфиру, прочие ошибки показываются; категории ошибок;
   тайм-аут буферизации (`StallWatch`: нет прогресса → ошибка, прогресс и новая буферизация сбрасывают отсчёт);
 - `KeyActionTest` — таблица клавиш (CH±, PageUp/Down, медиаклавиши, OK, Back не в `Action`);
@@ -886,6 +916,8 @@ Room, `android.util.JsonReader` и `android.util.Xml` требуют Android-к�
   Xtream: видеотека в фоне, эпизоды по открытию с кэшем и переносом, код ошибки; SRC-012 в `recognize`; сортировки,
   поиск «челов-пау», скрытие, сброс, ручной порядок; просмотр, недосмотренное, история, отметки;
   **150 000 фильмов** через парсер M3U — рост кучи < 8 МБ (сейчас 0–13 КБ), страницы и поиск < 200 мс (см. «Видеотека»);
+  разделы по содержимому источника (только эфир — ни «Фильмов», ни «Сериалов»), `get_vod_info`, вид сериала и настройки
+  видеотеки сохраняются;
 
 Проверка на реальных данных (P1.1, вручную, временным тестом): публичный XMLTV на 447 МБ (48 МБ gzip, `+0300`) с
 плейлистом ruiptv — 5,3 с на ПК, 3 205 каналов телегида, 24 446 передач, 193 из 215 каналов привязаны по названию,

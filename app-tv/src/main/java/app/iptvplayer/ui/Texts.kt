@@ -11,6 +11,7 @@ import app.iptvplayer.core.CoreException
 import app.iptvplayer.core.ErrorCode
 import app.iptvplayer.core.db.ChannelGroup
 import app.iptvplayer.core.db.GroupCount
+import app.iptvplayer.core.db.LibraryResult
 import app.iptvplayer.core.model.ChannelSort
 import app.iptvplayer.core.model.NO_GROUP
 import app.iptvplayer.core.model.PlaylistRefresh
@@ -130,3 +131,7 @@ fun dateTimeText(ctx: Context, ms: Long): String {
     val date = java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT, locale).format(Date(ms))
     return date + ", " + android.text.format.DateFormat.getTimeFormat(ctx).format(Date(ms))
 }
+
+/** SRC-016: "Films and series: 12 added, 3 updated, 1 removed"; null when the source has no library at all. */
+fun librarySummary(ctx: Context, r: LibraryResult): String? =
+    if (r.movies + r.series == 0 && r.removed == 0) null else ctx.getString(R.string.library_summary, r.added, r.updated, r.removed)

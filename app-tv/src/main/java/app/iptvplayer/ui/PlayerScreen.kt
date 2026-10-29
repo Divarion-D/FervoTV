@@ -197,19 +197,13 @@ fun PlayerScreen(
         if (shown != null && (showInfo || error != null)) {
             InfoBar(shown, index + 1, total, error, Modifier.align(Alignment.BottomStart))
         }
-        // The clock is always there in the player (UI-009); the dialed number right under it (LIVE-009).
-        Column(Modifier.align(Alignment.TopEnd).padding(horizontal = 48.dp, vertical = 24.dp), horizontalAlignment = Alignment.End) {
-            Clock(
-                Modifier.background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 4.dp),
-                date = false,
-            )
-            if (dial.text.isNotEmpty()) Text(
-                dial.text, style = TvType.display,
-                modifier = Modifier.padding(top = 12.dp)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(50))
-                    .padding(horizontal = 24.dp, vertical = 4.dp),
-            )
-        }
+        // The dialed number at the top right (LIVE-009); no clock in the player (UI-009, owner's decision).
+        if (dial.text.isNotEmpty()) Text(
+            dial.text, style = TvType.display,
+            modifier = Modifier.align(Alignment.TopEnd).padding(horizontal = 48.dp, vertical = 24.dp)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(50))
+                .padding(horizontal = 24.dp, vertical = 4.dp),
+        )
         overlay(::jump)
     }
     // Back from a panel: the remote is the player's again.

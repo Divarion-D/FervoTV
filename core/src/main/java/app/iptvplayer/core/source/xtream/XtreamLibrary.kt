@@ -8,6 +8,7 @@ import app.iptvplayer.core.model.EpisodeEntry
 import app.iptvplayer.core.model.NO_GROUP
 import app.iptvplayer.core.model.Source
 import app.iptvplayer.core.model.VodEntry
+import app.iptvplayer.core.model.VodInfo
 import app.iptvplayer.core.model.VodKind
 import app.iptvplayer.core.net.httpGet
 import app.iptvplayer.core.net.httpStream
@@ -53,6 +54,33 @@ fun loadXtreamEpisodes(s: Source.Xtream, seriesKey: String, name: String): List<
     httpStream("${api(s)}&action=get_series_info&series_id=${enc(xtreamSeriesId(seriesKey))}") { input ->
         JsonReader(input.reader()).use { readSeriesInfo(it, path(s, "series"), seriesKey, name) }
     }
+
+/** VOD-004: what get_vod_info adds to a film keyed by [movieKey]; empty when the panel has nothing. */
+fun loadXtreamVodInfo(s: Source.Xtream, movieKey: String): VodInfo =
+    httpStream("${api(s)}&action=get_vod_info&vod_id=${enc(movieKey.substringAfterLast('|'))}") { input ->
+        JsonReader(input.reader()).use(::readVodInfo)
+    }
+
+/**
+ * get_vod_info: `{"info": {plot | description, genre, duration_secs, duration ("01:52:00"), director, cast | actors,
+ * releasedate, backdrop_path: [url, …]}, "movie_data": {…}}`; `info` may be `[]`.
+ */
+internal fun readVodInfo(r: JsonReader): VodInfo {
+    if (r.peek() != JsonToken.BEGIN_OBJECT) throw CoreException(ErrorCode.XTREAM_BAD_LIBRARY)
+    var f: Map<String, String> = emptyMap()
+    r.beginObject()
+    while (r.hasNext()) if (r.nextName() == "info") f = readFields(r).orEmpty() else r.skipValue()
+    r.endObject()
+    return VodInfo(
+        duration = f["duration_secs"]?.toLongOrNull()?.takeIf { it > 0 }?.times(1000) ?: hms(f["duration"]),
+        plot = f["plot"] ?: f["description"],
+        genre = f["genre"],
+        backdrop = f["backdrop_path"],
+        director = f["director"],
+        cast = f["cast"] ?: f["actors"],
+        released = f["releasedate"] ?: f["release_date"],
+    )
+}
 
 private fun path(s: Source.Xtream, kind: String) = "${s.server.trimEnd('/')}/$kind/${enc(s.user)}/${enc(s.pass)}"
 

@@ -12,12 +12,15 @@ import org.robolectric.RuntimeEnvironment
 class FakeEngine : PlaybackEngine {
     val calls = mutableListOf<String>()
     override val state = MutableStateFlow(PlaybackState())
-    override fun play(item: PlayItem) { calls += "play ${item.url}"; state.value = state.value.copy(paused = false) }
+    override fun play(item: PlayItem) { calls += "play ${item.url}" + if (item.start > 0) " @${item.start}" else ""; state.value = state.value.copy(paused = false) }
     override fun retry() { calls += "retry" }
     override fun pause() { calls += "pause"; state.value = state.value.copy(paused = true) }
     override fun resume() { calls += "resume"; state.value = state.value.copy(paused = false) }
     override fun stop() { calls += "stop" }
     override fun setMuted(muted: Boolean) { calls += "muted $muted" }
+    override var position = 0L
+    override var duration = 0L
+    override fun seekTo(ms: Long) { calls += "seek $ms"; position = ms }
     override fun setVideoView(view: SurfaceView?) { calls += if (view == null) "view null" else "view" }
     override fun release() { calls += "release" }
 }
@@ -84,6 +87,19 @@ class PlayerSessionTest {
         session.open(PlayItem("http://a/2.ts"))
         assertEquals(listOf("play http://a/1.ts", "play http://a/1.ts", "play http://a/2.ts"), engine.calls)
         assertEquals("http://a/2.ts", session.current?.url)
+    }
+
+    @Test
+    fun filmStartsAtItsPositionAndSeeks() {
+        session.seekTo(5_000) // nothing open: ignored
+        assertEquals(0, session.position)
+        session.open(PlayItem("http://a/film.mp4", live = false, start = 754_000))
+        session.seekTo(-3) // never before the start
+        session.seekTo(764_000)
+        assertEquals(764_000, session.position)
+        session.close()
+        assertEquals(0, session.position)
+        assertEquals(listOf("play http://a/film.mp4 @754000", "seek 0", "seek 764000", "stop"), engine.calls)
     }
 
     @Test

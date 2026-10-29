@@ -57,12 +57,15 @@ import app.iptvplayer.core.db.VodGroup
 import app.iptvplayer.core.db.VodGroupCount
 import app.iptvplayer.core.db.Watch
 import app.iptvplayer.core.model.Episode
+import app.iptvplayer.core.model.SeriesView
+import app.iptvplayer.core.model.VodInfo
 import app.iptvplayer.core.model.VodItem
 import app.iptvplayer.core.model.VodKind
 import app.iptvplayer.core.source.m3u.parseM3uEntries
 import app.iptvplayer.core.source.m3uSection
 import app.iptvplayer.core.source.xtream.loadXtreamEpisodes
 import app.iptvplayer.core.source.xtream.loadXtreamLibrary
+import app.iptvplayer.core.source.xtream.loadXtreamVodInfo
 import app.iptvplayer.core.source.xtream.xtreamAccepted
 import app.iptvplayer.core.source.xtream.xtreamOfM3uUrl
 import kotlinx.coroutines.CoroutineScope
@@ -90,6 +93,7 @@ import kotlin.coroutines.coroutineContext
 class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx)) {
     private val prefs = ctx.getSharedPreferences("iptv", Context.MODE_PRIVATE)
     private val settingsPrefs = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
+    private val seriesPrefs = ctx.getSharedPreferences("series", Context.MODE_PRIVATE)
     private val store = PlaylistStore(db)
     private val epg = EpgStore(db)
     private val user = UserStore(db)
@@ -161,6 +165,12 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
             liveGuide = settingsPrefs.getBoolean("liveGuide", Defaults.LIVE_GUIDE),
             guideEmpty = settingsPrefs.getBoolean("guideEmpty", Defaults.GUIDE_EMPTY),
             language = settingsPrefs.getString("language", null) ?: Defaults.LANGUAGE,
+            resume = enumPref("resume", Defaults.RESUME),
+            autoNext = settingsPrefs.getBoolean("autoNext", Defaults.AUTO_NEXT),
+            movieSort = enumPref("movieSort", Defaults.VOD_SORT),
+            seriesSort = enumPref("seriesSort", Defaults.VOD_SORT),
+            movieList = settingsPrefs.getBoolean("movieList", false),
+            seriesList = settingsPrefs.getBoolean("seriesList", false),
         )
         set(v) {
             settingsPrefs.edit()
@@ -177,9 +187,18 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
                 .putBoolean("liveGuide", v.liveGuide)
                 .putBoolean("guideEmpty", v.guideEmpty)
                 .putString("language", v.language)
+                .putString("resume", v.resume.name)
+                .putBoolean("autoNext", v.autoNext)
+                .putString("movieSort", v.movieSort.name)
+                .putString("seriesSort", v.seriesSort.name)
+                .putBoolean("movieList", v.movieList)
+                .putBoolean("seriesList", v.seriesList)
                 .apply { if (v.liveTiles == null) remove("liveTiles") else putBoolean("liveTiles", v.liveTiles) }
                 .apply()
         }
+
+    private inline fun <reified E : Enum<E>> enumPref(key: String, default: E): E =
+        settingsPrefs.getString(key, null)?.let { name -> enumValues<E>().find { it.name == name } } ?: default
 
     /**
      * BAK-011: the source came from a settings file without its Xtream password. True until the user sets the source
@@ -383,6 +402,31 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
         user.recent(s.cacheKey()).mapNotNull { r -> store.channel(s.cacheKey(), r.ckey)?.let { it to r.watchedAt } }
 
     // --- Library: films and series (SRC-010, SRC-011, VOD-001…012) ---
+
+    /** VOD-001, UI-007: the library sections [s] has (a section without films or series isn't shown). */
+    fun libraryKinds(s: Source): Flow<Set<VodKind>> = library.kinds(s.cacheKey())
+
+    private val vodInfos = ConcurrentHashMap<String, VodInfo>()
+
+    /**
+     * VOD-004: details the catalogue doesn't carry (duration, cast…) — Xtream asks get_vod_info once per run; M3U has
+     * none (null). Errors throw; the card shows what it has.
+     */
+    suspend fun vodInfo(s: Source, movie: VodItem): VodInfo? = withContext(Dispatchers.IO) {
+        if (s !is Source.Xtream || movie.kind != VodKind.MOVIE) return@withContext null
+        vodInfos[movie.key] ?: loadXtreamVodInfo(s, movie.key).also { vodInfos[movie.key] = it }
+    }
+
+    /** VOD-006: episode order and hiding watched ones, per series (kept with the settings, not in the settings file). */
+    fun seriesView(key: String): SeriesView {
+        val v = seriesPrefs.getString(key, null) ?: return SeriesView()
+        return SeriesView(newestFirst = 'n' in v, hideWatched = 'h' in v)
+    }
+
+    fun setSeriesView(key: String, v: SeriesView) {
+        val code = (if (v.newestFirst) "n" else "") + (if (v.hideWatched) "h" else "")
+        seriesPrefs.edit().apply { if (code.isEmpty()) remove(key) else putString(key, code) }.apply()
+    }
 
     /** When the library of [s] was imported; null = not yet. */
     suspend fun librarySavedAt(s: Source): Long? = library.savedAt(s.cacheKey())

@@ -88,6 +88,16 @@ data class Settings(
     val guideEmpty: Boolean = Defaults.GUIDE_EMPTY,
     /** UI-022: the interface language as a BCP 47 tag ("ru", "en"); empty = the system's. Not the metadata language. */
     val language: String = Defaults.LANGUAGE,
+    /** VOD-010: what a started film or episode does when played again. */
+    val resume: ResumeMode = Defaults.RESUME,
+    /** VOD-009: the next episode starts by itself (also catch-up, CU-006). */
+    val autoNext: Boolean = Defaults.AUTO_NEXT,
+    /** VOD-003: catalogue order of «Фильмы» and «Сериалы», each remembered. */
+    val movieSort: VodSort = Defaults.VOD_SORT,
+    val seriesSort: VodSort = Defaults.VOD_SORT,
+    /** VOD-002: the catalogue as a list instead of the poster grid, per section. */
+    val movieList: Boolean = false,
+    val seriesList: Boolean = false,
 )
 
 /** LIVE-016. [PROVIDER] is the provider's order with the user's manual order (LIVE-013) on top of it. The apps name them. */

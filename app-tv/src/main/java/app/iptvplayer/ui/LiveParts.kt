@@ -93,6 +93,7 @@ import app.iptvplayer.core.db.GroupCount
 import app.iptvplayer.core.db.minuteTicks
 import app.iptvplayer.core.model.ChannelItem
 import app.iptvplayer.core.model.Programme
+import app.iptvplayer.core.model.VodKind
 import app.iptvplayer.core.player.PlaybackState
 import app.iptvplayer.core.player.PlayerSession
 import java.util.Date
@@ -183,25 +184,42 @@ private fun RailItem(e: RailEntry, expanded: Boolean) {
 // --- Phone: bottom navigation (UI-007, 33-design 4.5) ---
 
 /** Sections of the phone's bottom bar; «Ещё» holds the settings for now. */
-enum class Section { Live, Guide, More }
+enum class Section { Live, Guide, Movies, Series, More }
 
+/** The library section of a [VodKind]. */
+fun VodKind.section(): Section = if (this == VodKind.MOVIE) Section.Movies else Section.Series
+
+/** «Фильмы» / «Сериалы» appear only when the source has them ([library], VOD-001, UI-007). */
 @Composable
-fun PhoneNav(current: Section, onSelect: (Section) -> Unit) {
+fun PhoneNav(current: Section, library: Set<VodKind>, onSelect: (Section) -> Unit) {
     NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
-        for ((s, icon, label) in listOf(
+        for ((s, icon, label) in listOfNotNull(
             Triple(Section.Live, if (current == Section.Live) R.drawable.ic_live_tv_fill else R.drawable.ic_live_tv, R.string.section_live),
             Triple(Section.Guide, R.drawable.ic_guide, R.string.section_guide),
+            Triple(Section.Movies, R.drawable.ic_movie, R.string.section_movies).takeIf { VodKind.MOVIE in library },
+            Triple(Section.Series, R.drawable.ic_series, R.string.section_series).takeIf { VodKind.SERIES in library },
             Triple(Section.More, R.drawable.ic_more, R.string.section_more),
         )) {
             NavigationBarItem(
                 selected = s == current,
                 onClick = { if (s != current) onSelect(s) },
                 icon = { Icon(painterResource(icon), contentDescription = null) },
-                label = { Text(stringResource(label)) },
+                label = { Text(stringResource(label), maxLines = 1) },
             )
         }
     }
 }
+
+/** Rail entries of the library sections the source has, for any section's rail. */
+@Composable
+fun libraryRail(library: Set<VodKind>, current: VodKind?, focus: (VodKind) -> FocusRequester, onOpen: (VodKind) -> Unit): List<RailEntry> =
+    VodKind.entries.filter { it in library }.map { k ->
+        RailEntry(
+            if (k == VodKind.MOVIE) R.drawable.ic_movie else R.drawable.ic_series,
+            stringResource(if (k == VodKind.MOVIE) R.string.section_movies else R.string.section_series),
+            k == current, focus(k),
+        ) { onOpen(k) }
+    }
 
 // --- Top bar: tools, network, clock (UI-009, UI-016) ---
 
@@ -230,23 +248,21 @@ fun OfflineMark() = Icon(
 )
 
 /**
- * Clock and date (UI-009): 12/24 h as the system has it, updated at the minute boundary; only this text recomposes.
+ * Clock and date of the sections' top bar (UI-009; the full-screen player has none): 12/24 h as the system has it, updated at the minute boundary; only this text recomposes.
  */
 @Composable
-fun Clock(modifier: Modifier = Modifier, date: Boolean = true) {
+fun Clock(modifier: Modifier = Modifier) {
     val ctx = LocalContext.current
     val now by remember { minuteTicks() }.collectAsState(System.currentTimeMillis())
     val time = remember(now) { android.text.format.DateFormat.getTimeFormat(ctx).format(Date(now)) }
     Row(modifier, verticalAlignment = Alignment.Bottom) {
         Text(time, style = TvType.title)
-        if (date) {
-            Spacer(Modifier.width(8.dp))
-            Text(
-                remember(now, LocalConfiguration.current) { dayText(now) },
-                style = TvType.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 2.dp),
-            )
-        }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            remember(now, LocalConfiguration.current) { dayText(now) },
+            style = TvType.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 2.dp),
+        )
     }
 }
 

@@ -46,6 +46,7 @@ import app.iptvplayer.R
 import app.iptvplayer.core.Defaults
 import app.iptvplayer.core.model.PlaylistRefresh
 import app.iptvplayer.core.model.Settings
+import app.iptvplayer.core.model.ResumeMode
 import app.iptvplayer.initialFocus
 import app.iptvplayer.isTv
 import app.iptvplayer.LANGUAGES
@@ -85,6 +86,7 @@ fun SettingsScreen(
     var refreshDialog by remember { mutableStateOf(false) }
     var daysDialog by remember { mutableStateOf(false) }
     var languageDialog by remember { mutableStateOf(false) }
+    var resumeDialog by remember { mutableStateOf(false) }
     var qrUrl by remember { mutableStateOf<String?>(null) }
     BackHandler(onBack = onClose)
     val ctx = LocalContext.current
@@ -93,8 +95,8 @@ fun SettingsScreen(
         focusRequester(rows.getOrPut(key) { FocusRequester() }).onFocusChanged { if (it.isFocused) lastRow = key }
     // TV: focus on the first row when opened, on the row we left from when back.
     val tv = remember { ctx.isTv() }
-    LaunchedEffect(refreshDialog, daysDialog, languageDialog, qrUrl) {
-        if (!tv || refreshDialog || daysDialog || languageDialog || qrUrl != null) return@LaunchedEffect
+    LaunchedEffect(refreshDialog, daysDialog, languageDialog, resumeDialog, qrUrl) {
+        if (!tv || refreshDialog || daysDialog || languageDialog || resumeDialog || qrUrl != null) return@LaunchedEffect
         withFrameNanos {}
         runCatching { rows[lastRow]?.requestFocus() }
     }
@@ -180,6 +182,26 @@ fun SettingsScreen(
                 R.drawable.ic_guide, stringResource(R.string.settings_open_guide), stringResource(R.string.settings_open_guide_summary),
                 Modifier.row("liveGuide"), trailing = { Switch(settings.liveGuide, onCheckedChange = null) },
             ) { onChange(settings.copy(liveGuide = !settings.liveGuide)) }
+
+            SectionTitle(stringResource(R.string.settings_library))
+            SettingItem(
+                R.drawable.ic_play_arrow, stringResource(R.string.settings_resume), stringResource(settings.resume.title()),
+                Modifier.row("resume"),
+            ) { resumeDialog = true }
+            if (resumeDialog) {
+                ChoiceDialog(
+                    title = stringResource(R.string.settings_resume),
+                    options = ResumeMode.entries,
+                    selected = settings.resume,
+                    label = { ctx.getString(it.title()) },
+                    onSelect = { onChange(settings.copy(resume = it)); resumeDialog = false },
+                    onDismiss = { resumeDialog = false },
+                )
+            }
+            SettingItem(
+                R.drawable.ic_skip_next, stringResource(R.string.settings_auto_next), stringResource(R.string.settings_auto_next_summary),
+                Modifier.row("autoNext"), trailing = { Switch(settings.autoNext, onCheckedChange = null) },
+            ) { onChange(settings.copy(autoNext = !settings.autoNext)) }
 
             SectionTitle(stringResource(R.string.settings_logos))
             SettingItem(

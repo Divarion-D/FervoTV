@@ -224,6 +224,10 @@ abstract class LibraryDao {
     @Query("SELECT savedAt FROM library WHERE sourceKey = :sourceKey AND savedAt IS NOT NULL")
     abstract suspend fun savedAt(sourceKey: String): Long?
 
+    /** The sections the saved library has (by the `(libraryId, kind, position)` index). */
+    @Query("SELECT DISTINCT kind FROM vod WHERE libraryId = $ACTIVE_LIBRARY")
+    abstract fun kinds(sourceKey: String): List<VodKind>
+
     @Query("SELECT id FROM library WHERE id != :keep")
     abstract fun others(keep: Long): List<Long>
 
@@ -459,6 +463,13 @@ class LibraryStore(private val db: AppDb, private val clock: () -> Long = System
 
     /** When the saved library of the source was imported; null = none yet. */
     suspend fun savedAt(sourceKey: String): Long? = dao.savedAt(sourceKey)
+
+    /**
+     * VOD-001, UI-007: the sections the saved library of the source has films or series in (hidden ones count: the
+     * user can bring them back); updates after every import.
+     */
+    fun kinds(sourceKey: String): Flow<Set<VodKind>> =
+        db.changes("library", "vod").map { withContext(Dispatchers.IO) { dao.kinds(sourceKey).toSet() } }.distinctUntilChanged()
 
     /** Provider categories of a section in the user's order with visible counts; [withHidden] for the management screen. */
     fun categories(sourceKey: String, kind: VodKind, withHidden: Boolean = false): Flow<List<CategoryCount>> =

@@ -3,8 +3,11 @@ package app.iptvplayer.core.player
 import android.view.SurfaceView
 import kotlinx.coroutines.flow.StateFlow
 
-/** What to play. [live] = a channel of the live list: dropped in the background, resumed at the live edge. */
-data class PlayItem(val url: String, val live: Boolean = true)
+/**
+ * What to play. [live] = a channel of the live list: dropped in the background, resumed at the live edge.
+ * [start] = where a film or an episode begins, ms (VOD-010); 0 = the start (live: the live edge).
+ */
+data class PlayItem(val url: String, val live: Boolean = true, val start: Long = 0)
 
 data class PlaybackState(
     val buffering: Boolean = false,
@@ -16,6 +19,8 @@ data class PlaybackState(
     /** The picture's actual height in pixels and frame rate, 0 = not known yet ("1080p · 50" in the preview). */
     val height: Int = 0,
     val fps: Float = 0f,
+    /** Played to the end (a film or an episode; VOD-009 goes on to the next one). */
+    val ended: Boolean = false,
 )
 
 /**
@@ -47,6 +52,13 @@ interface PlaybackEngine {
 
     /** Sound off/on without touching the stream (the preview window, LIVE-006). */
     fun setMuted(muted: Boolean)
+
+    /** Where playback is and how long the item is, ms; 0 = unknown (live, not prepared yet). Read when needed. */
+    val position: Long
+    val duration: Long
+
+    /** Films and episodes: jump to [ms]. */
+    fun seekTo(ms: Long)
 
     /** Drops the stream (network, decoders); the engine stays usable for the next [play]. */
     fun stop()
@@ -107,6 +119,14 @@ class PlayerSession(newEngine: () -> PlaybackEngine) {
     }
 
     fun setMuted(muted: Boolean) = engine.setMuted(muted)
+
+    /** Position and length of what plays, ms (0 = unknown or nothing open). */
+    val position: Long get() = if (item != null) engine.position else 0
+    val duration: Long get() = if (item != null) engine.duration else 0
+
+    fun seekTo(ms: Long) {
+        if (item != null) engine.seekTo(ms.coerceAtLeast(0))
+    }
 
     /** Where the picture goes now; the previous view is let go. */
     fun setVideoView(view: SurfaceView?) {

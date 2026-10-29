@@ -2,6 +2,8 @@ package app.iptvplayer.core
 
 import app.iptvplayer.core.model.ChannelSort
 import app.iptvplayer.core.model.PlaylistRefresh
+import app.iptvplayer.core.model.ResumeMode
+import app.iptvplayer.core.model.VodSort
 
 /**
  * All default values and tunables in one place.
@@ -163,4 +165,22 @@ object Defaults {
 
     /** Hours of the channel's schedule next to the preview (LIVE-007). */
     const val SCHEDULE_HOURS = 24
+
+    /** VOD-010: «спрашивать» by default. */
+    val RESUME = ResumeMode.ASK
+
+    /** VOD-009: the next episode starts by itself. */
+    const val AUTO_NEXT = true
+
+    /** VOD-009: the "next episode" card appears this long before the end. */
+    const val AUTO_NEXT_MS = 30_000L
+
+    /** VOD-010: the position of a film or episode is saved this often while it plays (crash, power cut). */
+    const val VOD_SAVE_MS = 10_000L
+
+    /** PLR-007: one ◀▶ step in a film. */
+    const val SEEK_STEP_MS = 10_000L
+
+    /** VOD-003: catalogue order until the user picks one. */
+    val VOD_SORT = VodSort.PROVIDER
 }

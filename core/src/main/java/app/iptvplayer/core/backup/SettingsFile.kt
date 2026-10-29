@@ -222,6 +222,12 @@ private fun settingsJson(s: Settings): JSONObject = JSONObject()
     .put("liveGuide", s.liveGuide)
     .put("guideEmpty", s.guideEmpty)
     .put("language", s.language)
+    .put("resume", s.resume.name)
+    .put("autoNext", s.autoNext)
+    .put("movieSort", s.movieSort.name)
+    .put("seriesSort", s.seriesSort.name)
+    .put("movieList", s.movieList)
+    .put("seriesList", s.seriesList)
 
 private fun readSettings(j: JSONObject): Settings {
     val d = Settings()
@@ -240,6 +246,12 @@ private fun readSettings(j: JSONObject): Settings {
         liveGuide = j.optBoolean("liveGuide", d.liveGuide),
         guideEmpty = j.optBoolean("guideEmpty", d.guideEmpty),
         language = j.optString("language", d.language),
+        resume = j.enum("resume", d.resume),
+        autoNext = j.optBoolean("autoNext", d.autoNext),
+        movieSort = j.enum("movieSort", d.movieSort),
+        seriesSort = j.enum("seriesSort", d.seriesSort),
+        movieList = j.optBoolean("movieList", d.movieList),
+        seriesList = j.optBoolean("seriesList", d.seriesList),
     )
 }
 
