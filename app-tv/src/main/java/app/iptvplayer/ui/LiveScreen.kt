@@ -66,6 +66,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -230,6 +232,8 @@ fun LiveScreen(
     // --- Programme grid (EPG-008…011) ---
     val cursor = rememberSaveable(saver = GuideCursor.Saver) { GuideCursor(openingView(System.currentTimeMillis(), 4 * HOUR_MS)) }
     val gridFocus = remember { FocusRequester() }
+    val guideListState = rememberLazyListState()
+    val previewHeight = remember { intArrayOf(0) } // phone: the window over the list, px (read in a layout callback)
     val railGuide = remember { FocusRequester() }
     var window by remember { mutableStateOf(guideWindow(cursor.viewStart, cursor.span, null)) }
     LaunchedEffect(cursor) {
@@ -956,7 +960,7 @@ fun LiveScreen(
     val guideGrid: @Composable (Modifier, Boolean) -> Unit = { m, tall ->
         if (guideRows != null) GuideGrid(
             guideRows, window, cursor, settings.epgDays, now, preview?.channel?.key, tall, gridFocus, m,
-            onFocusIn = { area = Area.Grid }, onChannel = ::gridChannel, onProgramme = ::gridProgramme,
+            onFocusIn = { area = Area.Grid }, onChannel = ::gridChannel, onProgramme = ::gridProgramme, listState = guideListState,
         )
     }
 
@@ -1123,6 +1127,19 @@ fun LiveScreen(
                     ToolButton(viewIcon, viewLabel, size = 48.dp, onClick = toggleView)
                     ToolButton(R.drawable.ic_sort, orderLabel, size = 48.dp, onClick = ::sortMenu)
                 }
+                // The window opens over the list and pushes it down: the list scrolls by as much, so the channel just
+                // tapped stays under the finger and a second tap on it opens full screen (not the one that slid there).
+                Column(Modifier.fillMaxWidth().onSizeChanged { size ->
+                    val delta = size.height - previewHeight[0]
+                    previewHeight[0] = size.height
+                    if (delta != 0) scope.launch {
+                        when {
+                            guide -> guideListState.scrollBy(delta.toFloat())
+                            useTiles -> gridState.scrollBy(delta.toFloat())
+                            else -> listState.scrollBy(delta.toFloat())
+                        }
+                    }
+                }) {
                 preview?.let { p ->
                     VideoWindow(
                         p, playingKey == p.channel.key, player, !online, null, Modifier.padding(top = 8.dp), ::openPreviewFull,
@@ -1132,6 +1149,7 @@ fun LiveScreen(
                         Text(stringResource(R.string.programme_left, cur.title, cur.minutesLeft(now)), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Spacer(Modifier.fillMaxWidth().height(6.dp).progressLine(cur.progress(now), Ext.nowTrack, Ext.now, 2.dp))
                     }
+                }
                 }
                 if (guide) {
                     if (epgSources?.isEmpty() == true) guideDetails(Modifier.fillMaxWidth().padding(vertical = 8.dp))

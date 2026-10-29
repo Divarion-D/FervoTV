@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -160,6 +161,7 @@ fun GuideGrid(
     onFocusIn: () -> Unit,
     onChannel: (Int, ChannelItem, Boolean) -> Unit,
     onProgramme: (Int, ChannelItem, Programme?, Boolean) -> Unit,
+    listState: LazyListState = rememberLazyListState(),
 ) {
     val c = MaterialTheme.colorScheme
     val density = LocalDensity.current
@@ -167,7 +169,6 @@ fun GuideGrid(
     val channelWidth = if (tall) 128.dp else 200.dp
     val rowHeight = if (tall) 52.dp else 40.dp
     val gap = 4.dp
-    val listState = rememberLazyListState()
     var focused by remember { mutableStateOf(false) }
     val nowState by rememberUpdatedState(now)
     val measurer = rememberTextMeasurer(cacheSize = 32)
@@ -486,14 +487,13 @@ private fun GuideRowView(
                             if (right > left) drawRect(Ext.now, Offset(left, size.height - 2.dp.toPx()), Size(right - left, 2.dp.toPx()))
                         }
                     }
-                    // The focus: a fill over the focused cell (a 30-minute piece of a gap).
+                    // The focus: a fill over the whole focused cell, a gap too (◀▶ still step through a gap by 30 minutes,
+                    // the view following), so its «Нет данных» stays readable.
                     if (gridFocused() && cursor.inRow && cursor.row == index) {
-                        val f = cellAt(focusCells(cells, zoneOffset(v)), cursor.focusAt())
-                        if (f != null) {
-                            val layout = if (f.programme != null) title(cells.indexOfFirst { it.programme == f.programme }.coerceAtLeast(0), f)
-                            else measurer.measure(noData, style, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                constraints = Constraints(maxWidth = ((f.stop - f.start) * pxPerMs - 2 * pad).toInt().coerceAtLeast(1)))
-                            cell(-1, f, Ext.focus, Ext.onFocus, outline = false, mark = f.programme != null && f.programme!!.stop <= now && archive, layout)
+                        val i = cells.indexOfFirst { cursor.focusAt() >= it.start && cursor.focusAt() < it.stop }
+                        if (i >= 0) {
+                            val f = cells[i]
+                            cell(i, f, Ext.focus, Ext.onFocus, outline = false, mark = (f.programme?.stop ?: Long.MAX_VALUE) <= now && archive, title(i, f))
                         }
                     }
                 },
