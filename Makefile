@@ -10,6 +10,7 @@ GRADLE    := ./gradlew --console=plain
 ADB       := $(ANDROID_HOME)/platform-tools/adb
 APKSIGNER  = $(lastword $(sort $(wildcard $(ANDROID_HOME)/build-tools/*/apksigner)))
 PKG       := io.github.divarion_d.fervotv
+PKG_DEBUG := $(PKG).debug
 ACTIVITY  := app.iptvplayer.MainActivity
 VERSION   := $(shell sed -n 's/.*versionName = "\(.*\)".*/\1/p' build.gradle.kts)
 DIST      := dist
@@ -21,7 +22,7 @@ APK_DEBUG   := app-$(APP)/build/outputs/apk/debug/app-$(APP)-debug.apk
 
 .DEFAULT_GOAL := help
 .PHONY: help version test test-fast lint check debug release release-mobile bundle dist ci-release \
-        verify install install-debug uninstall run devices clean
+        verify install install-debug uninstall uninstall-debug run run-debug devices clean
 
 help: ## Список целей
 	@echo "Fervo TV $(VERSION). Использование: make <цель> [APP=tv|mobile]"
@@ -87,15 +88,21 @@ devices: ## Подключённые устройства
 install: release ## Собрать и поставить release на устройство (данные сохраняются)
 	$(ADB) install -r $(APK_RELEASE)
 
-install-debug: local.properties ## Собрать и поставить debug (поверх release не встанет — сначала make uninstall)
+install-debug: local.properties ## Собрать и поставить debug — отдельное приложение «Fervo TV debug» рядом с release
 	$(GRADLE) :app-$(APP):assembleDebug
 	$(ADB) install -r $(APK_DEBUG)
 
 uninstall: ## Удалить приложение с устройства (вместе с данными!)
 	$(ADB) uninstall $(PKG)
 
+uninstall-debug: ## Удалить debug-приложение с устройства
+	$(ADB) uninstall $(PKG_DEBUG)
+
 run: ## Запустить приложение на устройстве
 	$(ADB) shell am start -n $(PKG)/$(ACTIVITY)
+
+run-debug: ## Запустить debug-приложение на устройстве
+	$(ADB) shell am start -n $(PKG_DEBUG)/$(ACTIVITY)
 
 # --- Уборка ---
 

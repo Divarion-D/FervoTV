@@ -33,7 +33,13 @@ subprojects {
             }
 
             buildTypes {
+                // Debug installs next to the signed release instead of failing on the signature mismatch.
+                debug {
+                    applicationIdSuffix = ".debug"
+                    manifestPlaceholders["appLabel"] = "Fervo TV debug"
+                }
                 release {
+                    manifestPlaceholders["appLabel"] = "Fervo TV"
                     signingConfig = signingConfigs.findByName("release")
                     isMinifyEnabled = true
                     isShrinkResources = true

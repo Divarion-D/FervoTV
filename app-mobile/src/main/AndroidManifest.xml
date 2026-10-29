@@ -5,7 +5,7 @@
 
     <!-- Phones and tablets (touch). Until the end of P0 the shipped APK is app-tv, which also runs on phones. -->
     <application
-        android:label="Fervo TV"
+        android:label="${appLabel}"
         android:icon="@drawable/ic_launcher"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:usesCleartextTraffic="true">
