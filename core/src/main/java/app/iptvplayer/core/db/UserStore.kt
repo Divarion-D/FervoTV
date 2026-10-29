@@ -31,6 +31,13 @@ data class ChannelState(
     val epgShift: Int? = null,
     /** The user's logo (taken from the guide when binding, EPG-005). */
     val logo: String? = null,
+    /**
+     * LIVE-008: the provider's name of the favourite channel, by which another source finds it ([FAVORITE_MATCHES]);
+     * null = known by key only (a channel that was gone when names came in, v3 → v4).
+     */
+    val favoriteName: String? = null,
+    /** [matchName] of [favoriteName], null when it is empty; kept by [UserStore], never set by hand. */
+    val favoriteMatch: String? = null,
 )
 
 /** Edits of one provider category, [ckey] = [CategoryRow.ckey]. */
@@ -68,6 +75,33 @@ data class Edits(val renamed: List<String>, val hidden: List<String>, val reorde
 
 data class NameKey(val name: String, val ckey: String)
 
+/**
+ * LIVE-008: which channel of the saved source [sourceKey] each favourite stands for: the one with its key (the same
+ * source), else the first one with its provider's name, else the first one with the same [matchName]. Favourites
+ * without a channel are not listed (and not deleted). (fkey = the favourite's key, position, ckey = the channel's key.)
+ * A few lookups per favourite in the (sourceId, ckey) and (sourceId, matchName) indices, not a pass over the channels.
+ */
+internal const val FAVORITE_MATCHES =
+    """SELECT f.ckey AS fkey, f.favorite AS position, m.ckey AS ckey FROM source s
+    JOIN channel_state f ON f.favorite IS NOT NULL
+    JOIN channel m ON m.id = COALESCE(
+        (SELECT MIN(c.id) FROM channel c WHERE c.sourceId = s.id AND c.ckey = f.ckey),
+        (SELECT MIN(c.id) FROM channel c WHERE c.sourceId = s.id AND c.matchName = f.favoriteMatch AND c.name = f.favoriteName),
+        (SELECT MIN(c.id) FROM channel c WHERE c.sourceId = s.id AND c.matchName = f.favoriteMatch))
+    WHERE s.sourceKey = :sourceKey AND s.savedAt IS NOT NULL"""
+
+/** Keys of the saved source's channels that are favourites, with their place in "Избранное" (LIVE-013). */
+internal const val FAVORITES = "SELECT ckey, MIN(position) AS position FROM ($FAVORITE_MATCHES) GROUP BY ckey"
+
+/** Favourites without a name get the one of their channel in the saved source (v3 → v4, an old settings file). */
+internal const val NAME_FAVORITES =
+    """UPDATE channel_state SET
+    favoriteName = (SELECT c.name FROM channel c WHERE c.sourceId = (SELECT id FROM source WHERE savedAt IS NOT NULL)
+        AND c.ckey = channel_state.ckey ORDER BY c.id LIMIT 1),
+    favoriteMatch = (SELECT NULLIF(c.matchName, '') FROM channel c WHERE c.sourceId = (SELECT id FROM source WHERE savedAt IS NOT NULL)
+        AND c.ckey = channel_state.ckey ORDER BY c.id LIMIT 1)
+    WHERE favorite IS NOT NULL AND favoriteName IS NULL"""
+
 private const val ACTIVE = "(SELECT id FROM source WHERE sourceKey = :sourceKey AND savedAt IS NOT NULL)"
 
 /** Channels of the saved source, optionally of one category ([category] = null: all). */
@@ -83,15 +117,30 @@ abstract class UserDao {
     @Query("INSERT OR IGNORE INTO channel_state(ckey) VALUES (:key)")
     abstract fun touchChannel(key: String)
 
+    @Query("SELECT EXISTS (SELECT 1 FROM ($FAVORITES) WHERE ckey = :key)")
+    abstract fun isFavorite(sourceKey: String, key: String): Boolean
+
+    /** A new favourite goes last, with the provider's name of the channel. */
     @Query(
-        """UPDATE channel_state SET favorite = CASE WHEN :on
-        THEN COALESCE(favorite, (SELECT COALESCE(MAX(favorite), -1) + 1 FROM channel_state)) ELSE NULL END
+        """UPDATE channel_state SET favorite = (SELECT COALESCE(MAX(favorite), -1) + 1 FROM channel_state),
+        favoriteName = (SELECT name FROM channel WHERE sourceId = $ACTIVE AND ckey = :key ORDER BY id LIMIT 1),
+        favoriteMatch = (SELECT NULLIF(matchName, '') FROM channel WHERE sourceId = $ACTIVE AND ckey = :key ORDER BY id LIMIT 1)
         WHERE ckey = :key"""
     )
-    abstract fun setFavorite(key: String, on: Boolean)
+    abstract fun addFavorite(sourceKey: String, key: String)
 
-    @Query("UPDATE channel_state SET favorite = :position WHERE ckey = :key AND favorite IS NOT NULL")
-    abstract fun setFavoritePosition(key: String, position: Int)
+    /** Every favourite that stands for the channel [key], whatever source it was added in. */
+    @Query(
+        """UPDATE channel_state SET favorite = NULL, favoriteName = NULL, favoriteMatch = NULL
+        WHERE ckey IN (SELECT fkey FROM ($FAVORITE_MATCHES) WHERE ckey = :key)"""
+    )
+    abstract fun removeFavorite(sourceKey: String, key: String)
+
+    @Query("UPDATE channel_state SET favorite = :position WHERE ckey IN (SELECT fkey FROM ($FAVORITE_MATCHES) WHERE ckey = :key)")
+    abstract fun setFavoritePosition(sourceKey: String, key: String, position: Int)
+
+    @Query(NAME_FAVORITES)
+    abstract fun nameFavorites()
 
     @Query("UPDATE channel_state SET hidden = :hidden WHERE ckey IN (:keys)")
     abstract fun setHidden(keys: List<String>, hidden: Boolean)
@@ -281,7 +330,13 @@ class UserStore(private val db: AppDb) {
         dao.pruneChannels()
     }
 
-    fun setFavorite(key: String, on: Boolean) = channels(listOf(key)) { dao.setFavorite(key, on) }
+    /**
+     * LIVE-008: [key] = a channel of the saved source [sourceKey]. Off removes every favourite it stands for, also
+     * ones added in another source and found by name.
+     */
+    fun setFavorite(sourceKey: String, key: String, on: Boolean) = channels(listOf(key)) {
+        if (!on) dao.removeFavorite(sourceKey, key) else if (!dao.isFavorite(sourceKey, key)) dao.addFavorite(sourceKey, key)
+    }
 
     /** LIVE-012, also for a range of rows at once. */
     fun setHidden(keys: List<String>, hidden: Boolean) = channels(keys) { dao.setHidden(keys, hidden) }
@@ -326,7 +381,7 @@ class UserStore(private val db: AppDb) {
      */
     fun reorder(sourceKey: String, group: ChannelGroup, keys: List<String>) = db.runInTransaction {
         when (group) {
-            ChannelGroup.Favorites -> keys.forEachIndexed { i, k -> dao.setFavoritePosition(k, i) }
+            ChannelGroup.Favorites -> keys.forEachIndexed { i, k -> dao.setFavoritePosition(sourceKey, k, i) }
             is ChannelGroup.Collection -> keys.forEachIndexed { i, k -> dao.setCollectionChannelPosition(group.id, k, i) }
             is ChannelGroup.Category -> {
                 val list = dao.categoryKeys(sourceKey).find { it.name == group.name }?.ckey ?: return@runInTransaction
@@ -399,7 +454,11 @@ class UserStore(private val db: AppDb) {
         dao.clearAllOrder()
         dao.clearCollectionChannels()
         dao.clearCollections()
-        dao.insertChannelStates(d.channels.distinctBy { it.ckey })
+        dao.insertChannelStates(d.channels.distinctBy { it.ckey }.map {
+            val name = it.favoriteName.takeIf { _ -> it.favorite != null }
+            it.copy(favoriteName = name, favoriteMatch = name?.let(::matchName)?.ifEmpty { null })
+        })
+        dao.nameFavorites()
         dao.insertCategoryStates(d.categories.distinctBy { it.ckey })
         for ((list, keys) in d.order) dao.insertOrder(keys.distinct().mapIndexed { i, k -> ChannelOrder(list, k, i) })
         d.collections.forEachIndexed { i, c ->

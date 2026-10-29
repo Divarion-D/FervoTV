@@ -341,7 +341,7 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
 
     private suspend fun <T> io(block: () -> T): T = withContext(Dispatchers.IO) { block() }
 
-    suspend fun setFavorite(key: String, on: Boolean) = io { user.setFavorite(key, on) }
+    suspend fun setFavorite(s: Source, key: String, on: Boolean) = io { user.setFavorite(s.cacheKey(), key, on) }
     suspend fun setHidden(keys: List<String>, hidden: Boolean) = io { user.setHidden(keys, hidden) }
     suspend fun rename(key: String, name: String?) = io { user.rename(key, name) }
     suspend fun setCategoriesHidden(s: Source, names: List<String>, hidden: Boolean) = io { user.setCategoriesHidden(s.cacheKey(), names, hidden) }

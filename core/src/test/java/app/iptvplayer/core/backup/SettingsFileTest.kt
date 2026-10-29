@@ -84,8 +84,8 @@ class SettingsFileTest {
             )
             addEpgSource("https://guide.example/a.xml.gz")
             updateEpgSource(addEpgSource("https://guide.example/b.xml").copy(userAgent = "UA", shift = -30, refresh = PlaylistRefresh.WEEKLY))
-            setFavorite(playlist[2].key, true)
-            setFavorite(playlist[0].key, true)
+            setFavorite(account, playlist[2].key, true)
+            setFavorite(account, playlist[0].key, true)
             rename(playlist[1].key, "Мой второй")
             setHidden(listOf(playlist[0].key), true)
             setEpgShift(playlist[2].key, 15)
@@ -151,6 +151,32 @@ class SettingsFileTest {
         importLibrary(dbs.last())
         val films = runBlocking { fresh.firstVod(VodFilter(account.cacheKey(), VodKind.MOVIE, VodGroup.Favorites), 10) }
         assertEquals(listOf("Второй фильм" to 120_000L), films.map { it.name to it.progress?.position })
+    }
+
+    /** LIVE-008: favourites carry their channel's name; a file written before that has none and works by key. */
+    @Test
+    fun favoriteNamesInTheFileAndOldFilesWithout() {
+        val bytes = save(configured(), withPassword = true)
+        val channels = JSONObject(String(entry(bytes, "channels.json"))).getJSONArray("channels")
+        val names = (0 until channels.length()).map { channels.getJSONObject(it) }.filter { it.has("favorite") }.map { it.getString("favoriteName") }
+        assertEquals(setOf("Первый", "Кино"), names.toSet())
+
+        val old = rezip(bytes) { name, text ->
+            if (name != "channels.json") text
+            else JSONObject(text).apply {
+                val list = getJSONArray("channels")
+                for (i in 0 until list.length()) list.getJSONObject(i).remove("favoriteName")
+            }.toString()
+        }
+        val fresh = cleanInstall()
+        restore(fresh, old)
+        importPlaylist(dbs.last())
+        val favorites = runBlocking {
+            loadPage { PlaylistStore(dbs.last()).itemSource(ChannelFilter(account.cacheKey(), ChannelGroup.Favorites), 0) }.data
+        }
+        assertEquals(listOf("Кино"), favorites.map { it.channel.name }) // «Первый» is hidden
+        // The download gave them their names: from now on they follow the user to another source too.
+        assertEquals(setOf("Первый", "Кино"), state(fresh).channels!!.channels.mapNotNull { it.favoriteName }.toSet())
     }
 
     @Test

@@ -62,16 +62,79 @@ class UserStoreTest {
     @Test
     fun favoritesInUserOrderSurviveRefresh() {
         refresh()
-        user.setFavorite("http://a", true)
-        user.setFavorite("http://d", true)
+        user.setFavorite("k", "http://a", true)
+        user.setFavorite("k", "http://d", true)
         assertEquals(listOf("Первый", "Матч"), names(ChannelGroup.Favorites)) // the duplicate stream listed once
         user.reorder("k", ChannelGroup.Favorites, listOf("http://d", "http://a"))
         refresh()
         assertEquals(listOf("Матч", "Первый"), names(ChannelGroup.Favorites))
         assertEquals(listOf(true, false, false, true, true), list().map { it.favorite })
-        user.setFavorite("http://d", false)
+        user.setFavorite("k", "http://d", false)
         assertEquals(listOf("Первый"), names(ChannelGroup.Favorites))
         assertEquals(0, rowsOf("channel_state", "ckey = 'http://d'")) // nothing left to keep
+    }
+
+    // --- LIVE-008: favourites follow the user to another source by name ---
+
+    /** Another playlist: other keys (URLs), some of the same names. */
+    private val other = listOf(
+        Channel("Новости 24", "http://n/1", "Новости"),
+        Channel("ПЕРВЫЙ", "http://n/2", "Новости"), // the same name but for case: only the second choice
+        Channel("Первый", "http://n/3", "Эфирные"), // exactly the name: wins
+        Channel("елки", "http://n/4", "Кино"), // «Ёлки» ignoring case and ё
+        Channel("Спорт 1", "http://n/5", "Спорт"),
+        Channel("СПОРТ-1", "http://n/6", "Спорт"),
+    )
+
+    private fun switchTo(key: String, channels: List<Channel>) = store.import(key, userKey = key) { import -> channels.forEach(import::channel) }
+
+    private fun items(sourceKey: String, group: ChannelGroup = ChannelGroup.All): List<ChannelItem> =
+        runBlocking { loadPage { store.itemSource(ChannelFilter(sourceKey, group), 0) }.data }
+
+    private fun favoritesCount(sourceKey: String) =
+        runBlocking { store.groups(sourceKey).first() }.first { it.group == ChannelGroup.Favorites }.count
+
+    @Test
+    fun favoritesAreFoundInAnotherSourceByName() {
+        refresh(playlist + Channel("Спорт-1", "http://e", "Спорт"))
+        user.setFavorite("k", "http://c", true) // Ёлки
+        user.setFavorite("k", "http://a", true) // Первый
+        user.setFavorite("k", "http://d", true) // Матч: not in the other source
+        user.setFavorite("k", "http://e", true) // Спорт-1: twice in the other source
+        user.reorder("k", ChannelGroup.Favorites, listOf("http://e", "http://d", "http://a", "http://c"))
+        user.rename("http://a", "Мой первый") // the user's name doesn't change what is looked for
+
+        switchTo("k2", other)
+        assertEquals(listOf("http://n/5", "http://n/3", "http://n/4"), items("k2", ChannelGroup.Favorites).map { it.channel.key })
+        assertEquals(listOf(false, false, true, true, true, false), items("k2").map { it.favorite })
+        assertEquals(3, favoritesCount("k2"))
+
+        // Back in the first source: every favourite by key again, Матч included, in the user's order.
+        switchTo("k", playlist + Channel("Спорт-1", "http://e", "Спорт"))
+        assertEquals(listOf("Спорт-1", "Матч", "Мой первый", "Ёлки"), names(ChannelGroup.Favorites))
+        assertEquals(4, favoritesCount("k"))
+    }
+
+    @Test
+    fun favoritesAddedOrRemovedInAnotherSource() {
+        refresh()
+        user.setFavorite("k", "http://a", true)
+        user.setFavorite("k", "http://d", true)
+        switchTo("k2", other)
+        assertEquals(listOf("Первый"), items("k2", ChannelGroup.Favorites).map { it.channel.name })
+
+        user.setFavorite("k2", "http://n/1", true) // added here: last, with this source's name
+        user.setFavorite("k2", "http://n/3", true) // already a favourite (found by name): stays where it is
+        assertEquals(listOf("Первый", "Новости 24"), items("k2", ChannelGroup.Favorites).map { it.channel.name })
+        user.reorder("k2", ChannelGroup.Favorites, listOf("http://n/1", "http://n/3"))
+        assertEquals(listOf("Новости 24", "Первый"), items("k2", ChannelGroup.Favorites).map { it.channel.name })
+        user.setFavorite("k2", "http://n/3", false) // removes the favourite it was found by
+        assertEquals(listOf("Новости 24"), items("k2", ChannelGroup.Favorites).map { it.channel.name })
+
+        refresh()
+        assertEquals(listOf("Матч"), names(ChannelGroup.Favorites)) // Первый is gone for good, Новости 24 isn't here
+        switchTo("k3", listOf(Channel("НОВОСТИ 24", "http://m/1", "Новости")))
+        assertEquals(listOf("НОВОСТИ 24"), items("k3", ChannelGroup.Favorites).map { it.channel.name })
     }
 
     @Test
@@ -86,7 +149,7 @@ class UserStoreTest {
         assertEquals(1, runBlocking { store.categories("k").first() }.first { it.name == "Новости" }.count)
 
         // A hidden category hides its channels from «Все», not from the user's own lists.
-        user.setFavorite("http://c", true)
+        user.setFavorite("k", "http://c", true)
         user.setCategoriesHidden("k", listOf("Кино"), true)
         user.renameCategory("k", "Спорт", "Футбол")
         refresh()
@@ -109,7 +172,7 @@ class UserStoreTest {
         user.reorder("k", cat("Новости"), listOf("http://b", "http://a"))
         user.reorderCategories("k", listOf("Спорт", "Новости", "Кино"))
         user.rename("http://a", "Мой первый")
-        user.setFavorite("http://a", true)
+        user.setFavorite("k", "http://a", true)
         refresh(playlist + Channel("Третий", "http://e", "Новости"))
         assertEquals(listOf("Второй", "Мой первый", "Третий"), names(cat("Новости")))
         assertEquals(listOf("Спорт", "Новости", "Кино"), runBlocking { store.categories("k").first() }.map { it.name })
@@ -158,7 +221,7 @@ class UserStoreTest {
     @Test
     fun sortingNumbersAndPosition() {
         refresh()
-        user.setFavorite("http://d", true)
+        user.setFavorite("k", "http://d", true)
         assertEquals(listOf("Второй", "Ёлки", "Матч", "Первый", "Первый"), names(sort = ChannelSort.NAME)) // ё = е
         assertEquals(listOf(5, 2, 3, 1, 5), list().map { it.number })
         assertEquals(listOf("Матч", "Второй", "Ёлки", "Первый", "Первый"), names(sort = ChannelSort.NUMBER))

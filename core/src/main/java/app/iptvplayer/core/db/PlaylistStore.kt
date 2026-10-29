@@ -125,6 +125,7 @@ class PlaylistStore(private val db: AppDb, private val clock: () -> Long = Syste
             db.runInTransaction {
                 dao.complete(id, savedAt, import.headerEpgUrls.joinToString("\n"))
                 dao.otherSources(id).forEach(dao::deleteSource)
+                db.user().nameFavorites() // LIVE-008: favourites known by key only take their channel's name
             }
             return import.count
         } catch (e: Throwable) {
@@ -155,6 +156,7 @@ class PlaylistStore(private val db: AppDb, private val clock: () -> Long = Syste
                 sourceId = sourceId, categoryId = category(ch.group), position = count++,
                 name = ch.name, url = ch.url, logo = ch.logo, tvgId = ch.tvgId,
                 ckey = ch.key, number = ch.number, archiveDays = ch.archiveDays, epgId = epgIndex.find(ch),
+                matchName = matchName(ch.name),
             )
             if (batch.size >= Defaults.IMPORT_BATCH_SIZE) flush()
         }
@@ -485,7 +487,7 @@ private val GUIDE_TABLES = arrayOf("source", "channel", "channel_state", "epg_ch
 private const val ITEM_COLUMNS =
     "ch.id AS id, COALESCE(st.name, ch.name) AS name, ch.url AS url, cat.name AS `group`, COALESCE(st.logo, ch.logo) AS logo, " +
         "ch.tvgId AS tvgId, ch.autoLogo AS autoLogo, ch.ckey AS `key`, ch.number AS number, ch.archiveDays AS archiveDays, " +
-        "COALESCE(ch.number, ch.position + 1) AS displayNumber, st.favorite IS NOT NULL AS favorite, " +
+        "COALESCE(ch.number, ch.position + 1) AS displayNumber, FAVORITE AS favorite, " +
         "HIDDEN AS hidden, ch.epgId AS epgId, COALESCE(st.epgShift, es.shift) AS shift"
 
 /** Tables a list depends on: its pages are reloaded when one of them changes. */
@@ -502,7 +504,8 @@ private fun ChannelFilter.tables(): Array<String> =
  * The list as SQL. Source and category are uncorrelated subqueries: SQLite runs them once and walks the
  * (sourceId, categoryId, position) index. User edits come from LEFT JOINs on the stable keys. Lists of user-picked
  * channels (favorites, recent, collections) show a channel the playlist has twice once. Search = FTS prefix match of
- * every word ("пер кан" → "пер* кан*"). [select] may use HIDDEN for the list's hidden condition.
+ * every word ("пер кан" → "пер* кан*"). [select] may use HIDDEN for the list's hidden condition and FAVORITE for
+ * "a favourite" (LIVE-008: [FAVORITES], which also finds favourites of other sources by name).
  */
 private fun ChannelFilter.query(
     select: String, order: Boolean, where: String = "", whereArgs: List<Any> = emptyList(), limit: String = "",
@@ -513,10 +516,18 @@ private fun ChannelFilter.sql(
     select: String, order: Boolean, where: String = "", whereArgs: List<Any> = emptyList(), limit: String = "",
 ): Pair<String, List<Any>> {
     val args = ArrayList<Any>()
+    fun favorites(): String {
+        args += sourceKey
+        return "(${FAVORITES.replace(":sourceKey", "?")})"
+    }
     // A hidden category hides its channels from "Все" and "С архивом", not from the lists the user made.
     val hidden = if (group == ChannelGroup.All || group == ChannelGroup.Archive) "(COALESCE(st.hidden, 0) OR COALESCE(cs.hidden, 0))"
     else "COALESCE(st.hidden, 0)"
-    val sql = StringBuilder("SELECT ${select.replace("HIDDEN", hidden)} FROM channel ch JOIN category cat ON cat.id = ch.categoryId")
+    val columns = select.replace("HIDDEN", hidden).let { if ("FAVORITE" in it) it.replace("FAVORITE", "ch.ckey IN (SELECT ckey FROM ${favorites()})") else it }
+    val sql = StringBuilder("SELECT $columns FROM ")
+    // A few favourites drive the walk (CROSS JOIN keeps them outer), each found by its key: not a pass over the source.
+    if (group == ChannelGroup.Favorites) sql.append("${favorites()} fav CROSS JOIN channel ch ON ch.ckey = fav.ckey JOIN category cat ON cat.id = ch.categoryId")
+    else sql.append("channel ch JOIN category cat ON cat.id = ch.categoryId")
     sql.append(" LEFT JOIN channel_state st ON st.ckey = ch.ckey LEFT JOIN category_state cs ON cs.ckey = cat.ckey")
     if (select.contains("es.shift")) sql.append(" LEFT JOIN epg_channel e ON e.id = ch.epgId LEFT JOIN epg_source es ON es.id = e.sourceId")
     when (group) {
@@ -541,7 +552,6 @@ private fun ChannelFilter.sql(
             args += sourceKey
             args += group.name
         }
-        ChannelGroup.Favorites -> sql.append(" AND st.favorite IS NOT NULL")
         ChannelGroup.Archive -> sql.append(" AND ch.archiveDays > 0")
         else -> {}
     }
@@ -561,16 +571,16 @@ private fun ChannelFilter.sql(
     }
     sql.append(where)
     args.addAll(whereArgs)
-    if (order) sql.append(" ORDER BY ").append(orderBy())
+    if (order) sql.append(" ORDER BY ").append(orderBy(::favorites))
     sql.append(limit)
     return sql.toString() to args
 }
 
 private const val SHIFT_MAX_MS = (Defaults.EPG_SHIFT_MAX + 60) * 60_000L
 
-private fun ChannelFilter.orderBy(): String {
+private fun ChannelFilter.orderBy(favorites: () -> String): String {
     val base = when (group) {
-        ChannelGroup.Favorites -> "st.favorite"
+        ChannelGroup.Favorites -> "fav.position"
         ChannelGroup.Recent -> "r.watchedAt DESC"
         is ChannelGroup.Collection -> "cc.position"
         is ChannelGroup.Category -> if (sort == ChannelSort.PROVIDER) "o.position IS NULL, o.position, ch.position" else "ch.position"
@@ -582,6 +592,6 @@ private fun ChannelFilter.orderBy(): String {
         // ponytail: NOCASE folds ASCII case only (ё is folded here); a sort key column if lowercase Cyrillic names show up.
         ChannelSort.NAME -> "REPLACE(REPLACE(COALESCE(st.name, ch.name), 'Ё', 'Е'), 'ё', 'е') COLLATE NOCASE, $base"
         ChannelSort.ARCHIVE_FIRST -> "ch.archiveDays = 0, $base"
-        ChannelSort.FAVORITES_FIRST -> "st.favorite IS NULL, $base"
+        ChannelSort.FAVORITES_FIRST -> "ch.ckey NOT IN (SELECT ckey FROM ${favorites()}), $base"
     }
 }

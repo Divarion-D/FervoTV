@@ -8,6 +8,7 @@ import app.iptvplayer.core.db.failedStatus
 import app.iptvplayer.core.db.lastStatus
 import app.iptvplayer.core.db.decodeGroup
 import app.iptvplayer.core.db.encode
+import app.iptvplayer.core.db.matchName
 import app.iptvplayer.core.db.matchesWords
 import app.iptvplayer.core.model.Programme
 import org.junit.Assert.assertEquals
@@ -24,6 +25,21 @@ class MiscTest {
         assertTrue(matchesWords("Кино", ""))
         assertFalse(matchesWords("Спорт", "порт"))
         assertFalse(matchesWords("Спорт", "спорт кино"))
+    }
+
+    /** LIVE-008: the name a favourite finds its channel by in another source. */
+    @Test
+    fun favoriteMatchNameIgnoresCaseYoSpacesAndPunctuation() {
+        for ((name, expected) in listOf(
+            "Первый HD" to "первыйhd",
+            "ПЕРВЫЙ-HD" to "первыйhd",
+            "  первый   hd " to "первыйhd",
+            "Ёлки" to "елки",
+            "ЁЛКИ!" to "елки",
+            "Матч! Футбол 1" to "матчфутбол1",
+            "Sky Sports (UK)" to "skysportsuk",
+            "+++" to "",
+        )) assertEquals(name, expected, matchName(name))
     }
 
     @Test

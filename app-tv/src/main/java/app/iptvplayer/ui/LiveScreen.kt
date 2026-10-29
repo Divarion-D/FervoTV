@@ -524,8 +524,8 @@ fun LiveScreen(
             listOf(
                 str(R.string.menu_watching) to listOf(SheetItem(R.drawable.ic_play_arrow, str(R.string.watch)) { watch(index, item) }),
                 str(R.string.menu_channel) to listOfNotNull(
-                    if (item.favorite) SheetItem(R.drawable.ic_favorite_fill, str(R.string.favorite_remove)) { scope.launch { repo.setFavorite(ch.key, false) } }
-                    else SheetItem(R.drawable.ic_favorite, str(R.string.favorite_add)) { scope.launch { repo.setFavorite(ch.key, true) } },
+                    if (item.favorite) SheetItem(R.drawable.ic_favorite_fill, str(R.string.favorite_remove)) { scope.launch { repo.setFavorite(source, ch.key, false) } }
+                    else SheetItem(R.drawable.ic_favorite, str(R.string.favorite_add)) { scope.launch { repo.setFavorite(source, ch.key, true) } },
                     SheetItem(R.drawable.ic_playlist_add, str(R.string.collection_add)) { addToCollection(item) },
                     (g as? ChannelGroup.Collection)?.let { c ->
                         SheetItem(R.drawable.ic_playlist_remove, str(R.string.collection_remove)) { scope.launch { repo.removeFromCollection(c.id, ch.key) } }
@@ -594,8 +594,8 @@ fun LiveScreen(
             listOf(
                 (at + (p.description?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: "")) to listOf(
                     SheetItem(R.drawable.ic_play_arrow, str(R.string.watch_channel)) { watch(index, item) },
-                    if (item.favorite) SheetItem(R.drawable.ic_favorite_fill, str(R.string.favorite_remove)) { scope.launch { repo.setFavorite(key, false) } }
-                    else SheetItem(R.drawable.ic_favorite, str(R.string.favorite_add)) { scope.launch { repo.setFavorite(key, true) } },
+                    if (item.favorite) SheetItem(R.drawable.ic_favorite_fill, str(R.string.favorite_remove)) { scope.launch { repo.setFavorite(source, key, false) } }
+                    else SheetItem(R.drawable.ic_favorite, str(R.string.favorite_add)) { scope.launch { repo.setFavorite(source, key, true) } },
                 ),
             ),
         )

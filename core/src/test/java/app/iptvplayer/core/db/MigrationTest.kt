@@ -46,7 +46,7 @@ class MigrationTest {
     }
 
     private fun open(file: File) = Room.databaseBuilder(RuntimeEnvironment.getApplication(), AppDb::class.java, file.path)
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
         .allowMainThreadQueries()
         .build()
 
@@ -73,7 +73,7 @@ class MigrationTest {
             assertEquals("http://b", items.single().channel.key) // user data can be attached right away
             assertEquals(2, items.single().number)
 
-            UserStore(db).setFavorite("http://a", true)
+            UserStore(db).setFavorite("k", "http://a", true)
             val favorites = runBlocking { loadPage { store.itemSource(ChannelFilter("k", ChannelGroup.Favorites), 0) }.data }
             assertEquals(listOf("http://auto/1.png"), favorites.map { it.channel.autoLogo })
         } finally {
@@ -119,6 +119,46 @@ class MigrationTest {
             assertEquals(listOf("Фильм"), runBlocking {
                 LibraryStore(db).first(VodFilter("k", app.iptvplayer.core.model.VodKind.MOVIE, VodGroup.Favorites), 10)
             }.map { it.name })
+        } finally {
+            db.close()
+        }
+    }
+
+    /**
+     * LIVE-008: v3 → v4 names the favourites after their channels in the saved source; one whose channel is gone keeps
+     * no name and still works by key. The saved channels can be found by name at once.
+     */
+    @Test
+    fun version3To4NamesFavorites() {
+        val file = oldDatabase(3) { db ->
+            db.execSQL("INSERT INTO source(id, sourceKey, savedAt, epgUrls) VALUES (1, 'k', 42, '')")
+            db.execSQL("INSERT INTO category(id, sourceId, name, position, ckey) VALUES (1, 1, 'Новости', 0, 'u|Новости')")
+            db.execSQL(
+                "INSERT INTO channel(id, sourceId, categoryId, position, name, url, logo, tvgId, autoLogo, ckey, number, archiveDays, epgId) " +
+                    "VALUES (1, 1, 1, 0, 'Первый HD', 'http://a', NULL, NULL, NULL, 'http://a', NULL, 0, NULL), " +
+                    "(2, 1, 1, 1, 'Ёлки', 'http://b', NULL, NULL, NULL, 'http://b', NULL, 0, NULL)"
+            )
+            db.execSQL("INSERT INTO channel_fts(rowid, name) VALUES (1, 'первый hd'), (2, 'елки')")
+            db.execSQL(
+                "INSERT INTO channel_state(ckey, name, hidden, favorite, epg, epgShift, logo) VALUES " +
+                    "('http://a', 'Мой первый', 0, 1, NULL, NULL, NULL), ('http://b', NULL, 0, 0, NULL, NULL, NULL), " +
+                    "('http://gone', NULL, 0, 2, NULL, NULL, NULL)"
+            )
+        }
+        val db = open(file)
+        try {
+            val states = db.user().allChannelStates().associate { it.ckey to (it.favoriteName to it.favoriteMatch) }
+            assertEquals(mapOf("http://a" to ("Первый HD" to "первыйhd"), "http://b" to ("Ёлки" to "елки"), "http://gone" to (null to null)), states)
+            val store = PlaylistStore(db)
+            val favorites = { key: String -> runBlocking { loadPage { store.itemSource(ChannelFilter(key, ChannelGroup.Favorites), 0) }.data }.map { it.channel.name } }
+            assertEquals(listOf("Ёлки", "Мой первый"), favorites("k"))
+
+            // Another playlist: the favourites are found there by name; the one known by key only comes back with its channel.
+            store.import("k2") { i ->
+                i.channel(app.iptvplayer.core.model.Channel("ПЕРВЫЙ-HD", "http://x/1", "Эфир"))
+                i.channel(app.iptvplayer.core.model.Channel("Канал", "http://gone", "Эфир"))
+            }
+            assertEquals(listOf("ПЕРВЫЙ-HD", "Канал"), favorites("k2"))
         } finally {
             db.close()
         }

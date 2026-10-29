@@ -52,7 +52,10 @@ data class CategoryRow(
 
 @Entity(
     tableName = "channel",
-    indices = [Index("sourceId", "position"), Index("sourceId", "categoryId", "position"), Index("sourceId", "ckey")],
+    indices = [
+        Index("sourceId", "position"), Index("sourceId", "categoryId", "position"), Index("sourceId", "ckey"),
+        Index("sourceId", "matchName"),
+    ],
 )
 data class ChannelRow(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -71,6 +74,8 @@ data class ChannelRow(
     @ColumnInfo(defaultValue = "0") val archiveDays: Int = 0,
     /** The guide channel ([EpgChannel.id]) bound by [app.iptvplayer.core.epg.EpgIndex]; kept up to date by [EpgStore]. */
     val epgId: Long? = null,
+    /** [matchName] of [name]: how a favourite of another source finds this channel (LIVE-008). */
+    @ColumnInfo(defaultValue = "") val matchName: String = "",
 )
 
 /**
@@ -192,7 +197,7 @@ data class ItemRow(
         LibraryRow::class, VodCategoryRow::class, VodRow::class, VodFts::class, EpisodeRow::class,
         VodState::class, VodCategoryState::class, VodOrder::class, VodCollection::class, VodCollectionItem::class, Watch::class,
     ],
-    version = 3,
+    version = 4,
 )
 abstract class AppDb : RoomDatabase() {
     abstract fun playlist(): PlaylistDao
@@ -206,7 +211,7 @@ abstract class AppDb : RoomDatabase() {
 
         fun get(ctx: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(ctx.applicationContext, AppDb::class.java, "fervo.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build().also { instance = it }
         }
     }
@@ -241,6 +246,30 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     override fun migrate(db: SupportSQLiteDatabase) = MIGRATION_2_3_SQL.forEach(db::execSQL)
 }
 
+/**
+ * v3 → v4 (LIVE-008): favourites keep the provider's name of their channel, to be found by it in another source.
+ * Saved channels get their [matchName]; favourites get the name of their channel in the saved source, those whose
+ * channel is gone keep none and still work by key.
+ */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // Copied from the exported schema `core/schemas/…/4.json`; checked by MigrationTest.
+        db.execSQL("ALTER TABLE `channel` ADD COLUMN `matchName` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_channel_sourceId_matchName` ON `channel` (`sourceId`, `matchName`)")
+        db.execSQL("ALTER TABLE `channel_state` ADD COLUMN `favoriteName` TEXT")
+        db.execSQL("ALTER TABLE `channel_state` ADD COLUMN `favoriteMatch` TEXT")
+        val update = db.compileStatement("UPDATE channel SET matchName = ? WHERE id = ?")
+        db.query("SELECT id, name FROM channel").use { c ->
+            while (c.moveToNext()) {
+                update.bindString(1, matchName(c.getString(1)))
+                update.bindLong(2, c.getLong(0))
+                update.executeUpdateDelete()
+            }
+        }
+        db.execSQL(NAME_FAVORITES)
+    }
+}
+
 /** Copied from the exported schema `core/schemas/…/3.json`; checked by MigrationTest. */
 private val MIGRATION_2_3_SQL = listOf(
     "CREATE TABLE IF NOT EXISTS `library` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `sourceKey` TEXT NOT NULL, `savedAt` INTEGER)",
@@ -271,6 +300,12 @@ private val MIGRATION_2_3_SQL = listOf(
 fun searchText(s: String): String = buildString(s.length) {
     for (c in s.lowercase()) append(if (c == 'ё') 'е' else if (c.isLetterOrDigit()) c else ' ')
 }
+
+/**
+ * LIVE-008: a name as favourites of another source match it: lowercase, ё→е, only letters and digits
+ * ("Первый HD" = "ПЕРВЫЙ-HD" = "первыйhd").
+ */
+fun matchName(s: String): String = searchText(s).replace(" ", "")
 
 /** The same match as the channel search, for short in-memory lists (categories): every query word starts a word of [text]. */
 fun matchesWords(text: String, query: String): Boolean {

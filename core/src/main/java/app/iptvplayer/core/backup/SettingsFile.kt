@@ -41,7 +41,7 @@ import java.util.zip.ZipOutputStream
  *   source.json    {"type": "m3u", "url": …} | {"type": "xtream", "server", "user", "hls", "password"?}
  *   settings.json  every field of Settings by name (missing = default, unknown = ignored)
  *   guide.json     {"sources": [{"url", "userAgent"?, "refresh", "refreshDays", "shift"?}]}  (priority order)
- *   channels.json  {"channels": [{"key", "name"?, "hidden"?, "favorite"?, "epg"?, "epgShift"?, "logo"?}],
+ *   channels.json  {"channels": [{"key", "name"?, "hidden"?, "favorite"?, "favoriteName"?, "epg"?, "epgShift"?, "logo"?}],
  *                   "categories": [{"key", "name"?, "hidden"?, "position"?}],
  *                   "order": [{"list", "keys": […]}], "collections": [{"name", "keys": […]}]}
  *   library.json   films and series (P2): {"items": [{"key", "name"?, "hidden"?, "favorite"?}],
@@ -50,7 +50,8 @@ import java.util.zip.ZipOutputStream
  *   watched.json   {"items": [{"key", "kind", "series"?, "season"?, "episode"?, "title", "episodeTitle"?, "image"?,
  *                   "position", "duration", "watched", "at"}]}  (VOD-008 marks, VOD-010 positions, history)
  *
- * Keys are the stable keys of channels and categories, so edits land on the channels of a fresh import.
+ * Keys are the stable keys of channels and categories, so edits land on the channels of a fresh import. A favourite
+ * also carries its channel's provider name (LIVE-008), to be found in another source; without one it works by key.
  * Later versions (P5) add parts and fields; [FORMAT_VERSION] goes up only when old readers would misread a file.
  * A reader takes the parts it knows and ignores the rest.
  */
@@ -264,7 +265,7 @@ private fun readGuide(j: JSONObject) = EpgSource(
 private fun channelsJson(d: UserData): JSONObject = JSONObject()
     .put("channels", JSONArray(d.channels.map { s ->
         JSONObject().put("key", s.ckey).putOpt("name", s.name).put("hidden", s.hidden).putOpt("favorite", s.favorite)
-            .putOpt("epg", s.epg).putOpt("epgShift", s.epgShift).putOpt("logo", s.logo)
+            .putOpt("favoriteName", s.favoriteName).putOpt("epg", s.epg).putOpt("epgShift", s.epgShift).putOpt("logo", s.logo)
     }))
     .put("categories", JSONArray(d.categories.map { s ->
         JSONObject().put("key", s.ckey).putOpt("name", s.name).put("hidden", s.hidden).putOpt("position", s.position)
@@ -277,7 +278,7 @@ private fun readChannels(j: JSONObject) = UserData(
         ChannelState(
             ckey = nonBlank(c.getString("key")), name = c.optStringOrNull("name"), hidden = c.optBoolean("hidden"),
             favorite = c.optIntOrNull("favorite"), epg = c.optStringOrNull("epg"), epgShift = c.optIntOrNull("epgShift"),
-            logo = c.optStringOrNull("logo"),
+            logo = c.optStringOrNull("logo"), favoriteName = c.optStringOrNull("favoriteName"),
         )
     },
     categories = j.optJSONArray("categories")?.objects().orEmpty().map { c ->
