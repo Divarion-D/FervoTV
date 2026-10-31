@@ -8,6 +8,7 @@
 
     <string name="section_live">Эфир</string>
     <string name="section_settings">Настройки</string>
+    <string name="settings_group_count">Настроек: %1$d</string>
     <string name="title_with_list">· %1$s</string>
     <string name="search_channels">Поиск каналов</string>
     <string name="view_list">Список</string>

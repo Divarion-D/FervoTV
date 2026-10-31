@@ -11,6 +11,7 @@
     <!-- Live section -->
     <string name="section_live">Live</string>
     <string name="section_settings">Settings</string>
+    <string name="settings_group_count">%1$d settings</string>
     <string name="title_with_list">· %1$s</string>
     <string name="search_channels">Search channels</string>
     <string name="view_list">List</string>

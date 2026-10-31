@@ -82,6 +82,31 @@ fun HomeRow.title(): Int = when (this) {
     HomeRow.RECENT_CHANNELS -> R.string.home_recent_channels
 }
 
+internal enum class SettingsGroup(
+    @androidx.annotation.StringRes val title: Int,
+    @androidx.annotation.DrawableRes val icon: Int,
+) {
+    PLAYLIST(R.string.settings_playlist, R.drawable.ic_playlist_play),
+    HOME(R.string.settings_home, R.drawable.ic_home),
+    LIVE(R.string.settings_live, R.drawable.ic_live_tv),
+    LIBRARY(R.string.settings_library, R.drawable.ic_play_arrow),
+    LOGOS(R.string.settings_logos, R.drawable.ic_image),
+    INTERFACE(R.string.settings_interface, R.drawable.ic_language),
+    FILE(R.string.settings_file, R.drawable.ic_save),
+    ABOUT(R.string.settings_about, R.drawable.ic_info),
+}
+
+internal fun settingGroupCounts(settings: Settings): List<Pair<SettingsGroup, Int>> = listOf(
+    SettingsGroup.PLAYLIST to 3 + if (settings.playlistRefresh == PlaylistRefresh.EVERY_N_DAYS) 1 else 0,
+    SettingsGroup.HOME to 3 + homeRows(settings.homeRows, settings.homeChannels).size,
+    SettingsGroup.LIVE to 3 + if (settings.preview) 1 else 0,
+    SettingsGroup.LIBRARY to 2,
+    SettingsGroup.LOGOS to 2,
+    SettingsGroup.INTERFACE to 1,
+    SettingsGroup.FILE to 2,
+    SettingsGroup.ABOUT to 5,
+)
+
 /** New options: add a field to [Settings] + its default to [Defaults], then a [SettingItem] here. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -111,7 +136,9 @@ fun SettingsScreen(
     var resumeDialog by remember { mutableStateOf(false) }
     var startDialog by remember { mutableStateOf(false) }
     var qrUrl by remember { mutableStateOf<String?>(null) }
-    BackHandler(onBack = onClose)
+    var groupName by rememberSaveable { mutableStateOf<String?>(null) }
+    val group = groupName?.let(SettingsGroup::valueOf)
+    BackHandler(onBack = { if (group == null) onClose() else groupName = null })
     val ctx = LocalContext.current
     val rows = remember { mutableMapOf<String, FocusRequester>() }
     fun Modifier.row(key: String) =
@@ -130,10 +157,15 @@ fun SettingsScreen(
         onChange(settings.copy(logoSource = Defaults.LOGO_SOURCE))
     }
 
+    if (group == null) {
+        SettingsGroupList(settings, onOpen = { groupName = it.name }, onClose = onClose)
+        return
+    }
+
     Column(Modifier.fillMaxSize().safeDrawingPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
         TopAppBar(
-            title = { Text(stringResource(R.string.section_settings)) },
-            navigationIcon = { BackButton(onClose) },
+            title = { Text(stringResource(group.title)) },
+            navigationIcon = { BackButton { groupName = null } },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         )
         Column(
@@ -144,6 +176,7 @@ fun SettingsScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (group == SettingsGroup.PLAYLIST) {
             SectionTitle(stringResource(R.string.settings_playlist))
             SettingItem(
                 R.drawable.ic_refresh, stringResource(R.string.settings_refresh_now), playlistStatus.ifEmpty { null },
@@ -187,8 +220,10 @@ fun SettingsScreen(
                     onDismiss = { daysDialog = false },
                 )
             }
+            }
 
             // HOME-001, HOME-005
+            if (group == SettingsGroup.HOME) {
             SectionTitle(stringResource(R.string.settings_home))
             SettingItem(
                 R.drawable.ic_home, stringResource(R.string.settings_start), stringResource(settings.startScreen.title()), Modifier.row("startScreen"),
@@ -227,7 +262,9 @@ fun SettingsScreen(
                     },
                 ) { save(rows.map { if (it.row == r.row) it.copy(on = !it.on) else it }) }
             }
+            }
 
+            if (group == SettingsGroup.LIVE) {
             SectionTitle(stringResource(R.string.settings_live))
             SettingItem(
                 R.drawable.ic_live_tv, stringResource(R.string.settings_preview), stringResource(R.string.settings_preview_summary),
@@ -245,7 +282,9 @@ fun SettingsScreen(
                 R.drawable.ic_guide, stringResource(R.string.settings_open_guide), stringResource(R.string.settings_open_guide_summary),
                 Modifier.row("liveGuide"), trailing = { Switch(settings.liveGuide, onCheckedChange = null) },
             ) { onChange(settings.copy(liveGuide = !settings.liveGuide)) }
+            }
 
+            if (group == SettingsGroup.LIBRARY) {
             SectionTitle(stringResource(R.string.settings_library))
             SettingItem(
                 R.drawable.ic_play_arrow, stringResource(R.string.settings_resume), stringResource(settings.resume.title()),
@@ -265,7 +304,9 @@ fun SettingsScreen(
                 R.drawable.ic_skip_next, stringResource(R.string.settings_auto_next), stringResource(R.string.settings_auto_next_summary),
                 Modifier.row("autoNext"), trailing = { Switch(settings.autoNext, onCheckedChange = null) },
             ) { onChange(settings.copy(autoNext = !settings.autoNext)) }
+            }
 
+            if (group == SettingsGroup.LOGOS) {
             SectionTitle(stringResource(R.string.settings_logos))
             SettingItem(
                 R.drawable.ic_image,
@@ -292,7 +333,9 @@ fun SettingsScreen(
                     modifier = Modifier.focusRing(CircleShape),
                 ) { IconLabel(R.drawable.ic_check, stringResource(R.string.apply)) }
             }
+            }
 
+            if (group == SettingsGroup.INTERFACE) {
             SectionTitle(stringResource(R.string.settings_interface))
             SettingItem(
                 R.drawable.ic_language, stringResource(R.string.settings_language), languageName(settings.language), Modifier.row("language"),
@@ -307,8 +350,10 @@ fun SettingsScreen(
                     onDismiss = { languageDialog = false },
                 )
             }
+            }
 
             // BAK-011
+            if (group == SettingsGroup.FILE) {
             SectionTitle(stringResource(R.string.settings_file))
             SettingItem(
                 R.drawable.ic_save, stringResource(R.string.settings_file_save), stringResource(R.string.settings_file_save_summary),
@@ -318,7 +363,9 @@ fun SettingsScreen(
                 R.drawable.ic_folder_open, stringResource(R.string.settings_file_load), stringResource(R.string.settings_file_load_summary),
                 Modifier.row("loadFile"), onClick = onLoadFile,
             )
+            }
 
+            if (group == SettingsGroup.ABOUT) {
             SectionTitle(stringResource(R.string.settings_about))
             SettingItem(R.drawable.ic_info, stringResource(R.string.settings_version), versionLabel(ctx), Modifier.row("version")) {}
             SettingItem(R.drawable.ic_person, stringResource(R.string.settings_author), Defaults.AUTHOR, Modifier.row("author")) {}
@@ -331,9 +378,35 @@ fun SettingsScreen(
             SettingItem(
                 R.drawable.ic_info, stringResource(R.string.settings_licenses), stringResource(R.string.settings_licenses_summary), Modifier.row("licenses"),
             ) { subpage = R.string.settings_licenses to "LICENSES.md" }
+            }
         }
     }
     qrUrl?.let { url -> QrDialog(url, onDismiss = { qrUrl = null }) }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsGroupList(settings: Settings, onOpen: (SettingsGroup) -> Unit, onClose: () -> Unit) {
+    Column(Modifier.fillMaxSize().safeDrawingPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
+        TopAppBar(
+            title = { Text(stringResource(R.string.section_settings)) },
+            navigationIcon = { BackButton(onClose) },
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+        )
+        Column(
+            Modifier.widthIn(max = 720.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            for ((group, count) in settingGroupCounts(settings)) {
+                SettingItem(
+                    group.icon,
+                    stringResource(group.title),
+                    stringResource(R.string.settings_group_count, count),
+                    onClick = { onOpen(group) },
+                )
+            }
+        }
+    }
 }
 
 @Composable
