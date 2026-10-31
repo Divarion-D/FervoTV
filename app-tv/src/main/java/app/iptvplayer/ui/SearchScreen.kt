@@ -295,6 +295,7 @@ fun SearchScreen(
     Box(Modifier.fillMaxSize()) {
         SectionFrame(
             Section.Search, library, online, task, stringResource(R.string.section_search), railFocus,
+            homeVisible = settings.homeVisible,
             onSection = onSection, onCurrent = ::focusContent,
             continueItem = continueItem,
             onContinue = { item -> item.playJump().let { (s, j) -> onJump(s, j) } },

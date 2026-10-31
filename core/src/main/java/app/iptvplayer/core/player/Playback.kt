@@ -1,6 +1,6 @@
 package app.iptvplayer.core.player
 
-import android.view.SurfaceView
+import android.view.View
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -64,7 +64,7 @@ interface PlaybackEngine {
     fun stop()
 
     /** Where the picture goes; null detaches. Switching views doesn't restart the stream. */
-    fun setVideoView(view: SurfaceView?)
+    fun setVideoView(view: View?)
 
     fun release()
 }
@@ -79,7 +79,7 @@ class PlayerSession(newEngine: () -> PlaybackEngine) {
     private val engine by lazyEngine
     private var item: PlayItem? = null
     private var dropped = false // a live stream released in the background
-    private var view: SurfaceView? = null
+    private var view: View? = null
 
     val state: StateFlow<PlaybackState> get() = engine.state
 
@@ -129,7 +129,7 @@ class PlayerSession(newEngine: () -> PlaybackEngine) {
     }
 
     /** Where the picture goes now; the previous view is let go. */
-    fun setVideoView(view: SurfaceView?) {
+    fun setVideoView(view: View?) {
         this.view = view
         engine.setVideoView(view)
     }
@@ -138,7 +138,7 @@ class PlayerSession(newEngine: () -> PlaybackEngine) {
      * A screen's video view is going away: detached only if it is still the current one, so the order in which
      * two screens swap views (preview ↔ full screen) doesn't matter.
      */
-    fun releaseVideoView(view: SurfaceView) {
+    fun releaseVideoView(view: View) {
         if (this.view === view) setVideoView(null)
     }
 

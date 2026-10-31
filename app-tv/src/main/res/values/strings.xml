@@ -11,7 +11,6 @@
     <!-- Live section -->
     <string name="section_live">Live</string>
     <string name="section_settings">Settings</string>
-    <string name="settings_group_count">%1$d settings</string>
     <string name="title_with_list">· %1$s</string>
     <string name="search_channels">Search channels</string>
     <string name="view_list">List</string>
@@ -190,6 +189,8 @@
 
     <!-- Start, errors -->
     <string name="loading_playlist">Loading the playlist…</string>
+    <string name="loading_library_background">Channels are ready. Films and series are loading in the background.</string>
+    <string name="continue_in_background">Continue in background</string>
     <string name="playlist_failed">Couldn\'t load the playlist</string>
     <string name="source">Source</string>
     <string name="source_local_file">Local file</string>
@@ -450,6 +451,10 @@
     <string name="history_empty_hint">What you watch appears here</string>
     <!-- Settings: home -->
     <string name="settings_home">Home</string>
+    <string name="settings_home_visible">Show Home</string>
+    <string name="settings_home_visible_summary">Hide it from navigation and open Live TV instead</string>
+    <string name="settings_home_preview">Preview on Home</string>
+    <string name="settings_home_preview_summary">Play the focused Continue card after 3 seconds without sound</string>
     <string name="settings_start">Open on start</string>
     <string name="settings_home_channels">Channels in “Continue watching”</string>
     <string name="settings_home_channels_summary">Recent channels next to started films and episodes</string>

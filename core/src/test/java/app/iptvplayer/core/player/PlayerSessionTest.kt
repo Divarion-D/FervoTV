@@ -1,6 +1,7 @@
 package app.iptvplayer.core.player
 
 import android.view.SurfaceView
+import android.view.View
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -21,7 +22,7 @@ class FakeEngine : PlaybackEngine {
     override var position = 0L
     override var duration = 0L
     override fun seekTo(ms: Long) { calls += "seek $ms"; position = ms }
-    override fun setVideoView(view: SurfaceView?) { calls += if (view == null) "view null" else "view" }
+    override fun setVideoView(view: View?) { calls += if (view == null) "view null" else "view" }
     override fun release() { calls += "release" }
 }
 

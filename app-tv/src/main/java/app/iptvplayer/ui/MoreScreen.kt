@@ -102,6 +102,7 @@ fun MoreScreen(
     online: Boolean,
     task: BgTask?,
     library: Set<VodKind>,
+    homeVisible: Boolean,
     continueItem: ContinueItem?,
     onSection: (Section) -> Unit,
     onJump: (Section, Jump) -> Unit,
@@ -171,6 +172,7 @@ fun MoreScreen(
     Box(Modifier.fillMaxSize()) {
     SectionFrame(
         Section.More, library, online, task, title, railFocus,
+        homeVisible = homeVisible,
         onSection = onSection, onCurrent = ::focusList,
         continueItem = continueItem,
         onContinue = { item -> item.playJump().let { (s, j) -> onJump(s, j) } },
@@ -192,11 +194,7 @@ fun MoreScreen(
             }
         }
         if (wide) Row(modifier) {
-            lines(
-                Modifier.width(300.dp).fillMaxHeight().remoteKeys { a, _ ->
-                    if (a == Action.Right && page != MorePage.Settings) { enter(page); true } else false
-                },
-            )
+            lines(Modifier.width(300.dp).fillMaxHeight())
             Spacer(Modifier.width(24.dp))
             Box(Modifier.weight(1f).fillMaxHeight().onFocusChanged { if (it.hasFocus) inside = true }) { pageContent(Modifier.fillMaxSize()) }
         } else if (inside) pageContent(modifier) else lines(modifier.padding(top = 8.dp))

@@ -1,5 +1,6 @@
 package app.iptvplayer.ui
 
+import android.view.SurfaceView
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -31,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -54,6 +56,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
@@ -79,6 +82,8 @@ import app.iptvplayer.core.model.Settings
 import app.iptvplayer.core.model.Source
 import app.iptvplayer.core.model.VodItem
 import app.iptvplayer.core.model.VodKind
+import app.iptvplayer.core.player.PlayItem
+import app.iptvplayer.core.player.PlayerSession
 import app.iptvplayer.core.source.cacheKey
 import app.iptvplayer.findActivity
 import app.iptvplayer.isTv
@@ -97,6 +102,7 @@ import kotlinx.coroutines.launch
 fun HomeScreen(
     repo: Repository,
     source: Source,
+    player: PlayerSession,
     settings: Settings,
     online: Boolean,
     task: BgTask?,
@@ -171,6 +177,29 @@ fun HomeScreen(
         onJump(s, j)
     }
 
+    var previewKey by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(focusRow, focusIndex, cont, settings.homePreview) {
+        val item = cont.getOrNull(focusIndex).takeIf { tv && settings.homePreview && focusRow == HomeRow.CONTINUE.name }
+        if (item == null) {
+            if (previewKey != null) player.close()
+            previewKey = null
+            return@LaunchedEffect
+        }
+        delay(3_000)
+        val play = when (item) {
+            is ChannelContinue -> PlayItem(item.channel.channel.url)
+            is VodContinue -> {
+                val url = if (item.kind == VodKind.MOVIE) repo.vodItem(source, VodKind.MOVIE, item.watch.vkey)?.url
+                else repo.episode(source, item.watch.vkey)?.url
+                url?.let { PlayItem(it, live = false, start = item.watch.position) }
+            }
+        } ?: return@LaunchedEffect
+        player.setMuted(true)
+        player.open(play)
+        previewKey = rowKey(item)
+    }
+    DisposableEffect(player) { onDispose { if (previewKey != null) player.close() } }
+
     val exit = remember { ExitGuard() }
     var toast by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(toast) { if (toast != null) { delay(Defaults.TOAST_MS); toast = null } }
@@ -189,6 +218,7 @@ fun HomeScreen(
     Box {
         SectionFrame(
             Section.Home, library, online, task, stringResource(R.string.section_home), railFocus,
+            homeVisible = settings.homeVisible,
             onSection = onSection, onCurrent = ::focusContent,
             continueItem = continueItem, onContinue = { item -> item.playJump().let { (s, j) -> onJump(s, j) } },
             tools = { h -> if (!wide) ToolButton(R.drawable.ic_search, stringResource(R.string.section_search), size = h) { onSection(Section.Search) } },
@@ -206,7 +236,7 @@ fun HomeScreen(
                     when (row) {
                         HomeRow.CONTINUE -> cardRow(row, R.string.home_continue, cont.size) {
                             itemsIndexed(cont, key = { _, it -> rowKey(it) }) { i, item ->
-                                ContinueCard(item, now, tv, wideW, cardModifier(row, i)) {
+                                ContinueCard(item, now, tv, wideW, cardModifier(row, i), player, previewKey == rowKey(item)) {
                                     item.playJump().let { (s, j) -> open(row, i, s, j) }
                                 }
                             }
@@ -288,7 +318,10 @@ private fun LazyListScope.posterItems(
  * as the ember line, the title and «S1 · E2 — 31 мин до конца» / «смотрели 8 мин назад». Focus as on posters.
  */
 @Composable
-fun ContinueCard(item: ContinueItem, now: Long, tv: Boolean, width: Dp, modifier: Modifier, onClick: () -> Unit) {
+fun ContinueCard(
+    item: ContinueItem, now: Long, tv: Boolean, width: Dp, modifier: Modifier,
+    player: PlayerSession? = null, previewing: Boolean = false, onClick: () -> Unit,
+) {
     val c = MaterialTheme.colorScheme
     val ctx = LocalContext.current
     val shape = RoundedCornerShape(12.dp)
@@ -326,7 +359,13 @@ fun ContinueCard(item: ContinueItem, now: Long, tv: Boolean, width: Dp, modifier
             Modifier.fillMaxWidth().height(width * 9 / 16)
                 .then(if (focused) Modifier.shadow(16.dp, shape, ambientColor = Ext.focus, spotColor = Ext.focus).border(3.dp, Ext.focus, shape) else Modifier),
         ) {
-            when (item) {
+            if (previewing && player != null) {
+                AndroidView(
+                    factory = { SurfaceView(it).apply { keepScreenOn = true; isFocusable = false; player.setVideoView(this) } },
+                    modifier = Modifier.matchParentSize(),
+                    onRelease = { player.releaseVideoView(it) },
+                )
+            } else when (item) {
                 is ChannelContinue -> ChannelLogo(item.channel.channel, Modifier.matchParentSize(), top = 12.dp)
                 is VodContinue -> Poster(item.watch.image, title, Modifier.matchParentSize())
             }

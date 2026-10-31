@@ -104,14 +104,15 @@ fun Section.label(): Int = when (this) {
 }
 
 /** UI-007: the rail's sections; «Фильмы» / «Сериалы» only when the source has them ([library], VOD-001). */
-fun railSections(library: Set<VodKind>): List<Section> = Section.entries.filter { s -> s.kind()?.let { it in library } ?: true }
+fun railSections(library: Set<VodKind>, homeVisible: Boolean = true): List<Section> =
+    Section.entries.filter { s -> (s != Section.Home || homeVisible) && (s.kind()?.let { it in library } ?: true) }
 
 /**
  * The phone's bottom bar (33-design 4.5): Главная, Эфир, Телегид, the library sections, «Ещё» — at most five, so with
  * both films and series «Телегид» leaves it (a button in «Эфир» opens it). Search is a field on the home screen.
  */
-fun phoneSections(library: Set<VodKind>): List<Section> {
-    val all = railSections(library) - Section.Search
+fun phoneSections(library: Set<VodKind>, homeVisible: Boolean = true): List<Section> {
+    val all = railSections(library, homeVisible) - Section.Search
     return if (all.size > 5) all - Section.Guide else all
 }
 
@@ -125,12 +126,13 @@ fun rememberRailFocus(): Map<Section, FocusRequester> = remember { Section.entri
  */
 @Composable
 fun SectionRail(
-    current: Section, library: Set<VodKind>, focus: Map<Section, FocusRequester>,
-    onSection: (Section) -> Unit, onCurrent: () -> Unit, onRight: () -> Unit, onFocusIn: (Boolean) -> Unit = {},
+    current: Section, library: Set<VodKind>, focus: Map<Section, FocusRequester>, homeVisible: Boolean = true,
+    onSection: (Section) -> Unit, onCurrent: () -> Unit, onRight: () -> Unit, suppressExpansion: Boolean = false,
+    onFocusIn: (Boolean) -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val tv = remember { ctx.isTv() }
-    val entries = railSections(library).map { s ->
+    val entries = railSections(library, homeVisible).map { s ->
         s to RailEntry(s.icon(s == current), stringResource(s.label()), s == current, focus.getValue(s)) { if (s == current) onCurrent() else onSection(s) }
     }
     Rail(
@@ -144,14 +146,15 @@ fun SectionRail(
                 true
             },
         onFocusIn,
+        suppressExpansion,
     )
 }
 
 /** The phone's bottom bar (UI-007, 33-design 4.5). */
 @Composable
-fun PhoneNav(current: Section, library: Set<VodKind>, onSelect: (Section) -> Unit) {
+fun PhoneNav(current: Section, library: Set<VodKind>, homeVisible: Boolean = true, onSelect: (Section) -> Unit) {
     NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
-        for (s in phoneSections(library)) {
+        for (s in phoneSections(library, homeVisible)) {
             NavigationBarItem(
                 selected = s == current,
                 onClick = { if (s != current) onSelect(s) },
@@ -164,8 +167,8 @@ fun PhoneNav(current: Section, library: Set<VodKind>, onSelect: (Section) -> Uni
 
 /** A phone held sideways has no rail: the other sections are buttons in the top bar (the guide has its own). */
 @Composable
-fun SectionButtons(current: Section, library: Set<VodKind>, onSection: (Section) -> Unit) {
-    railSections(library).filter { it != current && it != Section.Guide }.forEach { s ->
+fun SectionButtons(current: Section, library: Set<VodKind>, homeVisible: Boolean = true, onSection: (Section) -> Unit) {
+    railSections(library, homeVisible).filter { it != current && it != Section.Guide }.forEach { s ->
         ToolButton(s.icon(), stringResource(s.label())) { onSection(s) }
     }
 }
@@ -245,6 +248,7 @@ fun SectionFrame(
     task: BgTask?,
     title: String,
     railFocus: Map<Section, FocusRequester>,
+    homeVisible: Boolean = true,
     onSection: (Section) -> Unit,
     onCurrent: () -> Unit,
     continueItem: ContinueItem? = null,
@@ -274,7 +278,7 @@ fun SectionFrame(
                         Text(title, style = TvType.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                         tools(40.dp)
                         ContinueButton(continueItem, onClick = onContinue)
-                        if (compact) SectionButtons(section, library, onSection)
+                        if (compact) SectionButtons(section, library, homeVisible, onSection)
                         if (!online) OfflineMark()
                         if (!compact) Clock()
                     }
@@ -283,7 +287,7 @@ fun SectionFrame(
                     if (task != null) Row(Modifier.fillMaxWidth().padding(top = 4.dp).height(32.dp), horizontalArrangement = Arrangement.End) { TaskPill(task, Modifier) }
                 }
             }
-            if (!compact) SectionRail(section, library, railFocus, onSection, onCurrent, onRight = onCurrent)
+            if (!compact) SectionRail(section, library, railFocus, homeVisible, onSection, onCurrent, onRight = onCurrent)
         } else {
             Column(Modifier.fillMaxSize()) {
                 Column(
@@ -304,8 +308,8 @@ fun SectionFrame(
                     }
                     content(Modifier.weight(1f).fillMaxWidth())
                 }
-                val phone = phoneSections(library)
-                PhoneNav(if (section in phone) section else if (section == Section.Search) Section.Home else Section.More, library, onSection)
+                val phone = phoneSections(library, homeVisible)
+                PhoneNav(if (section in phone) section else if (section == Section.Search) if (homeVisible) Section.Home else Section.Live else Section.More, library, homeVisible, onSection)
             }
             task?.let { TaskPill(it, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 92.dp)) }
         }

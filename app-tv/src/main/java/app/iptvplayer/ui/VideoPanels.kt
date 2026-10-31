@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -45,6 +46,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -100,10 +102,11 @@ private fun BoxScope.PanelFrame(right: Boolean, title: String, onSide: (Action) 
 }
 
 /** Puts the focus on row [index] of [state] (scrolled to it) through [requester] sitting on that row. */
-private suspend fun focusAt(state: LazyListState, requester: FocusRequester, index: Int) {
-    state.scrollToItem(index.coerceAtLeast(0))
+private suspend fun focusAt(state: LazyListState, requester: FocusRequester, index: Int, scrollOffset: Int = 0) {
+    state.scrollToItem(index.coerceAtLeast(0), scrollOffset)
     withFrameNanos {}
     runCatching { requester.requestFocus() }
+    state.scrollToItem(index.coerceAtLeast(0), scrollOffset)
 }
 
 /** LIVE-019: the channels of a list, the playing one in focus; CH± page by 10 (LIVE-021). */
@@ -117,34 +120,41 @@ fun BoxScope.ChannelsPanel(
     var target by remember { mutableIntStateOf(0) }
     val focused = remember { intArrayOf(0) }
     val scope = rememberCoroutineScope()
-    fun go(i: Int) {
-        target = i.coerceIn(0, (items.itemCount - 1).coerceAtLeast(0))
-        scope.launch { focusAt(state, requester, target) }
-    }
-    LaunchedEffect(start, items.itemCount > 0) {
-        if (start != null && items.itemCount > 0) go(start)
-    }
-    LazyColumn(
-        Modifier.fillMaxWidth().remoteKeys { a, long ->
-            when (a) {
-                Action.Ok -> { items.peek(focused[0])?.let(onPick); true }
-                Action.ChannelUp, Action.ChannelDown -> {
-                    val down = a == Action.ChannelDown
-                    go(if (long) (if (down) items.itemCount - 1 else 0) else focused[0] + if (down) Defaults.LIST_PAGE else -Defaults.LIST_PAGE)
-                    true
+    BoxWithConstraints(Modifier.fillMaxHeight().fillMaxWidth()) {
+        val rowHeight = 56.dp
+        val centerOffset = with(LocalDensity.current) { ((maxHeight - rowHeight) / 2).roundToPx() }
+        fun go(i: Int) {
+            val at = i.coerceIn(0, (items.itemCount - 1).coerceAtLeast(0))
+            target = at
+            focused[0] = at
+            scope.launch { focusAt(state, requester, at, -centerOffset) }
+        }
+        LazyColumn(
+            Modifier.fillMaxSize().remoteKeys { a, long ->
+                when (a) {
+                    Action.Ok -> { items.peek(focused[0])?.let(onPick); true }
+                    Action.ChannelUp, Action.ChannelDown -> {
+                        val down = a == Action.ChannelDown
+                        go(if (long) (if (down) items.itemCount - 1 else 0) else focused[0] + if (down) Defaults.LIST_PAGE else -Defaults.LIST_PAGE)
+                        true
+                    }
+                    else -> false
                 }
-                else -> false
+            },
+            state,
+            contentPadding = PaddingValues(vertical = ((maxHeight - 56.dp) / 2).coerceAtLeast(0.dp)),
+        ) {
+            items(items.itemCount, key = items.itemKey { it.channel.id }) { i ->
+                val item = items[i]
+                ChannelRow(
+                    item, item != null && item.channel.key == playingKey && focused[0] == i, now, false,
+                    if (i == target) Modifier.focusRequester(requester) else Modifier,
+                    onFocus = { focused[0] = i }, onClick = { if (item != null) onPick(item) }, onLongClick = {},
+                )
             }
-        },
-        state,
-    ) {
-        items(items.itemCount, key = items.itemKey { it.channel.id }) { i ->
-            val item = items[i]
-            ChannelRow(
-                item, item != null && item.channel.key == playingKey, now, false,
-                if (i == target) Modifier.focusRequester(requester) else Modifier,
-                onFocus = { focused[0] = i }, onClick = { if (item != null) onPick(item) }, onLongClick = {},
-            )
+        }
+        LaunchedEffect(start, items.itemCount > 0) {
+            if (start != null && items.itemCount > 0) go(start)
         }
     }
 }

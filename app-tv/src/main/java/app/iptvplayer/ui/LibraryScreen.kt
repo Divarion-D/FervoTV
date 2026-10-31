@@ -683,7 +683,7 @@ fun LibraryScreen(
                     ToolButton(R.drawable.ic_sort, orderLabel, onClick = ::sortMenu)
                     ContinueButton(continueItem, onClick = onContinue) // HOME-006
                     // No rail on a phone held sideways: the other sections are buttons here.
-                    if (compact) SectionButtons(kind.section(), library, onSection)
+                    if (compact) SectionButtons(kind.section(), library, settings.homeVisible, onSection)
                     if (!online) OfflineMark()
                     if (!compact) Clock()
                 }
@@ -731,7 +731,7 @@ fun LibraryScreen(
             }
         }
         if (!compact) SectionRail(
-            kind.section(), library, railFocus,
+            kind.section(), library, railFocus, settings.homeVisible,
             onSection = onSection,
             onCurrent = { scope.launch { focusCell(focused[0]) } },
             // ▶ goes back exactly where the focus came from (UI-007).
@@ -763,7 +763,7 @@ fun LibraryScreen(
                 CategoryChips(groups, group.asChannelGroup(), null, { group = it.asVodGroup() }, ::groupMenu)
                 catalogue(Modifier.weight(1f))
             }
-            PhoneNav(kind.section(), library, onSection)
+            PhoneNav(kind.section(), library, settings.homeVisible, onSection)
         }
         task?.let { TaskPill(it, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 92.dp)) }
     }

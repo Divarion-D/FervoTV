@@ -41,7 +41,10 @@ fun KeyEvent.toAction(): Action? =
  * Unused keys (arrows, unless [handle] takes them) go on to focus movement as usual, repeats included.
  */
 @Composable
-fun Modifier.remoteKeys(handle: (Action, long: Boolean) -> Boolean): Modifier {
+fun Modifier.remoteKeys(handle: (Action, long: Boolean) -> Boolean): Modifier = remoteKeys(handle, true)
+
+@Composable
+fun Modifier.remoteKeys(handle: (Action, long: Boolean) -> Boolean, handleOk: Boolean): Modifier {
     val down = remember { HashSet<Action>() }
     val held = remember { HashSet<Action>() }
     val latest by rememberUpdatedState(handle)
@@ -52,17 +55,17 @@ fun Modifier.remoteKeys(handle: (Action, long: Boolean) -> Boolean): Modifier {
             KeyEventType.KeyDown -> when {
                 n.repeatCount == 0 -> {
                     down += a
-                    a == Action.Ok || latest(a, false)
+                    if (a == Action.Ok && !handleOk) false else a == Action.Ok || latest(a, false)
                 }
-                a !in down -> a == Action.Ok
+                a !in down -> a == Action.Ok && handleOk
                 a in held -> true
                 n.isLongPress && latest(a, true) -> { held += a; true }
-                else -> a == Action.Ok
+                else -> a == Action.Ok && handleOk
             }
             KeyEventType.KeyUp -> when {
-                !down.remove(a) -> a == Action.Ok
+                !down.remove(a) -> a == Action.Ok && handleOk
                 held.remove(a) -> true
-                a == Action.Ok -> { latest(Action.Ok, false); true }
+                a == Action.Ok && handleOk -> { latest(Action.Ok, false); true }
                 else -> false
             }
             else -> false

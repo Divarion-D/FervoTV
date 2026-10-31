@@ -85,7 +85,7 @@ class SettingsFileTest {
                 playlistRefresh = PlaylistRefresh.EVERY_N_DAYS, refreshDays = 5, channelSort = ChannelSort.NAME,
                 logoSource = "https://logos.example/api", liveTiles = true, epgShift = 60, language = "en",
                 resume = ResumeMode.CONTINUE, autoNext = false, movieSort = VodSort.RATING, seriesList = true,
-                startScreen = StartScreen.LIVE, homeRows = "FAVORITE_MOVIES,-CONTINUE", homeChannels = false, homeGuide = true,
+                startScreen = StartScreen.LIVE, homeRows = "FAVORITE_MOVIES,-CONTINUE", homeChannels = false, homeGuide = true, homeVisible = false, homePreview = false,
             )
             addEpgSource("https://guide.example/a.xml.gz")
             updateEpgSource(addEpgSource("https://guide.example/b.xml").copy(userAgent = "UA", shift = -30, refresh = PlaylistRefresh.WEEKLY))

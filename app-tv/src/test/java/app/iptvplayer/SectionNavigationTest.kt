@@ -1,11 +1,13 @@
 package app.iptvplayer
 
 import app.iptvplayer.core.db.ChannelGroup
+import app.iptvplayer.core.db.LibraryState
 import app.iptvplayer.core.db.decodeGroup
 import app.iptvplayer.core.home.ChannelContinue
 import app.iptvplayer.core.model.Channel
 import app.iptvplayer.core.model.ChannelItem
 import app.iptvplayer.core.model.VodKind
+import app.iptvplayer.core.model.Source
 import app.iptvplayer.ui.JumpMode
 import app.iptvplayer.ui.Section
 import app.iptvplayer.ui.phoneSections
@@ -17,6 +19,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SectionNavigationTest {
+    @Test
+    fun firstXtreamImportCanContinueAfterChannelsWhileLibraryLoads() {
+        val xtream = Source.Xtream("http://example.test", "user", "pass")
+        assertTrue(shouldOfferContinueInBackground(xtream, LibraryState.Running(0)))
+        assertFalse(shouldOfferContinueInBackground(Source.M3u("http://example.test/list.m3u"), LibraryState.Running(1)))
+    }
+
     @Test
     fun continueEncodesTheCategoryRatherThanInterpretingItsNameAsAList() {
         for (category in listOf("favorites", "c:News", "News:local")) {
@@ -40,5 +49,7 @@ class SectionNavigationTest {
         assertEquals(5, both.size)
         assertEquals(listOf(Section.Home, Section.Live, Section.Movies, Section.Series, Section.More), both)
         assertFalse(Section.Search in both)
+        val withoutHome = phoneSections(VodKind.entries.toSet(), homeVisible = false)
+        assertEquals(listOf(Section.Live, Section.Guide, Section.Movies, Section.Series, Section.More), withoutHome)
     }
 }

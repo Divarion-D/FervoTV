@@ -1,6 +1,6 @@
 package app.iptvplayer.ui
 
-import android.view.SurfaceView
+import android.view.TextureView
 import androidx.activity.compose.BackHandler
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.animateDpAsState
@@ -130,27 +130,33 @@ class RailEntry(@DrawableRes val icon: Int, val label: String, val current: Bool
  * [bottom] entries sit at the foot (Настройки).
  */
 @Composable
-fun Rail(top: List<RailEntry>, bottom: List<RailEntry>, modifier: Modifier, onFocusIn: (Boolean) -> Unit) {
+fun Rail(top: List<RailEntry>, bottom: List<RailEntry>, modifier: Modifier, onFocusIn: (Boolean) -> Unit, suppressExpansion: Boolean = false) {
     val c = MaterialTheme.colorScheme
     var expanded by remember { mutableStateOf(false) }
-    val width by animateDpAsState(if (expanded) 240.dp else 80.dp, tween(if (expanded) 250 else 150), label = "rail")
+    val open = expanded && !suppressExpansion
+    val width by animateDpAsState(if (open) 240.dp else 80.dp, tween(if (suppressExpansion) 0 else if (open) 250 else 150), label = "rail")
+    LaunchedEffect(suppressExpansion) { if (suppressExpansion) expanded = false }
     Box(modifier.fillMaxHeight()) {
-        if (expanded) Box(Modifier.fillMaxHeight().width(4000.dp).background(Color.Black.copy(alpha = 0.5f)))
+        if (open) Box(Modifier.fillMaxHeight().width(4000.dp).background(Color.Black.copy(alpha = 0.5f)))
         Column(
             Modifier.fillMaxHeight().width(width).background(c.surfaceContainerLow)
-                .onFocusChanged { expanded = it.hasFocus; onFocusIn(it.hasFocus) }
+                .onFocusChanged { expanded = it.hasFocus && !suppressExpansion; onFocusIn(it.hasFocus) }
                 .padding(vertical = 24.dp, horizontal = 12.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            top.forEach { RailItem(it, expanded) }
+            top.forEachIndexed { i, entry ->
+                RailItem(entry, expanded, top.getOrNull(i - 1)?.focus, top.getOrNull(i + 1)?.focus ?: bottom.firstOrNull()?.focus)
+            }
             Spacer(Modifier.weight(1f))
-            bottom.forEach { RailItem(it, expanded) }
+            bottom.forEachIndexed { i, entry ->
+                RailItem(entry, expanded, bottom.getOrNull(i - 1)?.focus ?: top.lastOrNull()?.focus, bottom.getOrNull(i + 1)?.focus)
+            }
         }
     }
 }
 
 @Composable
-private fun RailItem(e: RailEntry, expanded: Boolean) {
+private fun RailItem(e: RailEntry, expanded: Boolean, up: FocusRequester?, down: FocusRequester?) {
     val c = MaterialTheme.colorScheme
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -163,6 +169,10 @@ private fun RailItem(e: RailEntry, expanded: Boolean) {
         Modifier
             .height(40.dp)
             .then(if (expanded) Modifier.fillMaxWidth() else Modifier.width(56.dp))
+            .focusProperties {
+                if (up != null) this.up = up
+                if (down != null) this.down = down
+            }
             .emberBar(e.current, Ext.now, 24.dp, x = (-12).dp)
             .background(if (focused) Ext.focus else Color.Transparent, CircleShape)
             .focusRequester(e.focus)
@@ -431,7 +441,7 @@ fun ChannelRow(item: ChannelItem?, selected: Boolean, now: Long, tall: Boolean, 
             .height(if (tall) 72.dp else 56.dp)
             .then(if (item?.hidden == true) Modifier.alpha(0.38f) else Modifier)
             .stateFill(focused, selected, c.surfaceContainerHigh, shape)
-            .emberBar(selected, if (focused) Ext.onFocus else Ext.now, 32.dp)
+            .emberBar(selected && !focused, Ext.now, 32.dp)
             .onFocusChanged { if (it.isFocused) onFocus() }
             .then(if (pressed || focused) Modifier.clip(shape) else Modifier)
             .combinedClickable(interaction, ripple(), onLongClick = onLongClick, onClick = onClick)
@@ -553,7 +563,7 @@ fun VideoWindow(item: ChannelItem?, playing: Boolean, player: PlayerSession, off
         if (playing) {
             AndroidView(
                 factory = {
-                    SurfaceView(it).apply {
+                    TextureView(it).apply {
                         keepScreenOn = true
                         isFocusable = false
                         player.setVideoView(this)

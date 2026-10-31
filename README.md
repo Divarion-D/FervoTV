@@ -108,6 +108,8 @@ Fervo TV развивается по фазам. Сейчас готовы P0 и
 ```bash
 make check        # то же, что CI на каждый коммит: тесты + lint + debug-сборка
 make test         # все unit-тесты;  make test-fast — только ядро
+make release      # один подписанный универсальный APK для TV, телефона и планшета → dist/
+make release-mobile  # отдельный APK устаревшего мобильного интерфейса → dist/
 make install run  # собрать release, поставить по adb и запустить (данные сохраняются)
 make install-debug run-debug  # debug — отдельным приложением «Fervo TV debug» рядом с release
 make dist         # подписанные dist/FervoTV-<версия>.apk и .aab + проверка подписи
@@ -126,13 +128,21 @@ export ANDROID_HOME=~/Android/Sdk
 echo "sdk.dir=$ANDROID_HOME" > local.properties   # один раз
 
 ./gradlew testDebugUnitTest lintDebug   # то же, что CI на каждый коммит
-./gradlew assembleDebug                 # app-tv/build/outputs/apk/debug/app-tv-debug.apk (~13 МБ)
-./gradlew assembleRelease               # app-tv/build/outputs/apk/release/app-tv-release.apk (~2,4 МБ, R8)
+./gradlew :app-tv:assembleDebug         # app-tv/build/outputs/apk/debug/app-tv-debug.apk (~16 МБ)
+./gradlew :app-tv:assembleRelease       # app-tv/build/outputs/apk/release/app-tv-release.apk (~3 МБ, R8)
 ./gradlew :app-tv:bundleRelease         # app-tv/build/outputs/bundle/release/app-tv-release.aab — для Google Play
 ```
 
 Без ключа подписи получится `app-tv-release-unsigned.apk`.
 </details>
+
+### Один APK и архитектуры
+
+`make release` по умолчанию собирает только выпускаемый модуль `app-tv` и намеренно кладёт в `dist/` **один
+универсальный APK** `FervoTV-<версия>.apk`. Это не неполная сборка: разбиение APK по ABI не включено.
+Внутри этого APK есть нативные библиотеки для `arm64-v8a`, `armeabi-v7a`, `x86` и `x86_64`; поэтому он
+подходит для 32- и 64-битных ARM-устройств, а также для x86-эмуляторов и устройств. Минимальная версия
+Android — 5.0 (API 21). Для магазина используется `make bundle`, который создаёт один `.aab`.
 
 **О скорости судите по release-сборке.** Debug-сборка Compose идёт без оптимизаций и в разы медленнее:
 на TECNO CH6i запуск занимает 1,4–1,9 с против 0,6–0,7 с, логотипы появляются через 1,5–2,3 с против 0,35–0,4 с.

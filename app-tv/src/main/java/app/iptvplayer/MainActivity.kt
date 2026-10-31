@@ -92,6 +92,9 @@ import app.iptvplayer.core.model.StartScreen
 import app.iptvplayer.ui.SetupScreen
 import kotlin.coroutines.cancellation.CancellationException
 
+internal fun shouldOfferContinueInBackground(source: Source, state: LibraryState?): Boolean =
+    source is Source.Xtream && state is LibraryState.Running
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         // Always-dark UI: light system bar icons regardless of the system theme. Screens pad themselves with
@@ -124,6 +127,7 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
     var askPassword by remember { mutableStateOf(repo.passwordMissing) }
     var editing by remember { mutableStateOf(false) }
     var ready by remember { mutableStateOf(false) } // the source's channels are saved in the database
+    var initialLibraryReady by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<Exception?>(null) }
     var attempt by remember { mutableIntStateOf(0) }
     var settings by remember { mutableStateOf(repo.settings) }
@@ -145,12 +149,13 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
     // «Эфир» as the list or the programme grid (LIVE-022: the setting picks how it opens).
     var guide by rememberSaveable { mutableStateOf(repo.settings.liveGuide) }
     // The section on screen (UI-007); the app opens on the home screen or «Эфир» (HOME-001, the setting).
-    val startSection = if (settings.startScreen == StartScreen.HOME) Section.Home else Section.Live
+    val startSection = if (settings.homeVisible && settings.startScreen == StartScreen.HOME) Section.Home else Section.Live
     var section by rememberSaveable { mutableStateOf(startSection) }
     // «Фильмы» / «Сериалы» are shown only when the source has them (VOD-001, UI-007).
     val kinds by remember(source) { source?.let(repo::libraryKinds) ?: flowOf(emptySet()) }.collectAsState(initial = null)
     val libraryKinds = kinds.orEmpty()
-    LaunchedEffect(kinds) {
+    LaunchedEffect(kinds, settings.homeVisible) {
+        if (!settings.homeVisible && section == Section.Home) section = Section.Live
         val has = kinds ?: return@LaunchedEffect
         val k = section.kind()
         if (k != null && k !in has) section = startSection // the source no longer has that section
@@ -163,10 +168,11 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
 
     /** To section [s]; with [j] opened on one item, Back returning to [from]. */
     fun go(s: Section, j: Jump? = null, from: Section? = null) {
-        if (s == Section.Live || s == Section.Guide) {
-            guide = s == Section.Guide
+        val target = if (s == Section.Home && !settings.homeVisible) Section.Live else s
+        if (target == Section.Live || target == Section.Guide) {
+            guide = target == Section.Guide
             section = Section.Live
-        } else section = s
+        } else section = target
         jump = j
         backTo = from
     }
@@ -217,6 +223,13 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
         logoJob = scope.launch { loadLogos(s) }
     }
 
+    fun finishInitialLoad(s: Source) {
+        playlistStatus = Txt(R.string.playlist_updated_at, DateTime(System.currentTimeMillis()))
+        ready = true
+        initialLibraryReady = false
+        startLogos(s)
+    }
+
     /**
      * Downloads the playlist into the database. With saved channels on screen a failure only reports (they stay
      * usable offline); without them it shows the error screen.
@@ -248,9 +261,11 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
             val summary = (repo.libraryState.value as? LibraryState.Done)?.result?.takeIf { s is Source.M3u }?.let { librarySummary(ctx, it) }
             task = BgTask(summary ?: ctx.getString(R.string.task_playlist_done), ok = true)
         }
-        playlistStatus = Txt(R.string.playlist_updated_at, DateTime(System.currentTimeMillis()))
-        ready = true
-        startLogos(s)
+        if (!ready && shouldOfferContinueInBackground(s, repo.libraryState.value)) {
+            initialLibraryReady = true
+            return
+        }
+        finishInitialLoad(s)
     }
 
     // SRC-016: an Xtream library imports in the background after the channels: its progress, then what changed.
@@ -278,6 +293,7 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
         val s = source ?: return@LaunchedEffect
         if (askPassword) return@LaunchedEffect
         ready = false
+        initialLibraryReady = false
         error = null
         lastAttempt = 0L
         val savedAt = repo.savedAt(s)
@@ -371,7 +387,7 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
         editing = false
         settingsOpen = false
         resetScreens(screens)
-        go(if (settings.startScreen == StartScreen.HOME) Section.Home else Section.Live)
+        go(if (settings.homeVisible && settings.startScreen == StartScreen.HOME) Section.Home else Section.Live)
         if (source == old && !askPassword) refreshRequest++ // the same source: refresh it; another one loads by itself
     }
 
@@ -409,7 +425,7 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
             // Phone: Настройки are the «Ещё» tab, over the same bottom navigation.
             if (wide) content() else Column(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f).consumeWindowInsets(WindowInsets.navigationBars)) { content() }
-                PhoneNav(Section.More, libraryKinds) { s ->
+                PhoneNav(Section.More, libraryKinds, settings.homeVisible) { s ->
                     close()
                     go(s)
                 }
@@ -441,14 +457,21 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             CircularProgressIndicator()
-            Text(stringResource(R.string.loading_playlist), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                stringResource(if (initialLibraryReady) R.string.loading_library_background else R.string.loading_playlist),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (initialLibraryReady) Button(
+                onClick = { source?.let(::finishInitialLoad) },
+                Modifier.focusRing(CircleShape),
+            ) { IconLabel(R.drawable.ic_playlist_play, stringResource(R.string.continue_in_background)) }
             // No cache yet (first start) and a slow/dead source: let the user switch the playlist instead of waiting.
             OutlinedButton(onClick = { settingsOpen = true }, Modifier.initialFocus().focusRing(CircleShape)) {
                 IconLabel(R.drawable.ic_settings, stringResource(R.string.section_settings))
             }
         }
         section == Section.Home -> screens.SaveableStateProvider("home") {
-            HomeScreen(repo, src, settings, online, task, libraryKinds, continueItem, onSection = { go(it) }, onJump = ::jumpTo, onBack = sectionBack)
+            HomeScreen(repo, src, player, settings, online, task, libraryKinds, continueItem, onSection = { go(it) }, onJump = ::jumpTo, onBack = sectionBack)
         }
         section == Section.Search -> screens.SaveableStateProvider("search") {
             SearchScreen(
@@ -458,7 +481,7 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
         }
         section == Section.More -> screens.SaveableStateProvider("more") {
             MoreScreen(
-                repo, src, src.label(LocalContext.current), online, task, libraryKinds, continueItem,
+                repo, src, src.label(LocalContext.current), online, task, libraryKinds, settings.homeVisible, continueItem,
                 onSection = { go(it) }, onJump = ::jumpTo, onOpenSettings = { settingsOpen = true }, onBack = sectionBack,
             )
         }

@@ -18,6 +18,7 @@ import app.iptvplayer.core.input.VideoPanel
 import java.util.Date
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -48,6 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -73,6 +75,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -218,6 +221,7 @@ fun LiveScreen(
 
     // --- Focus ---
     val listState = rememberLazyListState()
+    var listCenterOffset by remember { mutableIntStateOf(0) }
     val gridState = rememberLazyGridState()
     val catState = rememberLazyListState()
     var returnKey by rememberSaveable { mutableStateOf<String?>(null) } // the channel to put the focus back on
@@ -325,6 +329,9 @@ fun LiveScreen(
     fun watch(index: Int, item: ChannelItem) {
         returnKey = item.channel.key
         playIndex = index
+        listTarget = index
+        focusedRow[0] = index
+        refocus = false
         scheduleMode = false
         player.setMuted(false)
         fullscreen = true
@@ -396,11 +403,28 @@ fun LiveScreen(
             }
             return
         }
-        if (tilesNow) gridState.scrollToItem(i) else listState.scrollToItem(i)
+        if (tilesNow) gridState.scrollToItem(i) else listState.scrollToItem(i, -listCenterOffset)
         if (tv) {
-            withFrameNanos {}
+            // Older TV devices can compose the first lazy row a frame later than the scroll request.
+            repeat(2) {
+                withFrameNanos {}
+                runCatching { listFocus.requestFocus() }
+            }
+            delay(120)
             runCatching { listFocus.requestFocus() }
         }
+        if (!tilesNow) listState.scrollToItem(i, -listCenterOffset)
+    }
+
+    LaunchedEffect(selected?.channel?.key, fullscreen, guideNow, tilesNow, listCenterOffset) {
+        if (tv && !fullscreen && !guideNow && !tilesNow && selected != null) focusRow(focusedRow[0])
+    }
+
+    var enteredList by remember { mutableStateOf(false) }
+    LaunchedEffect(items.itemCount) {
+        if (enteredList || !tv || items.itemCount == 0) return@LaunchedEffect
+        enteredList = true
+        focusRow(returnKey?.let { repo.indexOf(currentFilter, it) } ?: listTarget)
     }
 
     fun focusCategory(index: Int) {
@@ -433,10 +457,10 @@ fun LiveScreen(
     LaunchedEffect(refocus, hasItems) {
         if (!refocus) return@LaunchedEffect
         if (!hasItems) return@LaunchedEffect
-        refocus = false
         if (returnKey == null && settings.rememberLive) returnKey = repo.zapped.firstOrNull() ?: repo.recentKeys(source).firstOrNull()
         val at = returnKey?.let { repo.indexOf(currentFilter, it) } ?: listTarget
         focusRow(at)
+        refocus = false
     }
 
     // A list the user picked opens at the top.
@@ -574,6 +598,13 @@ fun LiveScreen(
             listOf(
                 str(R.string.menu_watching) to listOf(SheetItem(R.drawable.ic_play_arrow, str(R.string.watch)) { watch(index, item) }),
                 str(R.string.menu_channel) to listOfNotNull(
+                    if (schedule.isNotEmpty()) SheetItem(R.drawable.ic_schedule, str(R.string.hint_schedule)) {
+                        scheduleMode = true
+                        scope.launch {
+                            withFrameNanos {}
+                            runCatching { scheduleFocus.requestFocus() }
+                        }
+                    } else null,
                     if (item.favorite) SheetItem(R.drawable.ic_favorite_fill, str(R.string.favorite_remove)) { scope.launch { repo.setFavorite(source, ch.key, false) } }
                     else SheetItem(R.drawable.ic_favorite, str(R.string.favorite_add)) { scope.launch { repo.setFavorite(source, ch.key, true) } },
                     SheetItem(R.drawable.ic_playlist_add, str(R.string.collection_add)) { addToCollection(item) },
@@ -856,14 +887,7 @@ fun LiveScreen(
                 true
             }
             Action.Left -> if (!wide || tilesNow) false else { focusSelectedCategory(); true }
-            Action.Right -> if (!wide || tilesNow || schedule.isEmpty()) false else {
-                scheduleMode = true
-                scope.launch {
-                    withFrameNanos {}
-                    runCatching { scheduleFocus.requestFocus() }
-                }
-                true
-            }
+            Action.Right -> if (!wide || tilesNow) false else true
             else -> false
         }
     }
@@ -984,7 +1008,7 @@ fun LiveScreen(
                     if (item != null) selected = item
                 }
                 val mod = if (i == listTarget) m.focusRequester(listFocus) else m
-                val chosen = item != null && item.channel.key == playingKey
+                val chosen = item != null && item.channel.key == playingKey && focusedRow[0] == i
                 if (useTiles) ChannelCard(item, chosen, now, tv, mod, onFocus, { if (item != null) activate(i, item, touch = true) }) { if (item != null) channelMenu(item, i) }
                 else ChannelRow(item, chosen, now, tall, mod, onFocus, { if (item != null) activate(i, item, touch = true) }) { if (item != null) channelMenu(item, i) }
             }
@@ -997,8 +1021,16 @@ fun LiveScreen(
                 horizontalArrangement = Arrangement.spacedBy(if (wide && !compact) 16.dp else 12.dp),
             ) {
                 items(items.itemCount, key = items.itemKey { it.channel.id }) { i -> row(i, Modifier) }
-            } else LazyColumn(modifier.then(keyed), listState, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                items(items.itemCount, key = items.itemKey { it.channel.id }) { i -> row(i, Modifier) }
+            } else BoxWithConstraints(modifier.then(keyed)) {
+                val centerOffset = with(LocalDensity.current) { ((maxHeight - 60.dp) / 2).roundToPx() }
+                SideEffect { listCenterOffset = centerOffset }
+                LazyColumn(
+                    Modifier.fillMaxSize(), listState,
+                    contentPadding = PaddingValues(vertical = ((maxHeight - 60.dp) / 2).coerceAtLeast(0.dp)),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    items(items.itemCount, key = items.itemKey { it.channel.id }) { i -> row(i, Modifier) }
+                }
             }
         }
     }
@@ -1075,7 +1107,7 @@ fun LiveScreen(
                         }
                         if (compact) {
                             // No rail on a phone held sideways: the other sections are buttons here.
-                            SectionButtons(Section.Live, library, onSection)
+                            SectionButtons(Section.Live, library, settings.homeVisible, onSection)
                         }
                         ContinueButton(continueItem, onClick = onContinue) // HOME-006
                         if (!online) OfflineMark()
@@ -1085,7 +1117,7 @@ fun LiveScreen(
                     if (guide) {
                         // «Телегид» (6.2): the window and the focused programme over the grid.
                         Row(Modifier.fillMaxWidth().height(if (compact) 72.dp else 96.dp)) {
-                            VideoWindow(
+                            if (!fullscreen) VideoWindow(
                                 preview, playingKey != null && playingKey == preview?.channel?.key, player, !online,
                                 if (!settings.preview) stringResource(R.string.preview_off) else null,
                                 Modifier.width(if (compact) 128.dp else 171.dp), ::openPreviewFull,
@@ -1104,7 +1136,7 @@ fun LiveScreen(
                         ) {
                             Text(stringResource(R.string.categories), style = TvType.label, color = c.onSurfaceVariant, modifier = Modifier.padding(start = 10.dp, bottom = 8.dp))
                             groupSearch?.invoke(Modifier.fillMaxWidth().padding(bottom = 8.dp))
-                            LazyColumn(Modifier.remoteKeys(::categoryKeys), catState) {
+                            LazyColumn(Modifier.remoteKeys(::categoryKeys, handleOk = false), catState) {
                                 itemsIndexed(groups, key = { _, g -> g.group.encode() }) { i, g ->
                                     CategoryItem(
                                         g, g.group == group,
@@ -1121,7 +1153,7 @@ fun LiveScreen(
                         Spacer(Modifier.width(16.dp))
                         // Preview and programme (272)
                         Column(Modifier.width(if (compact) 240.dp else 272.dp).fillMaxHeight()) {
-                            VideoWindow(
+                            if (!fullscreen) VideoWindow(
                                 preview, playingKey != null && playingKey == preview?.channel?.key, player, !online,
                                 if (!settings.preview) stringResource(R.string.preview_off) else null, Modifier, ::openPreviewFull,
                             )
@@ -1143,7 +1175,7 @@ fun LiveScreen(
                             @Composable fun h(key: String, action: Int) = key to stringResource(action)
                             Hints(
                                 when (area) {
-                                    Area.List -> listOf(h(ok, R.string.hint_watch), h("◀", R.string.hint_categories), h("▶", R.string.hint_schedule), h(longOk, R.string.hint_actions))
+                                    Area.List -> listOf(h(ok, R.string.hint_watch), h("◀", R.string.hint_categories), h(longOk, R.string.hint_actions))
                                     Area.Categories -> listOf(h(ok, R.string.hint_select), h("▶", R.string.hint_channels), h("◀", R.string.hint_menu), h(longOk, R.string.hint_actions))
                                     Area.Schedule -> listOf(h(ok, R.string.hint_watch_or_details), h("◀", R.string.hint_to_channel))
                                     Area.Rail -> listOf(h(ok, R.string.hint_open), h("▶", R.string.hint_back), h(stringResource(R.string.key_back), R.string.hint_exit))
@@ -1161,7 +1193,7 @@ fun LiveScreen(
                 }
             }
             if (!compact) SectionRail(
-                if (guide) Section.Guide else Section.Live, library, railFocus,
+                if (guide) Section.Guide else Section.Live, library, railFocus, settings.homeVisible,
                 onSection = onSection,
                 onCurrent = { scope.launch { focusRow(focusedRow[0]) } },
                 // ▶ goes back exactly where the focus came from (UI-007).
@@ -1172,6 +1204,7 @@ fun LiveScreen(
                         else -> scope.launch { focusRow(focusedRow[0]) }
                     }
                 },
+                suppressExpansion = refocus,
             ) { inside ->
                 if (inside && area != Area.Rail) {
                     beforeRail = area
@@ -1189,13 +1222,13 @@ fun LiveScreen(
                 ) {
                     if (!online) OfflineMark()
                     guideTools(48.dp)
-                    if (Section.Guide !in phoneSections(library)) ToolButton(R.drawable.ic_view_list, listLabel, size = 48.dp) { onGuide(false) }
+                    if (Section.Guide !in phoneSections(library, settings.homeVisible)) ToolButton(R.drawable.ic_view_list, listLabel, size = 48.dp) { onGuide(false) }
                 } else Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (!online) OfflineMark()
                     SearchField(query, { query = it }, searchHint, searchFocus, Modifier.weight(1f), height = 48.dp)
                     ToolButton(viewIcon, viewLabel, size = 48.dp, onClick = toggleView)
                     ToolButton(R.drawable.ic_sort, orderLabel, size = 48.dp, onClick = ::sortMenu)
-                    if (Section.Guide !in phoneSections(library)) ToolButton(R.drawable.ic_guide, stringResource(R.string.view_guide), size = 48.dp) { onGuide(true) }
+                    if (Section.Guide !in phoneSections(library, settings.homeVisible)) ToolButton(R.drawable.ic_guide, stringResource(R.string.view_guide), size = 48.dp) { onGuide(true) }
                 }
                 if (continueItem != null) ContinueButton(continueItem, Modifier.padding(top = 8.dp), height = 48.dp, onClick = onContinue)
                 // The window opens over the list and pushes it down: the list scrolls by as much, so the channel just
@@ -1211,7 +1244,7 @@ fun LiveScreen(
                         }
                     }
                 }) {
-                preview?.let { p ->
+                if (!fullscreen) preview?.let { p ->
                     VideoWindow(
                         p, playingKey == p.channel.key, player, !online, null, Modifier.padding(top = 8.dp), ::openPreviewFull,
                     )
@@ -1231,7 +1264,7 @@ fun LiveScreen(
                     channelArea(Modifier.weight(1f), true)
                 }
             }
-            PhoneNav(if (guide && Section.Guide in phoneSections(library)) Section.Guide else Section.Live, library, onSection)
+            PhoneNav(if (guide && Section.Guide in phoneSections(library, settings.homeVisible)) Section.Guide else Section.Live, library, settings.homeVisible, onSection)
             }
             task?.let { TaskPill(it, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 92.dp)) }
             }

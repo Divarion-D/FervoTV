@@ -106,6 +106,10 @@ data class Settings(
     val homeChannels: Boolean = Defaults.HOME_CHANNELS,
     /** HOME-003: favourite channels on the home screen as a mini-guide (what's on now) instead of cards. */
     val homeGuide: Boolean = Defaults.HOME_GUIDE,
+    /** HOME-001: hide the home section and open «Эфир» instead. */
+    val homeVisible: Boolean = Defaults.HOME_VISIBLE,
+    /** HOME-002: muted preview of the focused Continue card. */
+    val homePreview: Boolean = Defaults.HOME_PREVIEW,
 )
 
 /** HOME-001: where the app opens. The apps name them. */

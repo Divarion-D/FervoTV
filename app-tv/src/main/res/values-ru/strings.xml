@@ -8,7 +8,6 @@
 
     <string name="section_live">Эфир</string>
     <string name="section_settings">Настройки</string>
-    <string name="settings_group_count">Настроек: %1$d</string>
     <string name="title_with_list">· %1$s</string>
     <string name="search_channels">Поиск каналов</string>
     <string name="view_list">Список</string>
@@ -183,6 +182,8 @@
     <string name="sort_favorites">Сначала избранные</string>
 
     <string name="loading_playlist">Загрузка плейлиста…</string>
+    <string name="loading_library_background">Каналы готовы. Фильмы и сериалы загружаются в фоне.</string>
+    <string name="continue_in_background">Продолжить в фоне</string>
     <string name="playlist_failed">Не удалось загрузить плейлист</string>
     <string name="source">Источник</string>
     <string name="source_local_file">Локальный файл</string>
@@ -447,6 +448,10 @@
     <string name="history_empty_hint">Здесь появится то, что вы смотрите</string>
     <!-- Настройки: главная -->
     <string name="settings_home">Главная</string>
+    <string name="settings_home_visible">Показывать «Главную»</string>
+    <string name="settings_home_visible_summary">Скрыть из навигации и открывать вместо неё «Эфир»</string>
+    <string name="settings_home_preview">Превью на «Главной»</string>
+    <string name="settings_home_preview_summary">Через 3 секунды включать карточку «Продолжить просмотр» без звука</string>
     <string name="settings_start">Открывать при запуске</string>
     <string name="settings_home_channels">Каналы в «Продолжить просмотр»</string>
     <string name="settings_home_channels_summary">Недавние каналы рядом с начатыми фильмами и эпизодами</string>

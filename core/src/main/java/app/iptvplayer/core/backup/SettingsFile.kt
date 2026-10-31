@@ -232,6 +232,8 @@ private fun settingsJson(s: Settings): JSONObject = JSONObject()
     .put("homeRows", s.homeRows)
     .put("homeChannels", s.homeChannels)
     .put("homeGuide", s.homeGuide)
+    .put("homeVisible", s.homeVisible)
+    .put("homePreview", s.homePreview)
 
 private fun readSettings(j: JSONObject): Settings {
     val d = Settings()
@@ -260,6 +262,8 @@ private fun readSettings(j: JSONObject): Settings {
         homeRows = j.optString("homeRows", d.homeRows),
         homeChannels = j.optBoolean("homeChannels", d.homeChannels),
         homeGuide = j.optBoolean("homeGuide", d.homeGuide),
+        homeVisible = j.optBoolean("homeVisible", d.homeVisible),
+        homePreview = j.optBoolean("homePreview", d.homePreview),
     )
 }
 

@@ -96,17 +96,6 @@ internal enum class SettingsGroup(
     ABOUT(R.string.settings_about, R.drawable.ic_info),
 }
 
-internal fun settingGroupCounts(settings: Settings): List<Pair<SettingsGroup, Int>> = listOf(
-    SettingsGroup.PLAYLIST to 3 + if (settings.playlistRefresh == PlaylistRefresh.EVERY_N_DAYS) 1 else 0,
-    SettingsGroup.HOME to 3 + homeRows(settings.homeRows, settings.homeChannels).size,
-    SettingsGroup.LIVE to 3 + if (settings.preview) 1 else 0,
-    SettingsGroup.LIBRARY to 2,
-    SettingsGroup.LOGOS to 2,
-    SettingsGroup.INTERFACE to 1,
-    SettingsGroup.FILE to 2,
-    SettingsGroup.ABOUT to 5,
-)
-
 /** New options: add a field to [Settings] + its default to [Defaults], then a [SettingItem] here. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -158,7 +147,7 @@ fun SettingsScreen(
     }
 
     if (group == null) {
-        SettingsGroupList(settings, onOpen = { groupName = it.name }, onClose = onClose)
+        SettingsGroupList(onOpen = { groupName = it.name }, onClose = onClose)
         return
     }
 
@@ -226,6 +215,18 @@ fun SettingsScreen(
             if (group == SettingsGroup.HOME) {
             SectionTitle(stringResource(R.string.settings_home))
             SettingItem(
+                R.drawable.ic_home, stringResource(R.string.settings_home_visible), stringResource(R.string.settings_home_visible_summary),
+                Modifier.row("homeVisible"), trailing = { Switch(settings.homeVisible, onCheckedChange = null) },
+            ) {
+                val visible = !settings.homeVisible
+                onChange(settings.copy(homeVisible = visible, startScreen = if (visible) settings.startScreen else StartScreen.LIVE))
+            }
+            if (settings.homeVisible) {
+            SettingItem(
+                R.drawable.ic_play_arrow, stringResource(R.string.settings_home_preview), stringResource(R.string.settings_home_preview_summary),
+                Modifier.row("homePreview"), trailing = { Switch(settings.homePreview, onCheckedChange = null) },
+            ) { onChange(settings.copy(homePreview = !settings.homePreview)) }
+            SettingItem(
                 R.drawable.ic_home, stringResource(R.string.settings_start), stringResource(settings.startScreen.title()), Modifier.row("startScreen"),
             ) { startDialog = true }
             if (startDialog) {
@@ -261,6 +262,7 @@ fun SettingsScreen(
                         }
                     },
                 ) { save(rows.map { if (it.row == r.row) it.copy(on = !it.on) else it }) }
+            }
             }
             }
 
@@ -386,7 +388,7 @@ fun SettingsScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SettingsGroupList(settings: Settings, onOpen: (SettingsGroup) -> Unit, onClose: () -> Unit) {
+private fun SettingsGroupList(onOpen: (SettingsGroup) -> Unit, onClose: () -> Unit) {
     Column(Modifier.fillMaxSize().safeDrawingPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
         TopAppBar(
             title = { Text(stringResource(R.string.section_settings)) },
@@ -397,11 +399,11 @@ private fun SettingsGroupList(settings: Settings, onOpen: (SettingsGroup) -> Uni
             Modifier.widthIn(max = 720.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            for ((group, count) in settingGroupCounts(settings)) {
+            for (group in SettingsGroup.entries) {
                 SettingItem(
                     group.icon,
                     stringResource(group.title),
-                    stringResource(R.string.settings_group_count, count),
+                    null,
                     onClick = { onOpen(group) },
                 )
             }

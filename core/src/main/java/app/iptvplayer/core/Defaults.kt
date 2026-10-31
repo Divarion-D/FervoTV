@@ -194,6 +194,12 @@ object Defaults {
     /** HOME-003: favourite channels as cards; on = as a mini-guide of what's on now. */
     const val HOME_GUIDE = false
 
+    /** HOME-001: the home section is visible in navigation. */
+    const val HOME_VISIBLE = true
+
+    /** HOME-002: start a muted preview after a card keeps TV focus for three seconds. */
+    const val HOME_PREVIEW = true
+
     /** HOME-001: items of one home row. */
     const val HOME_ROW_LIMIT = 20
 

@@ -5,6 +5,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.SurfaceView
+import android.view.TextureView
+import android.view.View
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -132,8 +134,12 @@ class ExoEngine(ctx: Context) : PlaybackEngine {
         _state.update { it.copy(error = null, buffering = false) }
     }
 
-    override fun setVideoView(view: SurfaceView?) =
-        if (view != null) exo.setVideoSurfaceView(view) else exo.clearVideoSurface()
+    override fun setVideoView(view: View?) = when (view) {
+        is SurfaceView -> exo.setVideoSurfaceView(view)
+        is TextureView -> exo.setVideoTextureView(view)
+        null -> exo.clearVideoSurface()
+        else -> error("Unsupported video view: ${view::class.java.name}")
+    }
 
     override fun release() {
         main.removeCallbacks(checkStall)

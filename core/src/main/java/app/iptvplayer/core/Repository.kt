@@ -188,6 +188,8 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
             homeRows = settingsPrefs.getString("homeRows", null).orEmpty(),
             homeChannels = settingsPrefs.getBoolean("homeChannels", Defaults.HOME_CHANNELS),
             homeGuide = settingsPrefs.getBoolean("homeGuide", Defaults.HOME_GUIDE),
+            homeVisible = settingsPrefs.getBoolean("homeVisible", Defaults.HOME_VISIBLE),
+            homePreview = settingsPrefs.getBoolean("homePreview", Defaults.HOME_PREVIEW),
         )
         set(v) {
             settingsPrefs.edit()
@@ -214,6 +216,8 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
                 .putString("homeRows", v.homeRows)
                 .putBoolean("homeChannels", v.homeChannels)
                 .putBoolean("homeGuide", v.homeGuide)
+                .putBoolean("homeVisible", v.homeVisible)
+                .putBoolean("homePreview", v.homePreview)
                 .apply { if (v.liveTiles == null) remove("liveTiles") else putBoolean("liveTiles", v.liveTiles) }
                 .apply()
         }
