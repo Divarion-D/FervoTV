@@ -69,7 +69,7 @@ object Defaults {
     const val GITHUB_URL = "https://github.com/Divarion-D/FervoTV"
 
     // --- Network ---
-    const val USER_AGENT = "FervoTV/0.1 (Android)"
+    const val USER_AGENT = "FervoTV/0.1.0 (Android)"
     const val CONNECT_TIMEOUT_MS = 15_000
     const val READ_TIMEOUT_MS = 60_000
     const val MAX_REDIRECTS = 5

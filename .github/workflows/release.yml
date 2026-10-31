@@ -1,4 +1,4 @@
-# Signed release: push a tag "v<versionName>" (e.g. v0.2) -> tests, lint, signed APK + AAB, GitHub Release.
+# Signed release: push a tag "v<versionName>" (e.g. v0.2.0) -> tests, lint, signed APK + AAB, GitHub Release.
 # Manual run (Actions -> Release -> Run workflow) builds the same files as an artifact without publishing a release.
 #
 # Repository secrets:
@@ -32,6 +32,8 @@ jobs:
         if: github.ref_type == 'tag'
         run: |
           v="${GITHUB_REF_NAME#v}"
+          [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "::error::Version must use major.minor.patch: $v"; exit 1; }
           grep -q "versionName = \"$v\"" build.gradle.kts || {
             echo "::error::Tag $GITHUB_REF_NAME does not match versionName in build.gradle.kts"; exit 1; }
 
@@ -72,6 +74,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Release notes = this version's section of the in-app changelog ("## 0.2 — date").
+          # Release notes = this version's section of the in-app changelog ("## 0.2.0 — date").
           awk -v v="$VERSION" '/^## /{p = index($0, "## " v " ") == 1; next} p' core/src/main/assets/CHANGELOG.md > notes.md
           gh release create "$GITHUB_REF_NAME" dist/* --title "Fervo TV $VERSION" --notes-file notes.md

@@ -25,8 +25,9 @@ subprojects {
     plugins.withId("com.android.application") {
         extensions.configure<com.android.build.api.dsl.ApplicationExtension> {
             defaultConfig {
-                versionCode = 1
-                versionName = "0.1"
+                // 2: 0.1.0 supersedes the initial two-component 0.1 build.
+                versionCode = 2
+                versionName = "0.1.0"
             }
 
             signingConfigs {

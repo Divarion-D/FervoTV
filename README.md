@@ -161,15 +161,15 @@ Debug ставится отдельным приложением со своим
 <details>
 <summary>Выпуск новой версии</summary>
 
-1. В корневом `build.gradle.kts` увеличить `versionCode` на 1 и поменять `versionName` (например, `0.2`).
-2. В `core/src/main/assets/CHANGELOG.md` добавить сверху раздел `## 0.2 — ДД.ММ.ГГГГ` со строками `- …`.
+1. В корневом `build.gradle.kts` увеличить `versionCode` на 1 и поменять `versionName` в формате `major.minor.patch` (например, `0.2.0`).
+2. В `core/src/main/assets/CHANGELOG.md` добавить сверху раздел `## 0.2.0 — ДД.ММ.ГГГГ` со строками `- …`.
    Этот файл показывается в приложении («Что нового») и становится описанием релиза на GitHub.
 3. Обновить строки «Статус» в [`docs/spec/`](docs/spec/), закоммитить, запушить и поставить тег:
    ```bash
-   git tag v0.2 && git push origin v0.2
+   git tag v0.2.0 && git push origin v0.2.0
    ```
    GitHub Actions (`release.yml`) проверит, что тег совпадает с `versionName`, прогонит тесты и lint, соберёт
-   подписанные `FervoTV-0.2.apk` и `FervoTV-0.2.aab` и создаст GitHub Release.
+   подписанные `FervoTV-0.2.0.apk` и `FervoTV-0.2.0.aab` и создаст GitHub Release.
 
 </details>
 
