@@ -229,6 +229,12 @@ abstract class UserDao {
     @Query("DELETE FROM recent WHERE ckey NOT IN (SELECT ckey FROM recent ORDER BY watchedAt DESC LIMIT :keep)")
     abstract fun trimRecent(keep: Int)
 
+    @Query("DELETE FROM recent WHERE ckey IN (:keys)")
+    abstract fun forgetRecent(keys: List<String>)
+
+    @Query("DELETE FROM recent")
+    abstract fun clearRecent()
+
     /** Most recent first, only channels of the saved source. */
     @Query(
         """SELECT r.ckey FROM recent r WHERE EXISTS (SELECT 1 FROM channel ch WHERE ch.sourceId = $ACTIVE AND ch.ckey = r.ckey)
@@ -422,6 +428,10 @@ class UserStore(private val db: AppDb) {
 
     /** The same with the time each was watched (LIVE-020). */
     suspend fun recent(sourceKey: String, limit: Int = Defaults.RECENT_CHANNELS): List<Recent> = dao.recent(sourceKey, limit)
+
+    /** HOME-013 «Удалить» / «Очистить историю» for channels: they leave «Недавние» too. */
+    fun forgetRecent(keys: List<String>) = keys.chunked(500).forEach(dao::forgetRecent)
+    fun clearRecent() = dao.clearRecent()
 
     /** LIVE-015: what [reset] would undo for [category] (null = every category of the source). */
     fun edits(sourceKey: String, category: String?): Edits {

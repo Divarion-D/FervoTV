@@ -46,7 +46,7 @@ class MigrationTest {
     }
 
     private fun open(file: File) = Room.databaseBuilder(RuntimeEnvironment.getApplication(), AppDb::class.java, file.path)
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
         .allowMainThreadQueries()
         .build()
 
@@ -119,6 +119,26 @@ class MigrationTest {
             assertEquals(listOf("Фильм"), runBlocking {
                 LibraryStore(db).first(VodFilter("k", app.iptvplayer.core.model.VodKind.MOVIE, VodGroup.Favorites), 10)
             }.map { it.name })
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun version4To5IndexesSavedGuideAndKeepsTheIndexInSync() {
+        val file = oldDatabase(4) { db ->
+            db.execSQL("INSERT INTO programme(id, channelId, start, stop, title, description) VALUES (1, 1, 0, 100, 'Ёлки-палки', NULL)")
+        }
+        val db = open(file)
+        try {
+            fun titles(query: String): List<String> = db.query(
+                "SELECT p.title FROM programme p JOIN programme_fts f ON f.rowid = p.id WHERE programme_fts MATCH ?", arrayOf(query),
+            ).use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } }
+            assertEquals(listOf("Ёлки-палки"), titles("елк* пал*"))
+            db.epg().insertProgrammes(listOf(ProgrammeRow(channelId = 2, start = 0, stop = 100, title = "Человек-паук", description = null)))
+            assertEquals(listOf("Человек-паук"), titles("челов* пау*"))
+            db.epg().deleteChannelProgrammes(2)
+            assertEquals(emptyList<String>(), titles("челов* пау*"))
         } finally {
             db.close()
         }

@@ -68,6 +68,19 @@ import app.iptvplayer.core.source.xtream.loadXtreamLibrary
 import app.iptvplayer.core.source.xtream.loadXtreamVodInfo
 import app.iptvplayer.core.source.xtream.xtreamAccepted
 import app.iptvplayer.core.source.xtream.xtreamOfM3uUrl
+import app.iptvplayer.core.db.changes
+import app.iptvplayer.core.db.searchText
+import app.iptvplayer.core.home.ContinueItem
+import app.iptvplayer.core.home.quickContinue
+import app.iptvplayer.core.model.nextEpisode
+import app.iptvplayer.core.search.SearchKind
+import app.iptvplayer.core.search.SearchResults
+import app.iptvplayer.core.search.ranked
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -171,6 +184,10 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
             seriesSort = enumPref("seriesSort", Defaults.VOD_SORT),
             movieList = settingsPrefs.getBoolean("movieList", false),
             seriesList = settingsPrefs.getBoolean("seriesList", false),
+            startScreen = enumPref("startScreen", Defaults.START_SCREEN),
+            homeRows = settingsPrefs.getString("homeRows", null).orEmpty(),
+            homeChannels = settingsPrefs.getBoolean("homeChannels", Defaults.HOME_CHANNELS),
+            homeGuide = settingsPrefs.getBoolean("homeGuide", Defaults.HOME_GUIDE),
         )
         set(v) {
             settingsPrefs.edit()
@@ -193,6 +210,10 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
                 .putString("seriesSort", v.seriesSort.name)
                 .putBoolean("movieList", v.movieList)
                 .putBoolean("seriesList", v.seriesList)
+                .putString("startScreen", v.startScreen.name)
+                .putString("homeRows", v.homeRows)
+                .putBoolean("homeChannels", v.homeChannels)
+                .putBoolean("homeGuide", v.homeGuide)
                 .apply { if (v.liveTiles == null) remove("liveTiles") else putBoolean("liveTiles", v.liveTiles) }
                 .apply()
         }
@@ -401,6 +422,72 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
     suspend fun recent(s: Source): List<Pair<ChannelItem, Long>> =
         user.recent(s.cacheKey()).mapNotNull { r -> store.channel(s.cacheKey(), r.ckey)?.let { it to r.watchedAt } }
 
+    /** [recent] as it changes (watching, a refresh, edits, «Удалить»): the home rows and the history (HOME-002/004/013). */
+    fun recentFlow(s: Source): Flow<List<Pair<ChannelItem, Long>>> =
+        db.changes("recent", "source", "channel_state").map { recent(s) }
+
+    /** Number of channels of a list (HOME-008, HOME-014 counts). */
+    suspend fun channelCount(f: ChannelFilter): Int = store.countOf(f)
+
+    /** HOME-013 «Удалить» on a channel: it leaves the history and «Недавние». */
+    suspend fun forgetChannels(keys: List<String>) = io { user.forgetRecent(keys) }
+
+    // --- Global search (HOME-007…011) ---
+
+    /**
+     * HOME-007: one query across the source — channels, programmes on now or within [Defaults.SEARCH_AHEAD_MS]
+     * (HOME-009), films and series; up to [limit] of each, best matches first ([ranked]), with counts (HOME-008).
+     * The same word rules as the sections' own search (HOME-010); the kinds are looked up in parallel.
+     */
+    suspend fun search(s: Source, query: String, now: Long = System.currentTimeMillis(), limit: Int = Defaults.SEARCH_LIMIT): SearchResults {
+        val q = query.trim()
+        if (searchText(q).isBlank()) return SearchResults(q)
+        val key = s.cacheKey()
+        val shift = settings.epgShift
+        val ch = ChannelFilter(key, search = q)
+        fun vod(kind: VodKind) = VodFilter(key, kind, search = q)
+        return coroutineScope {
+            val channels = async(Dispatchers.IO) { store.first(ch, limit) }
+            val channelCount = async(Dispatchers.IO) { store.countOf(ch) }
+            val programmes = async(Dispatchers.IO) {
+                store.findProgrammes(ChannelFilter(key), shift, q, now, limit, now + Defaults.SEARCH_AHEAD_MS)
+            }
+            val movies = async(Dispatchers.IO) { library.first(vod(VodKind.MOVIE), limit) }
+            val movieCount = async(Dispatchers.IO) { library.count(vod(VodKind.MOVIE)) }
+            val series = async(Dispatchers.IO) { library.first(vod(VodKind.SERIES), limit) }
+            val seriesCount = async(Dispatchers.IO) { library.count(vod(VodKind.SERIES)) }
+            val p = programmes.await()
+            SearchResults(
+                q,
+                channels.await().ranked(q) { it.channel.name },
+                p,
+                movies.await().ranked(q) { it.title },
+                series.await().ranked(q) { it.title },
+                mapOf(
+                    SearchKind.CHANNELS to channelCount.await(), SearchKind.PROGRAMMES to p.size,
+                    SearchKind.MOVIES to movieCount.await(), SearchKind.SERIES to seriesCount.await(),
+                ),
+            )
+        }
+    }
+
+    /** HOME-011: recent queries, the latest first (kept with the settings, not in the settings file). */
+    val searches: List<String>
+        get() = settingsPrefs.getString("searches", null)?.split('\n')?.filter { it.isNotBlank() }.orEmpty()
+
+    fun rememberSearch(query: String) {
+        val q = query.trim()
+        if (q.isEmpty()) return
+        putSearches(listOf(q) + searches.filter { !it.equals(q, ignoreCase = true) })
+    }
+
+    fun forgetSearch(query: String) = putSearches(searches - query)
+
+    fun clearSearches() = putSearches(emptyList())
+
+    private fun putSearches(list: List<String>) =
+        settingsPrefs.edit().putString("searches", list.take(Defaults.SEARCH_RECENT).joinToString("\n")).apply()
+
     // --- Library: films and series (SRC-010, SRC-011, VOD-001…012) ---
 
     /** VOD-001, UI-007: the library sections [s] has (a section without films or series isn't shown). */
@@ -516,12 +603,33 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
     fun history(kind: VodKind? = null): Flow<PagingData<Watch>> =
         Pager(PagingConfig(pageSize = Defaults.VOD_PAGE_SIZE)) { libraryUser.history(kind) }.flow
 
-    /** HOME-002: started films and the last episode of started series, the latest first. */
-    fun unfinished(limit: Int): Flow<List<Watch>> = libraryUser.unfinished(limit)
+    /** HOME-002: started films and the last episode of started series; [source] limits to playable, visible titles. */
+    fun unfinished(limit: Int, source: Source? = null): Flow<List<Watch>> = libraryUser.unfinished(limit, source?.cacheKey())
 
-    /** HOME-013 «Удалить» / «Очистить историю»: with their marks and positions. */
+    /** HOME-013 «Удалить» / «Очистить историю»: with their marks and positions; clearing forgets the recent channels too. */
     suspend fun forget(keys: List<String>) = io { libraryUser.forget(keys) }
-    suspend fun clearHistory() = io { libraryUser.clearHistory() }
+    suspend fun clearHistory() = io {
+        db.runInTransaction {
+            libraryUser.clearHistory()
+            user.clearRecent()
+        }
+    }
+
+    /** HOME-013 screen: the latest films and episodes watched, as they change. */
+    fun historyList(limit: Int = Defaults.HISTORY_LIMIT): Flow<List<Watch>> = libraryUser.latest(limit)
+
+    /**
+     * HOME-006: what «Продолжить» starts now ([quickContinue]); follows watching. The episode after a finished one is
+     * looked up among the stored episodes only (no network).
+     */
+    fun quickContinue(s: Source): Flow<ContinueItem?> =
+        combine(libraryUser.unfinished(1, s.cacheKey()), libraryUser.lastFinishedEpisode(s.cacheKey()), recentFlow(s)) { unfinished, finished, channels ->
+            val next = finished?.seriesKey?.let { series ->
+                val list = library.episodes(s.cacheKey(), series)
+                list.find { it.key == finished.vkey }?.let { nextEpisode(list, it) }
+            }
+            quickContinue(unfinished.firstOrNull(), finished, next, channels.firstOrNull())
+        }.distinctUntilChanged()
 
     // --- Guide (EPG-001…007) ---
 

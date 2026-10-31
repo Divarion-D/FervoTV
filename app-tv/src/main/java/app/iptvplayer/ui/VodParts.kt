@@ -131,8 +131,10 @@ fun clockText(ms: Long): String {
 fun episodeName(ctx: Context, e: Episode): String = e.title ?: ctx.getString(R.string.episode_n, e.episode)
 
 /** "S1 · E2"; specials as "Special 2". */
-fun episodeCode(ctx: Context, e: Episode): String =
-    if (e.season == 0) ctx.getString(R.string.special_n, e.episode) else ctx.getString(R.string.episode_code, e.season, e.episode)
+fun episodeCode(ctx: Context, e: Episode): String = episodeCode(ctx, e.season, e.episode)
+
+fun episodeCode(ctx: Context, season: Int, episode: Int): String =
+    if (season == 0) ctx.getString(R.string.special_n, episode) else ctx.getString(R.string.episode_code, season, episode)
 
 fun seasonName(ctx: Context, season: Int): String = if (season == 0) ctx.getString(R.string.season_specials) else ctx.getString(R.string.season_n, season)
 
@@ -191,8 +193,9 @@ private fun WatchedMark(modifier: Modifier) = Icon(
 )
 
 /**
- * Catalogue cell (VOD-002): poster 2:3 with progress or the watched mark, the provider's caption in two lines and the
- * year. Focus (TV): orange frame, ×1.05 and glow on this cell only; nothing is clipped at rest.
+ * Catalogue cell (VOD-002): poster 2:3 with progress or the watched mark, the clean title (VOD-007: the year and the
+ * provider's labels taken off; the user's name if renamed) in two lines and the year once under it. Focus (TV):
+ * orange frame, ×1.05 and glow on this cell only; nothing is clipped at rest.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -228,14 +231,14 @@ fun PosterCard(item: VodItem?, tv: Boolean, modifier: Modifier, onFocus: () -> U
             }
         }
         Text(
-            item?.name.orEmpty(), style = MaterialTheme.typography.titleSmall, color = if (focused) c.primary else c.onSurface,
+            item?.title.orEmpty(), style = MaterialTheme.typography.titleSmall, color = if (focused) c.primary else c.onSurface,
             minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp),
         )
         Text(item?.year?.toString().orEmpty(), style = MaterialTheme.typography.labelSmall, color = c.onSurfaceVariant, maxLines = 1)
     }
 }
 
-/** List view (VOD-002): small poster, name, year · genre · duration · rating, progress under the text. */
+/** List view (VOD-002): small poster, clean title (VOD-007), year · genre · duration · rating, progress under the text. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun VodRow(item: VodItem?, tall: Boolean, modifier: Modifier, onFocus: () -> Unit, onClick: () -> Unit, onLongClick: () -> Unit) {
@@ -267,7 +270,7 @@ fun VodRow(item: VodItem?, tall: Boolean, modifier: Modifier, onFocus: () -> Uni
                 .then(if (share != null) Modifier.progressLine(share, if (focused) Ext.onFocusTrack else Ext.nowTrack, if (focused) Ext.onFocus else Ext.now, 2.dp) else Modifier),
             verticalArrangement = Arrangement.Center,
         ) {
-            Text(item.name, style = if (tall) MaterialTheme.typography.titleMedium else TvType.titleSmall, color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(item.title, style = if (tall) MaterialTheme.typography.titleMedium else TvType.titleSmall, color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val facts = vodFacts(item, item.progress?.duration)
             if (facts.isNotEmpty()) Text(facts, style = if (tall) MaterialTheme.typography.bodyMedium else TvType.bodySmall, color = dim, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }

@@ -219,6 +219,21 @@ abstract class LibraryUserDao {
     @Query("SELECT * FROM watch WHERE :kind IS NULL OR kind = :kind ORDER BY watchedAt DESC")
     abstract fun history(kind: VodKind?): PagingSource<Int, Watch>
 
+    /** HOME-013 screen: the latest [limit] rows. */
+    @Query("SELECT * FROM watch ORDER BY watchedAt DESC LIMIT :limit")
+    abstract fun latest(limit: Int): Flow<List<Watch>>
+
+    /** HOME-006: the episode finished last (the series may go on with the next one). */
+    @Query(
+        """SELECT w.* FROM watch w WHERE w.kind = 'SERIES' AND w.watched
+        AND NOT EXISTS (SELECT 1 FROM vod_state s WHERE s.vkey = w.seriesKey AND s.hidden)
+        AND EXISTS (SELECT 1 FROM vod v JOIN library l ON l.id = v.libraryId
+            LEFT JOIN vod_category_state cs ON cs.ckey = (SELECT ckey FROM vod_category WHERE id = v.categoryId)
+            WHERE l.sourceKey = :sourceKey AND l.savedAt IS NOT NULL AND v.ckey = w.seriesKey AND COALESCE(cs.hidden, 0) = 0)
+        ORDER BY w.watchedAt DESC LIMIT 1"""
+    )
+    abstract fun lastFinishedEpisode(sourceKey: String): Flow<Watch?>
+
     /**
      * HOME-002: started and not finished, the latest first: films, and the last episode played of each series.
      * Hidden films and series are left out (VOD-011).
@@ -227,9 +242,12 @@ abstract class LibraryUserDao {
         """SELECT w.* FROM watch w WHERE w.position > 0 AND NOT w.watched
         AND (w.seriesKey IS NULL OR w.watchedAt = (SELECT MAX(x.watchedAt) FROM watch x WHERE x.seriesKey = w.seriesKey))
         AND NOT EXISTS (SELECT 1 FROM vod_state s WHERE s.vkey = COALESCE(w.seriesKey, w.vkey) AND s.hidden)
+        AND (:sourceKey IS NULL OR EXISTS (SELECT 1 FROM vod v JOIN library l ON l.id = v.libraryId
+            LEFT JOIN vod_category_state cs ON cs.ckey = (SELECT ckey FROM vod_category WHERE id = v.categoryId)
+            WHERE l.sourceKey = :sourceKey AND l.savedAt IS NOT NULL AND v.ckey = COALESCE(w.seriesKey, w.vkey) AND COALESCE(cs.hidden, 0) = 0))
         ORDER BY w.watchedAt DESC LIMIT :limit"""
     )
-    abstract fun unfinished(limit: Int): Flow<List<Watch>>
+    abstract fun unfinished(limit: Int, sourceKey: String?): Flow<List<Watch>>
 
     // --- BAK-011: everything, as stored ---
     @Query("SELECT * FROM vod_state ORDER BY vkey") abstract fun allStates(): List<VodState>
@@ -367,7 +385,9 @@ class LibraryUser(private val db: AppDb, private val clock: () -> Long = System:
     fun forget(keys: List<String>) = keys.chunked(500).forEach(dao::deleteWatch)
     fun clearHistory() = dao.clearWatch()
     fun history(kind: VodKind?): PagingSource<Int, Watch> = dao.history(kind)
-    fun unfinished(limit: Int): Flow<List<Watch>> = dao.unfinished(limit)
+    fun unfinished(limit: Int, sourceKey: String? = null): Flow<List<Watch>> = dao.unfinished(limit, sourceKey)
+    fun latest(limit: Int): Flow<List<Watch>> = dao.latest(limit)
+    fun lastFinishedEpisode(sourceKey: String): Flow<Watch?> = dao.lastFinishedEpisode(sourceKey)
 
     // --- BAK-011 ---
 

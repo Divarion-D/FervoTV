@@ -1,6 +1,8 @@
 package app.iptvplayer.core.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Dao
+import androidx.room.Fts4
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.Insert
@@ -70,7 +72,13 @@ data class ProgrammeRow(
     val stop: Long,
     val title: String,
     val description: String?,
+    @ColumnInfo(defaultValue = "") val searchTitle: String = searchText(title),
 )
+
+/** Normalized programme titles, kept in sync with the guide by Room's content triggers (HOME-007/010). */
+@Fts4(contentEntity = ProgrammeRow::class)
+@Entity(tableName = "programme_fts")
+data class ProgrammeFts(val searchTitle: String)
 
 /**
  * Programmes of an import in progress. Screens observe [ProgrammeRow]; writing the import here and moving it over in
@@ -84,6 +92,7 @@ data class StagedProgramme(
     val stop: Long,
     val title: String,
     val description: String?,
+    @ColumnInfo(defaultValue = "") val searchTitle: String = searchText(title),
 )
 
 /** Programme as read for a list: [channelId] = [EpgChannel.id]. */
@@ -164,8 +173,8 @@ abstract class EpgDao {
     @Insert abstract fun insertProgrammes(list: List<ProgrammeRow>)
 
     @Query(
-        """INSERT INTO programme(channelId, start, stop, title, description)
-        SELECT e.id, s.start, s.stop, s.title, s.description FROM programme_stage s
+        """INSERT INTO programme(channelId, start, stop, title, description, searchTitle)
+        SELECT e.id, s.start, s.stop, s.title, s.description, s.searchTitle FROM programme_stage s
         JOIN epg_channel e ON e.sourceId = :sourceId AND e.xmltvId = s.channel"""
     )
     abstract fun moveStage(sourceId: Long): Long

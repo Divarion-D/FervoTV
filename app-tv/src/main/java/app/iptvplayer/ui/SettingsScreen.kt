@@ -59,6 +59,28 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.layout.Row
+import app.iptvplayer.core.home.HomeRow
+import app.iptvplayer.core.home.HomeRowSetting
+import app.iptvplayer.core.home.encodeHomeRows
+import app.iptvplayer.core.home.homeRows
+import app.iptvplayer.core.home.moved
+import app.iptvplayer.core.model.StartScreen
+
+@androidx.annotation.StringRes
+private fun StartScreen.title(): Int = when (this) {
+    StartScreen.HOME -> R.string.section_home
+    StartScreen.LIVE -> R.string.section_live
+}
+
+@androidx.annotation.StringRes
+fun HomeRow.title(): Int = when (this) {
+    HomeRow.CONTINUE -> R.string.home_continue
+    HomeRow.FAVORITE_CHANNELS -> R.string.home_favorite_channels
+    HomeRow.FAVORITE_MOVIES -> R.string.home_favorite_movies
+    HomeRow.FAVORITE_SERIES -> R.string.home_favorite_series
+    HomeRow.RECENT_CHANNELS -> R.string.home_recent_channels
+}
 
 /** New options: add a field to [Settings] + its default to [Defaults], then a [SettingItem] here. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -87,6 +109,7 @@ fun SettingsScreen(
     var daysDialog by remember { mutableStateOf(false) }
     var languageDialog by remember { mutableStateOf(false) }
     var resumeDialog by remember { mutableStateOf(false) }
+    var startDialog by remember { mutableStateOf(false) }
     var qrUrl by remember { mutableStateOf<String?>(null) }
     BackHandler(onBack = onClose)
     val ctx = LocalContext.current
@@ -95,8 +118,8 @@ fun SettingsScreen(
         focusRequester(rows.getOrPut(key) { FocusRequester() }).onFocusChanged { if (it.isFocused) lastRow = key }
     // TV: focus on the first row when opened, on the row we left from when back.
     val tv = remember { ctx.isTv() }
-    LaunchedEffect(refreshDialog, daysDialog, languageDialog, resumeDialog, qrUrl) {
-        if (!tv || refreshDialog || daysDialog || languageDialog || resumeDialog || qrUrl != null) return@LaunchedEffect
+    LaunchedEffect(refreshDialog, daysDialog, languageDialog, resumeDialog, startDialog, qrUrl) {
+        if (!tv || refreshDialog || daysDialog || languageDialog || resumeDialog || startDialog || qrUrl != null) return@LaunchedEffect
         withFrameNanos {}
         runCatching { rows[lastRow]?.requestFocus() }
     }
@@ -163,6 +186,46 @@ fun SettingsScreen(
                     onSelect = { onChange(settings.copy(refreshDays = it)); daysDialog = false },
                     onDismiss = { daysDialog = false },
                 )
+            }
+
+            // HOME-001, HOME-005
+            SectionTitle(stringResource(R.string.settings_home))
+            SettingItem(
+                R.drawable.ic_home, stringResource(R.string.settings_start), stringResource(settings.startScreen.title()), Modifier.row("startScreen"),
+            ) { startDialog = true }
+            if (startDialog) {
+                ChoiceDialog(
+                    title = stringResource(R.string.settings_start),
+                    options = StartScreen.entries,
+                    selected = settings.startScreen,
+                    label = { ctx.getString(it.title()) },
+                    onSelect = { onChange(settings.copy(startScreen = it)); startDialog = false },
+                    onDismiss = { startDialog = false },
+                )
+            }
+            SettingItem(
+                R.drawable.ic_history, stringResource(R.string.settings_home_channels), stringResource(R.string.settings_home_channels_summary),
+                Modifier.row("homeChannels"), trailing = { Switch(settings.homeChannels, onCheckedChange = null) },
+            ) { onChange(settings.copy(homeChannels = !settings.homeChannels)) }
+            SettingItem(
+                R.drawable.ic_guide, stringResource(R.string.settings_home_guide), stringResource(R.string.settings_home_guide_summary),
+                Modifier.row("homeGuide"), trailing = { Switch(settings.homeGuide, onCheckedChange = null) },
+            ) { onChange(settings.copy(homeGuide = !settings.homeGuide)) }
+            // The rows: on/off by OK, ▲▼ buttons beside move them.
+            val rows = homeRows(settings.homeRows, settings.homeChannels)
+            rows.forEachIndexed { i, r ->
+                fun save(list: List<HomeRowSetting>) = onChange(settings.copy(homeRows = encodeHomeRows(list)))
+                SettingItem(
+                    R.drawable.ic_view_list, stringResource(r.row.title()), stringResource(R.string.settings_home_row_summary, i + 1),
+                    Modifier.row("home_" + r.row.name),
+                    trailing = {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            if (i > 0) ToolButton(R.drawable.ic_arrow_upward, stringResource(R.string.move_up)) { save(rows.moved(r.row, -1)) }
+                            if (i < rows.lastIndex) ToolButton(R.drawable.ic_arrow_downward, stringResource(R.string.move_down)) { save(rows.moved(r.row, 1)) }
+                            Switch(r.on, onCheckedChange = null)
+                        }
+                    },
+                ) { save(rows.map { if (it.row == r.row) it.copy(on = !it.on) else it }) }
             }
 
             SectionTitle(stringResource(R.string.settings_live))

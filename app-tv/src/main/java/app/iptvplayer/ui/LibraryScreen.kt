@@ -2,6 +2,8 @@ package app.iptvplayer.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -47,6 +49,9 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.snapshotFlow
+import app.iptvplayer.core.home.ContinueItem
+import app.iptvplayer.core.home.jumpLists
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -95,6 +100,7 @@ import app.iptvplayer.isTv
 import app.iptvplayer.remoteKeys
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -123,7 +129,11 @@ fun LibraryScreen(
     library: Set<VodKind>,
     onSettings: (Settings) -> Unit,
     onSection: (Section) -> Unit,
-    onOpenSettings: () -> Unit,
+    jump: Jump? = null,
+    onJumpDone: () -> Unit = {},
+    onBack: (() -> Unit)? = null,
+    continueItem: ContinueItem? = null,
+    onContinue: (ContinueItem) -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val tv = remember { ctx.isTv() }
@@ -156,6 +166,7 @@ fun LibraryScreen(
     val filter = VodFilter(source.cacheKey(), kind, group, search, sort, if (showHidden) Visibility.ALL else Visibility.VISIBLE)
     val items = remember(filter) { repo.vod(filter) }.collectAsLazyPagingItems()
     val listNow by rememberUpdatedState(asList)
+    val itemsNow by rememberUpdatedState(items)
 
     // --- Focus ---
     val gridState = rememberLazyGridState()
@@ -169,10 +180,7 @@ fun LibraryScreen(
     val catFocus = remember { FocusRequester() }
     var catTarget by remember { mutableIntStateOf(0) }
     val searchFocus = remember { FocusRequester() }
-    val railLive = remember { FocusRequester() }
-    val railGuide = remember { FocusRequester() }
-    val railSettings = remember { FocusRequester() }
-    val railLibrary = remember { VodKind.entries.associateWith { FocusRequester() } }
+    val railFocus = rememberRailFocus()
     var area by remember { mutableStateOf(LibArea.Grid) }
     var beforeRail by remember { mutableStateOf(LibArea.Grid) }
     var refocus by remember { mutableStateOf(true) }
@@ -316,12 +324,19 @@ fun LibraryScreen(
         }
     }
 
+    var jumpBack by remember { mutableStateOf(false) } // opened by a jump: Back from the grid goes back (HOME-012)
+    var jumpReturn by remember { mutableStateOf(false) } // the page or player a jump opened: closing it goes back too
+
     fun closePlayer() {
         lastEpisode = playing?.episode?.key
         player.close()
         playing = null
         edits++
         refocus = true
+        if (jumpReturn) {
+            jumpReturn = false
+            onBack?.invoke()
+        }
     }
 
     fun openItem(index: Int, item: VodItem) {
@@ -335,6 +350,70 @@ fun LibraryScreen(
         pageKey = null
         page = null
         refocus = true
+        if (jumpReturn) {
+            jumpReturn = false
+            onBack?.invoke()
+        }
+    }
+
+    // --- Opened on one item (HOME-002, HOME-006, HOME-012): its list, then the focus on it, its page or playing ---
+    LaunchedEffect(jump?.id) {
+        val j = jump ?: return@LaunchedEffect
+        try {
+        val lists = snapshotFlow { groupsRaw }.first { it != null }.orEmpty()
+        val wanted = j.group?.let { decodeGroup(it).asVodGroup() }
+        val candidates = jumpLists(wanted, group, lists.map { it.group }, VodGroup.All)
+        query = ""
+        search = ""
+        group = candidates.first()
+        lastFilter = filter.copy(group = group, search = "") // the list opens on the item, not at the top
+        when (j.mode) {
+            JumpMode.FOCUS -> {
+                var i: Int? = null
+                for (g in candidates) {
+                    i = repo.vodIndexOf(filter.copy(group = g, search = ""), j.key) ?: continue
+                    group = g
+                    lastFilter = filter.copy(group = g, search = "")
+                    break
+                }
+                if (i == null) { say(str(R.string.jump_missing)); return@LaunchedEffect }
+                target = i
+                focused[0] = i
+                jumpBack = true
+                refocus = true // TV: the focus on it
+                snapshotFlow { itemsNow.itemCount }.first { it > i }
+                if (listNow) listState.scrollToItem(i) else gridState.scrollToItem(i)
+            }
+            JumpMode.OPEN -> {
+                jumpReturn = true
+                lastEpisode = null
+                pageKey = j.key
+            }
+            JumpMode.PLAY -> {
+                // «Продолжить» goes on from where it stopped, without asking (HOME-002).
+                val item = repo.vodItem(source, kind, j.key) ?: run { say(str(R.string.jump_missing)); return@LaunchedEffect }
+                if (item.kind == VodKind.MOVIE) {
+                    jumpReturn = true
+                    playing = VodPlay(item, null, item.progress?.takeIf { !it.watched }?.position ?: 0)
+                } else {
+                    val list = try {
+                        repo.episodes(source, item)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        say(str(R.string.vod_episodes_failed) + ": " + errorText(ctx, e))
+                        return@LaunchedEffect
+                    }
+                    val e = list.find { it.key == j.episode } ?: continueEpisode(list) ?: run { say(str(R.string.vod_no_episodes)); return@LaunchedEffect }
+                    jumpReturn = true
+                    playing = VodPlay(item, e, e.progress?.takeIf { !it.watched }?.position ?: 0, list)
+                }
+            }
+        }
+        } finally {
+            // Keep the request alive through the suspending lookups; don't consume a replacement on cancellation.
+            if (isActive) onJumpDone()
+        }
     }
 
     // --- Menus (VOD-011…013, UI-011) ---
@@ -521,12 +600,14 @@ fun LibraryScreen(
     val exit = remember { ExitGuard() }
     val nothingOpen = page == null && playing == null
     BackHandler(nothingOpen) {
-        if (!wide) onSection(Section.Live) // phone: back to «Эфир», like «Телегид»
+        val back = onBack
+        if (back != null) back() // a phone goes back to the start section; a jump goes back where it came from
         else if (exit.press(System.currentTimeMillis())) ctx.findActivity()?.finish()
         else say(str(if (tv) R.string.exit_again_tv else R.string.exit_again_touch))
     }
-    BackHandler(nothingOpen && tv && wide && area == LibArea.Categories) { runCatching { railLibrary.getValue(kind).requestFocus() } }
+    BackHandler(nothingOpen && tv && wide && area == LibArea.Categories) { runCatching { railFocus.getValue(kind.section()).requestFocus() } }
     BackHandler(nothingOpen && tv && wide && (area == LibArea.Grid || area == LibArea.Top) && query.isEmpty()) { focusSelectedCategory() }
+    BackHandler(nothingOpen && jumpBack && onBack != null) { onBack?.invoke() }
     BackHandler(nothingOpen && query.isNotEmpty() && (!tv || area == LibArea.Grid || area == LibArea.Top)) {
         query = ""
         if (tv) runCatching { searchFocus.requestFocus() }
@@ -584,7 +665,9 @@ fun LibraryScreen(
             ) {
                 // Top bar (4.6)
                 Row(
-                    Modifier.fillMaxWidth().height(40.dp).onFocusChanged { if (it.hasFocus) area = LibArea.Top },
+                    Modifier.fillMaxWidth().height(40.dp)
+                        .then(if (compact) Modifier.horizontalScroll(rememberScrollState()) else Modifier)
+                        .onFocusChanged { if (it.hasFocus) area = LibArea.Top },
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -598,12 +681,9 @@ fun LibraryScreen(
                     SearchField(query, { query = it }, searchHint, searchFocus, Modifier.width(240.dp), height = 40.dp)
                     ToolButton(viewIcon, viewLabel, onClick = toggleView)
                     ToolButton(R.drawable.ic_sort, orderLabel, onClick = ::sortMenu)
-                    if (compact) {
-                        // No rail on a phone held sideways: the other sections are buttons here.
-                        ToolButton(R.drawable.ic_live_tv, stringResource(R.string.section_live)) { onSection(Section.Live) }
-                        libraryRail(library - kind, null, { railLibrary.getValue(it) }) { onSection(it.section()) }.forEach { ToolButton(it.icon, it.label, onClick = it.onClick) }
-                        ToolButton(R.drawable.ic_settings, stringResource(R.string.section_settings), onClick = onOpenSettings)
-                    }
+                    ContinueButton(continueItem, onClick = onContinue) // HOME-006
+                    // No rail on a phone held sideways: the other sections are buttons here.
+                    if (compact) SectionButtons(kind.section(), library, onSection)
                     if (!online) OfflineMark()
                     if (!compact) Clock()
                 }
@@ -650,23 +730,18 @@ fun LibraryScreen(
                 }
             }
         }
-        if (!compact) Rail(
-            listOf(
-                RailEntry(R.drawable.ic_live_tv, stringResource(R.string.section_live), false, railLive) { onSection(Section.Live) },
-                RailEntry(R.drawable.ic_guide, stringResource(R.string.section_guide), false, railGuide) { onSection(Section.Guide) },
-            ) + libraryRail(library, kind, { railLibrary.getValue(it) }) { k -> if (k == kind) scope.launch { focusCell(focused[0]) } else onSection(k.section()) },
-            listOf(RailEntry(R.drawable.ic_settings, stringResource(R.string.section_settings), false, railSettings, onOpenSettings)),
-            (if (tv) Modifier else Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.Start)))
-                .onPreviewKeyEvent { e ->
-                    // ▶ goes back exactly where the focus came from (UI-007).
-                    if (e.type != KeyEventType.KeyDown || e.key != Key.DirectionRight) return@onPreviewKeyEvent false
-                    when (beforeRail) {
-                        LibArea.Categories -> focusCategory(focusedCat[0])
-                        LibArea.Top -> runCatching { searchFocus.requestFocus() }
-                        else -> scope.launch { focusCell(focused[0]) }
-                    }
-                    true
-                },
+        if (!compact) SectionRail(
+            kind.section(), library, railFocus,
+            onSection = onSection,
+            onCurrent = { scope.launch { focusCell(focused[0]) } },
+            // ▶ goes back exactly where the focus came from (UI-007).
+            onRight = {
+                when (beforeRail) {
+                    LibArea.Categories -> focusCategory(focusedCat[0])
+                    LibArea.Top -> runCatching { searchFocus.requestFocus() }
+                    else -> scope.launch { focusCell(focused[0]) }
+                }
+            },
         ) { inside ->
             if (inside && area != LibArea.Rail) {
                 beforeRail = area
@@ -684,6 +759,7 @@ fun LibraryScreen(
                     ToolButton(viewIcon, viewLabel, size = 48.dp, onClick = toggleView)
                     ToolButton(R.drawable.ic_sort, orderLabel, size = 48.dp, onClick = ::sortMenu)
                 }
+                if (continueItem != null) ContinueButton(continueItem, Modifier.padding(top = 8.dp), height = 48.dp, onClick = onContinue)
                 CategoryChips(groups, group.asChannelGroup(), null, { group = it.asVodGroup() }, ::groupMenu)
                 catalogue(Modifier.weight(1f))
             }

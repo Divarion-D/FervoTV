@@ -216,7 +216,7 @@ private fun RecentRow(item: ChannelItem, playing: Boolean, whenText: String, mod
 }
 
 @Composable
-private fun agoText(at: Long, now: Long): String {
+fun agoText(at: Long, now: Long): String {
     val ctx = LocalContext.current
     val time = android.text.format.DateFormat.getTimeFormat(ctx).format(Date(at))
     return when (val a = ago(at, now, zoneOffset(now))) {

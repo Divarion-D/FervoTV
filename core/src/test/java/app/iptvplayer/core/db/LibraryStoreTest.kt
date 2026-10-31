@@ -374,6 +374,26 @@ http://h/s/x2.ts
         assertNull(runBlocking { repo.watch("s|1|1") })
     }
 
+    @Test
+    fun continueUsesOnlyTheCurrentSourceWithoutErasingHistory() {
+        val first = Source.M3u("first")
+        val liveOnly = Source.M3u("live-only")
+        importDirect(first.cacheKey(), listOf(VodEntry(MOVIE, "m", "Film", "Films", url = "http://m")))
+        val movie = all(first, MOVIE).single()
+        runBlocking { repo.savePosition(movie, 60_000, 600_000) }
+        assertEquals(listOf("m"), runBlocking { repo.unfinished(20, first).first() }.map { it.vkey })
+        runBlocking { repo.setVodCategoriesHidden(first, MOVIE, listOf("Films"), true) }
+        assertTrue(runBlocking { repo.unfinished(20, first).first() }.isEmpty())
+        assertNull(runBlocking { repo.quickContinue(first).first() })
+        runBlocking { repo.setVodCategoriesHidden(first, MOVIE, listOf("Films"), false) }
+        importDirect(liveOnly.cacheKey(), emptyList())
+        assertTrue(runBlocking { repo.unfinished(20, liveOnly).first() }.isEmpty())
+        assertNull(runBlocking { repo.quickContinue(liveOnly).first() })
+        assertEquals(listOf("m"), runBlocking { repo.historyList().first() }.map { it.vkey })
+        importDirect(first.cacheKey(), listOf(VodEntry(MOVIE, "m", "Film", "Films", url = "http://m")))
+        assertEquals(listOf("m"), runBlocking { repo.unfinished(20, first).first() }.map { it.vkey })
+    }
+
     /**
      * P2 acceptance: 150 000 films (generated while being read, through the M3U parser and the section rules) go into
      * the library with the 256 MB test heap without heap growth; the catalogue pages and searches in < 200 ms.

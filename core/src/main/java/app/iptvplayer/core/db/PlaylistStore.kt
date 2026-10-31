@@ -208,6 +208,9 @@ class PlaylistStore(private val db: AppDb, private val clock: () -> Long = Syste
 
     private fun count(f: ChannelFilter): Int = dao.count(f.query("COUNT(*)", order = false))
 
+    /** Number of channels of a list (HOME-008 counts). */
+    suspend fun countOf(f: ChannelFilter): Int = withContext(Dispatchers.IO) { count(f) }
+
     /** Channels of the list (placeholders on: the count is known up front and the scroll position survives a refresh). */
     fun channels(f: ChannelFilter): Flow<PagingData<Channel>> = items(f, 0, emptyFlow()).map { data -> data.map { it.channel } }
 
@@ -293,25 +296,27 @@ class PlaylistStore(private val db: AppDb, private val clock: () -> Long = Syste
      * EPG-010 "Поиск" in the grid: programmes of the list's channels whose title matches [text] like the channel search
      * (every word starts a word of the title), not ended at [from], soonest first; times in screen time.
      */
-    suspend fun findProgrammes(f: ChannelFilter, shift: Int, text: String, from: Long, limit: Int): List<ProgrammeHit> =
+    suspend fun findProgrammes(f: ChannelFilter, shift: Int, text: String, from: Long, limit: Int, to: Long = Long.MAX_VALUE): List<ProgrammeHit> =
         withContext(Dispatchers.IO) {
+            val words = searchText(text).split(' ').filter { it.isNotEmpty() }
+            if (words.isEmpty()) return@withContext emptyList()
             val (list, args) = f.sql(
                 "ch.ckey AS ckey, ch.epgId AS epgId, COALESCE(st.epgShift, es.shift) AS shift, COALESCE(st.name, ch.name) AS name",
                 order = false, where = " AND ch.epgId IS NOT NULL",
             )
             // Guide time: a shift can move a programme by up to ±14 h, so ask a bit wider and cut after shifting.
+            // HOME-009: [to] bounds the start (shifted like [from]); the (channelId, start) index serves both ends.
             val sql = "SELECT q.ckey, q.shift, p.start, p.stop, p.title, p.description, q.name FROM programme p JOIN ($list) q ON q.epgId = p.channelId" +
-                " WHERE p.stop > ? ORDER BY p.start"
+                " WHERE p.id IN (SELECT rowid FROM programme_fts WHERE programme_fts MATCH ?) AND p.stop > ? AND p.start < ? ORDER BY p.start"
             val out = LinkedHashMap<Pair<String, Long>, ProgrammeHit>()
-            // ponytail: titles are matched in Kotlin (SQLite folds only ASCII case), scanning the list's future guide once;
-            // an FTS table over programme titles if this gets slow on big guides.
-            db.query(SimpleSQLiteQuery(sql, (args + (from - SHIFT_MAX_MS)).toTypedArray())).use { c ->
+            val until = if (to == Long.MAX_VALUE) to else to + SHIFT_MAX_MS
+            val match = words.joinToString(" ") { "$it*" }
+            db.query(SimpleSQLiteQuery(sql, (args + match + (from - SHIFT_MAX_MS) + until).toTypedArray())).use { c ->
                 while (c.moveToNext() && out.size < limit) {
                     val title = c.getString(4)
-                    if (!matchesWords(title, text)) continue
                     val ms = (if (c.isNull(1)) shift else c.getInt(1)) * 60_000L
                     val p = Programme(c.getLong(2) + ms, c.getLong(3) + ms, title, c.getString(5))
-                    if (p.stop > from) out.getOrPut(c.getString(0) to p.start) { ProgrammeHit(c.getString(0), c.getString(6), p) }
+                    if (p.stop > from && p.start < to) out.getOrPut(c.getString(0) to p.start) { ProgrammeHit(c.getString(0), c.getString(6), p) }
                 }
             }
             out.values.sortedBy { it.programme.start }

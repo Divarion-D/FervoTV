@@ -3,6 +3,7 @@ package app.iptvplayer.core
 import app.iptvplayer.core.model.ChannelSort
 import app.iptvplayer.core.model.PlaylistRefresh
 import app.iptvplayer.core.model.ResumeMode
+import app.iptvplayer.core.model.StartScreen
 import app.iptvplayer.core.model.VodSort
 
 /**
@@ -183,4 +184,28 @@ object Defaults {
 
     /** VOD-003: catalogue order until the user picks one. */
     val VOD_SORT = VodSort.PROVIDER
+
+    /** HOME-001: the app opens on the home screen. */
+    val START_SCREEN = StartScreen.HOME
+
+    /** HOME-002: recent channels are part of «Продолжить просмотр» (and so the recent row is off, HOME-004). */
+    const val HOME_CHANNELS = true
+
+    /** HOME-003: favourite channels as cards; on = as a mini-guide of what's on now. */
+    const val HOME_GUIDE = false
+
+    /** HOME-001: items of one home row. */
+    const val HOME_ROW_LIMIT = 20
+
+    /** HOME-007: results of each kind. */
+    const val SEARCH_LIMIT = 500
+
+    /** HOME-009: programmes found are on now or start within this time. */
+    const val SEARCH_AHEAD_MS = 12 * 3_600_000L
+
+    /** HOME-011: recent queries kept. */
+    const val SEARCH_RECENT = 10
+
+    /** HOME-013: films and episodes listed by the history screen. */
+    const val HISTORY_LIMIT = 500
 }

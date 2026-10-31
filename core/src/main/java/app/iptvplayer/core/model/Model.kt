@@ -98,7 +98,18 @@ data class Settings(
     /** VOD-002: the catalogue as a list instead of the poster grid, per section. */
     val movieList: Boolean = false,
     val seriesList: Boolean = false,
+    /** HOME-001: the screen the app opens on. */
+    val startScreen: StartScreen = Defaults.START_SCREEN,
+    /** HOME-005: the home rows in the user's order with on/off ([app.iptvplayer.core.home.homeRows]); empty = default. */
+    val homeRows: String = "",
+    /** HOME-002/005: recent channels are part of «Продолжить просмотр». */
+    val homeChannels: Boolean = Defaults.HOME_CHANNELS,
+    /** HOME-003: favourite channels on the home screen as a mini-guide (what's on now) instead of cards. */
+    val homeGuide: Boolean = Defaults.HOME_GUIDE,
 )
+
+/** HOME-001: where the app opens. The apps name them. */
+enum class StartScreen { HOME, LIVE }
 
 /** LIVE-016. [PROVIDER] is the provider's order with the user's manual order (LIVE-013) on top of it. The apps name them. */
 enum class ChannelSort { PROVIDER, NUMBER, NAME, ARCHIVE_FIRST, FAVORITES_FIRST }

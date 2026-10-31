@@ -81,6 +81,14 @@ import app.iptvplayer.core.net.onlineFlow
 import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.flow.first
 import app.iptvplayer.ui.SettingsScreen
+import app.iptvplayer.ui.HomeScreen
+import app.iptvplayer.ui.SearchScreen
+import app.iptvplayer.ui.MoreScreen
+import app.iptvplayer.ui.Jump
+import app.iptvplayer.ui.kind
+import app.iptvplayer.ui.playJump
+import app.iptvplayer.core.home.ContinueItem
+import app.iptvplayer.core.model.StartScreen
 import app.iptvplayer.ui.SetupScreen
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -136,27 +144,40 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
     val screens = rememberSaveableStateHolder()
     // «Эфир» as the list or the programme grid (LIVE-022: the setting picks how it opens).
     var guide by rememberSaveable { mutableStateOf(repo.settings.liveGuide) }
-    // «Фильмы» / «Сериалы» open instead of «Эфир»; shown only when the source has them (VOD-001, UI-007).
-    var library by rememberSaveable { mutableStateOf<VodKind?>(null) }
+    // The section on screen (UI-007); the app opens on the home screen or «Эфир» (HOME-001, the setting).
+    val startSection = if (settings.startScreen == StartScreen.HOME) Section.Home else Section.Live
+    var section by rememberSaveable { mutableStateOf(startSection) }
+    // «Фильмы» / «Сериалы» are shown only when the source has them (VOD-001, UI-007).
     val kinds by remember(source) { source?.let(repo::libraryKinds) ?: flowOf(emptySet()) }.collectAsState(initial = null)
     val libraryKinds = kinds.orEmpty()
     LaunchedEffect(kinds) {
         val has = kinds ?: return@LaunchedEffect
-        if (library != null && library !in has) library = null // the source no longer has that section
+        val k = section.kind()
+        if (k != null && k !in has) section = startSection // the source no longer has that section
     }
     val wide = isWideLayout()
+    // HOME-002/006/012: a section opened on one item, and where Back from there goes.
+    var jump by remember { mutableStateOf<Jump?>(null) }
+    var backTo by rememberSaveable { mutableStateOf<Section?>(null) }
+    val shown = if (section == Section.Live && guide) Section.Guide else section
 
-    fun go(s: Section) {
-        when (s) {
-            Section.Live, Section.Guide -> {
-                library = null
-                guide = s == Section.Guide
-            }
-            Section.Movies -> library = VodKind.MOVIE
-            Section.Series -> library = VodKind.SERIES
-            Section.More -> settingsOpen = true
-        }
+    /** To section [s]; with [j] opened on one item, Back returning to [from]. */
+    fun go(s: Section, j: Jump? = null, from: Section? = null) {
+        if (s == Section.Live || s == Section.Guide) {
+            guide = s == Section.Guide
+            section = Section.Live
+        } else section = s
+        jump = j
+        backTo = from
     }
+
+    fun jumpTo(s: Section, j: Jump) = go(s, j, from = shown)
+
+    // HOME-006: what «Продолжить» starts, for the top bars.
+    val continueItem by remember(source) { source?.let(repo::quickContinue) ?: flowOf(null) }.collectAsState(initial = null)
+    val onContinue: (ContinueItem) -> Unit = { item -> item.playJump().let { (s, j) -> jumpTo(s, j) } }
+    // Back at a section's root: where a jump came from; on a phone the start section; else the screen's own double Back.
+    val sectionBack: (() -> Unit)? = backTo?.let { b -> { go(b) } } ?: if (!wide && shown != startSection) ({ go(startSection) }) else null
 
     // One playback session above the screens (spec 01 §6.3); released with the activity.
     val player = remember { PlayerSession { ExoEngine(ctx.applicationContext) } }
@@ -349,10 +370,8 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
         askPassword = repo.passwordMissing
         editing = false
         settingsOpen = false
-        screens.removeState("settings")
-        screens.removeState("channels")
-        VodKind.entries.forEach { screens.removeState("library-$it") }
-        library = null
+        resetScreens(screens)
+        go(if (settings.startScreen == StartScreen.HOME) Section.Home else Section.Live)
         if (source == old && !askPassword) refreshRequest++ // the same source: refresh it; another one loads by itself
     }
 
@@ -368,10 +387,8 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
             onDone = {
                 repo.source = it; source = it; editing = false; settingsOpen = false; askPassword = false
                 // Another playlist: its screens start from scratch.
-                screens.removeState("settings")
-                screens.removeState("channels")
-                VodKind.entries.forEach { k -> screens.removeState("library-$k") }
-                library = null
+                resetScreens(screens)
+                go(startSection)
             },
         )
         settingsOpen -> screens.SaveableStateProvider("settings") {
@@ -430,14 +447,30 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
                 IconLabel(R.drawable.ic_settings, stringResource(R.string.section_settings))
             }
         }
-        library != null -> {
-            val kind = library!!
+        section == Section.Home -> screens.SaveableStateProvider("home") {
+            HomeScreen(repo, src, settings, online, task, libraryKinds, continueItem, onSection = { go(it) }, onJump = ::jumpTo, onBack = sectionBack)
+        }
+        section == Section.Search -> screens.SaveableStateProvider("search") {
+            SearchScreen(
+                repo, src, player, settings, online, task, libraryKinds, continueItem,
+                onSection = { go(it) }, onJump = ::jumpTo, onBack = sectionBack,
+            )
+        }
+        section == Section.More -> screens.SaveableStateProvider("more") {
+            MoreScreen(
+                repo, src, src.label(LocalContext.current), online, task, libraryKinds, continueItem,
+                onSection = { go(it) }, onJump = ::jumpTo, onOpenSettings = { settingsOpen = true }, onBack = sectionBack,
+            )
+        }
+        section.kind() != null -> {
+            val kind = section.kind()!!
             screens.SaveableStateProvider("library-$kind") {
                 LibraryScreen(
                     repo, src, player, settings, online, task, kind, libraryKinds,
                     onSettings = ::changeSettings,
-                    onSection = ::go,
-                    onOpenSettings = { settingsOpen = true },
+                    onSection = { go(it) },
+                    jump = jump, onJumpDone = { jump = null }, onBack = sectionBack,
+                    continueItem = continueItem, onContinue = onContinue,
                 )
             }
         }
@@ -445,11 +478,12 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
             LiveScreen(
                 repo, src, player, settings, online, task,
                 onSettings = ::changeSettings,
-                onOpenSettings = { settingsOpen = true },
                 guide = guide,
-                onGuide = { guide = it },
+                onGuide = { guide = it; backTo = null },
                 library = libraryKinds,
-                onLibrary = { library = it },
+                onSection = { go(it) },
+                jump = jump, onJumpDone = { jump = null }, onBack = sectionBack,
+                continueItem = continueItem, onContinue = onContinue,
             )
         }
     }
@@ -474,10 +508,15 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
     }
 }
 
+/** Another source or a settings file: every screen starts from scratch. */
+private fun resetScreens(screens: androidx.compose.runtime.saveable.SaveableStateHolder) {
+    listOf("settings", "channels", "home", "search", "more").forEach(screens::removeState)
+    VodKind.entries.forEach { screens.removeState("library-$it") }
+}
+
 /** (versionName, was updated rather than freshly installed). */
 private fun installedVersion(ctx: Context): Pair<String, Boolean> {
     @Suppress("DEPRECATION") // getPackageInfo(String, PackageInfoFlags) is API 33+
     val info = ctx.packageManager.getPackageInfo(ctx.packageName, 0)
     return info.versionName.orEmpty() to (info.lastUpdateTime != info.firstInstallTime)
 }
-

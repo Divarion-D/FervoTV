@@ -41,8 +41,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -93,7 +91,6 @@ import app.iptvplayer.core.db.GroupCount
 import app.iptvplayer.core.db.minuteTicks
 import app.iptvplayer.core.model.ChannelItem
 import app.iptvplayer.core.model.Programme
-import app.iptvplayer.core.model.VodKind
 import app.iptvplayer.core.player.PlaybackState
 import app.iptvplayer.core.player.PlayerSession
 import java.util.Date
@@ -181,46 +178,6 @@ private fun RailItem(e: RailEntry, expanded: Boolean) {
     }
 }
 
-// --- Phone: bottom navigation (UI-007, 33-design 4.5) ---
-
-/** Sections of the phone's bottom bar; «Ещё» holds the settings for now. */
-enum class Section { Live, Guide, Movies, Series, More }
-
-/** The library section of a [VodKind]. */
-fun VodKind.section(): Section = if (this == VodKind.MOVIE) Section.Movies else Section.Series
-
-/** «Фильмы» / «Сериалы» appear only when the source has them ([library], VOD-001, UI-007). */
-@Composable
-fun PhoneNav(current: Section, library: Set<VodKind>, onSelect: (Section) -> Unit) {
-    NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
-        for ((s, icon, label) in listOfNotNull(
-            Triple(Section.Live, if (current == Section.Live) R.drawable.ic_live_tv_fill else R.drawable.ic_live_tv, R.string.section_live),
-            Triple(Section.Guide, R.drawable.ic_guide, R.string.section_guide),
-            Triple(Section.Movies, R.drawable.ic_movie, R.string.section_movies).takeIf { VodKind.MOVIE in library },
-            Triple(Section.Series, R.drawable.ic_series, R.string.section_series).takeIf { VodKind.SERIES in library },
-            Triple(Section.More, R.drawable.ic_more, R.string.section_more),
-        )) {
-            NavigationBarItem(
-                selected = s == current,
-                onClick = { if (s != current) onSelect(s) },
-                icon = { Icon(painterResource(icon), contentDescription = null) },
-                label = { Text(stringResource(label), maxLines = 1) },
-            )
-        }
-    }
-}
-
-/** Rail entries of the library sections the source has, for any section's rail. */
-@Composable
-fun libraryRail(library: Set<VodKind>, current: VodKind?, focus: (VodKind) -> FocusRequester, onOpen: (VodKind) -> Unit): List<RailEntry> =
-    VodKind.entries.filter { it in library }.map { k ->
-        RailEntry(
-            if (k == VodKind.MOVIE) R.drawable.ic_movie else R.drawable.ic_series,
-            stringResource(if (k == VodKind.MOVIE) R.string.section_movies else R.string.section_series),
-            k == current, focus(k),
-        ) { onOpen(k) }
-    }
-
 // --- Top bar: tools, network, clock (UI-009, UI-016) ---
 
 /** Round tool button of a bar: tonal at rest, orange fill in focus; 48 dp touch target on a phone. */
@@ -291,9 +248,9 @@ fun rememberTimeFormat(): (Long) -> String {
  * OK/tap. Otherwise on TV just moving focus over it pops the keyboard and traps the remote.
  */
 @Composable
-fun SearchField(query: String, onQuery: (String) -> Unit, hint: String, pillFocus: FocusRequester, modifier: Modifier, height: Dp = 56.dp) {
+fun SearchField(query: String, onQuery: (String) -> Unit, hint: String, pillFocus: FocusRequester, modifier: Modifier, height: Dp = 56.dp, edit: Boolean = false) {
     val c = MaterialTheme.colorScheme
-    var editing by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(edit) } // [edit]: opens with the keyboard (a phone's search screen)
     var wasEditing by remember { mutableStateOf(false) }
     BackHandler(editing) { editing = false }
 

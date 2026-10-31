@@ -91,6 +91,8 @@ import app.iptvplayer.core.db.ChannelGroup
 import app.iptvplayer.core.db.GroupCount
 import app.iptvplayer.core.db.Visibility
 import app.iptvplayer.core.db.decodeGroup
+import app.iptvplayer.core.home.ContinueItem
+import app.iptvplayer.core.home.jumpLists
 import app.iptvplayer.core.db.encode
 import app.iptvplayer.core.db.matchesWords
 import app.iptvplayer.core.db.minuteTicks
@@ -109,6 +111,7 @@ import app.iptvplayer.isTv
 import app.iptvplayer.remoteKeys
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -148,11 +151,15 @@ fun LiveScreen(
     online: Boolean,
     task: BgTask?,
     onSettings: (Settings) -> Unit,
-    onOpenSettings: () -> Unit,
     guide: Boolean = false,
     onGuide: (Boolean) -> Unit = {},
     library: Set<VodKind> = emptySet(),
-    onLibrary: (VodKind) -> Unit = {},
+    onSection: (Section) -> Unit = {},
+    jump: Jump? = null,
+    onJumpDone: () -> Unit = {},
+    onBack: (() -> Unit)? = null,
+    continueItem: ContinueItem? = null,
+    onContinue: (ContinueItem) -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val tv = remember { ctx.isTv() }
@@ -216,15 +223,13 @@ fun LiveScreen(
     var returnKey by rememberSaveable { mutableStateOf<String?>(null) } // the channel to put the focus back on
     var listTarget by rememberSaveable { mutableIntStateOf(0) } // the row the list's focus requester sits on
     var refocus by remember { mutableStateOf(true) } // on start, after the player and after Настройки
-    var fromSettings by rememberSaveable { mutableStateOf(false) }
     val listFocus = remember { FocusRequester() }
     val catFocus = remember { FocusRequester() }
     var catTarget by remember { mutableIntStateOf(0) }
     val searchFocus = remember { FocusRequester() }
     val groupSearchFocus = remember { FocusRequester() }
-    val railLive = remember { FocusRequester() }
-    val railSettings = remember { FocusRequester() }
-    val railLibrary = remember { VodKind.entries.associateWith { FocusRequester() } }
+    val railFocus = rememberRailFocus()
+    val railLive = railFocus.getValue(Section.Live)
     val scheduleFocus = remember { FocusRequester() }
     val scheduleState = rememberLazyListState()
     var area by remember { mutableStateOf(Area.List) }
@@ -239,7 +244,7 @@ fun LiveScreen(
     val gridFocus = remember { FocusRequester() }
     val guideListState = rememberLazyListState()
     val previewHeight = remember { intArrayOf(0) } // phone: the window over the list, px (read in a layout callback)
-    val railGuide = remember { FocusRequester() }
+    val railGuide = railFocus.getValue(Section.Guide)
     var window by remember { mutableStateOf(guideWindow(cursor.viewStart, cursor.span, null)) }
     LaunchedEffect(cursor) {
         snapshotFlow { cursor.viewStart to cursor.span }.collect { (v, sp) -> window = guideWindow(v, sp, window) }
@@ -263,6 +268,8 @@ fun LiveScreen(
     var preview by remember { mutableStateOf<ChannelItem?>(null) } // the channel in the window
     var playingKey by remember { mutableStateOf<String?>(null) } // what the session plays for this screen
     var fullscreen by remember { mutableStateOf(false) }
+    var jumpBack by remember { mutableStateOf(false) } // Back from the list goes back where the jump came from
+    var jumpPlay by remember { mutableStateOf(false) } // and so does closing the player it started
     var playIndex by remember { mutableIntStateOf(0) }
     var schedule by remember { mutableStateOf<List<Programme>>(emptyList()) }
     var scheduleMode by remember { mutableStateOf(false) }
@@ -324,6 +331,16 @@ fun LiveScreen(
     }
 
     fun closeFullscreen() {
+        // Started from the home screen or «Продолжить»: back there (HOME-002).
+        val back = onBack
+        if (jumpPlay && back != null) {
+            jumpPlay = false
+            fullscreen = false
+            panel = VideoPanel.None
+            back()
+            return
+        }
+        jumpPlay = false
         fullscreen = false
         panel = VideoPanel.None
         refocus = true
@@ -415,15 +432,6 @@ fun LiveScreen(
     val hasItems = items.itemCount > 0
     LaunchedEffect(refocus, hasItems) {
         if (!refocus) return@LaunchedEffect
-        if (fromSettings) {
-            fromSettings = false
-            refocus = false
-            if (tv) {
-                withFrameNanos {}
-                runCatching { railSettings.requestFocus() }
-            }
-            return@LaunchedEffect
-        }
         if (!hasItems) return@LaunchedEffect
         refocus = false
         if (returnKey == null && settings.rememberLive) returnKey = repo.zapped.firstOrNull() ?: repo.recentKeys(source).firstOrNull()
@@ -441,6 +449,44 @@ fun LiveScreen(
             cursor.row = 0
             listState.scrollToItem(0)
             gridState.scrollToItem(0)
+        }
+    }
+
+    // --- Opened on one channel (HOME-002, HOME-006, HOME-012): its list, the focus on it, full screen to play ---
+    LaunchedEffect(jump?.id) {
+        val j = jump ?: return@LaunchedEffect
+        try {
+        val lists = snapshotFlow { groupsAll }.first { it != null }.orEmpty()
+        snapshotFlow { started }.first { it }
+        val wanted = j.group?.let(::decodeGroup)
+        // Its own list when the column has it, else «Все» (a hidden or renamed-away category).
+        val candidates = jumpLists(wanted, group, lists.map { it.group }, ChannelGroup.All)
+        var target: Pair<ChannelGroup, Int>? = null
+        for (g in candidates) {
+            val i = repo.indexOf(filterFor(g), j.key) ?: continue
+            target = g to i
+            break
+        }
+        val (g, index) = target ?: run { say(str(R.string.jump_missing)); return@LaunchedEffect }
+        query = ""
+        search = ""
+        group = g
+        lastFilter = filterFor(g) // the list opens on the channel, not at the top
+        listTarget = index
+        focusedRow[0] = index
+        cursor.row = index
+        returnKey = j.key
+        jumpBack = j.mode != JumpMode.PLAY
+        refocus = true
+        if (j.mode == JumpMode.PLAY) {
+            snapshotFlow { refocus }.first { !it }
+            val item = repo.channel(source, j.key) ?: return@LaunchedEffect
+            jumpPlay = true
+            watch(index, item)
+        }
+        } finally {
+            // Acknowledging earlier changes the effect's key and cancels the lookup/play request.
+            if (isActive) onJumpDone()
         }
     }
 
@@ -858,7 +904,9 @@ fun LiveScreen(
     // --- Back (UI-007: in the rail a second Back within 2 s leaves the app) ---
     val exit = remember { ExitGuard() }
     BackHandler(!fullscreen) {
-        if (exit.press(System.currentTimeMillis())) ctx.findActivity()?.finish()
+        val back = onBack
+        if (back != null) back()
+        else if (exit.press(System.currentTimeMillis())) ctx.findActivity()?.finish()
         else say(str(if (tv) R.string.exit_again_tv else R.string.exit_again_touch))
     }
     BackHandler(!wide && guide && !fullscreen) { onGuide(false) } // phone: «Телегид» → «Эфир», then exit
@@ -871,6 +919,8 @@ fun LiveScreen(
     BackHandler(tv && wide && !guide && (area == Area.List || area == Area.Top) && query.isEmpty()) { focusSelectedCategory() }
     BackHandler(tv && wide && guide && (area == Area.Grid || area == Area.Top)) { runCatching { railGuide.requestFocus() } }
     BackHandler(guide && cursor.inRow && area == Area.Grid && !fullscreen) { cursor.inRow = false }
+    // HOME-012: opened on a found channel — Back from the list goes straight back to the search.
+    BackHandler(jumpBack && onBack != null && !fullscreen && !scheduleMode) { onBack?.invoke() }
     BackHandler(!fullscreen && groupQuery.isNotEmpty() && (!tv || area == Area.Categories)) {
         groupQuery = ""
         if (tv) runCatching { groupSearchFocus.requestFocus() }
@@ -999,7 +1049,9 @@ fun LiveScreen(
                 ) {
                     // Top bar (4.6)
                     Row(
-                        Modifier.fillMaxWidth().height(40.dp).onFocusChanged { if (it.hasFocus) area = Area.Top },
+                        Modifier.fillMaxWidth().height(40.dp)
+                            .then(if (compact) Modifier.horizontalScroll(rememberScrollState()) else Modifier)
+                            .onFocusChanged { if (it.hasFocus) area = Area.Top },
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
@@ -1023,9 +1075,9 @@ fun LiveScreen(
                         }
                         if (compact) {
                             // No rail on a phone held sideways: the other sections are buttons here.
-                            libraryRail(library, null, { railLibrary.getValue(it) }, onLibrary).forEach { ToolButton(it.icon, it.label, onClick = it.onClick) }
-                            ToolButton(R.drawable.ic_settings, stringResource(R.string.section_settings)) { fromSettings = true; onOpenSettings() }
+                            SectionButtons(Section.Live, library, onSection)
                         }
+                        ContinueButton(continueItem, onClick = onContinue) // HOME-006
                         if (!online) OfflineMark()
                         if (!compact) Clock() // a phone shows its own clock
                     }
@@ -1108,28 +1160,18 @@ fun LiveScreen(
                     }
                 }
             }
-            if (!compact) Rail(
-                listOf(
-                    RailEntry(R.drawable.ic_live_tv_fill, stringResource(R.string.section_live), !guide, railLive) {
-                        if (guide) onGuide(false) else scope.launch { focusRow(focusedRow[0]) }
-                    },
-                    RailEntry(R.drawable.ic_guide, guideLabel, guide, railGuide) {
-                        if (!guide) onGuide(true) else scope.launch { focusRow(focusedRow[0]) }
-                    },
-                ) + libraryRail(library, null, { railLibrary.getValue(it) }, onLibrary),
-                listOf(RailEntry(R.drawable.ic_settings, stringResource(R.string.section_settings), false, railSettings) { fromSettings = true; onOpenSettings() }),
-                // Off TV the system bars overlap the screen edges: the rail keeps clear of them.
-                (if (tv) Modifier else Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.Start)))
-                    .onPreviewKeyEvent { e ->
-                        // ▶ goes back exactly where the focus came from (UI-007).
-                        if (e.type != KeyEventType.KeyDown || e.key != Key.DirectionRight) return@onPreviewKeyEvent false
-                        when (beforeRail) {
-                            Area.Categories -> focusCategory(focusedCat[0])
-                            Area.Top -> if (guide) scope.launch { focusRow(focusedRow[0]) } else runCatching { searchFocus.requestFocus() }
-                            else -> scope.launch { focusRow(focusedRow[0]) }
-                        }
-                        true
-                    },
+            if (!compact) SectionRail(
+                if (guide) Section.Guide else Section.Live, library, railFocus,
+                onSection = onSection,
+                onCurrent = { scope.launch { focusRow(focusedRow[0]) } },
+                // ▶ goes back exactly where the focus came from (UI-007).
+                onRight = {
+                    when (beforeRail) {
+                        Area.Categories -> focusCategory(focusedCat[0])
+                        Area.Top -> if (guide) scope.launch { focusRow(focusedRow[0]) } else runCatching { searchFocus.requestFocus() }
+                        else -> scope.launch { focusRow(focusedRow[0]) }
+                    }
+                },
             ) { inside ->
                 if (inside && area != Area.Rail) {
                     beforeRail = area
@@ -1147,12 +1189,15 @@ fun LiveScreen(
                 ) {
                     if (!online) OfflineMark()
                     guideTools(48.dp)
+                    if (Section.Guide !in phoneSections(library)) ToolButton(R.drawable.ic_view_list, listLabel, size = 48.dp) { onGuide(false) }
                 } else Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (!online) OfflineMark()
                     SearchField(query, { query = it }, searchHint, searchFocus, Modifier.weight(1f), height = 48.dp)
                     ToolButton(viewIcon, viewLabel, size = 48.dp, onClick = toggleView)
                     ToolButton(R.drawable.ic_sort, orderLabel, size = 48.dp, onClick = ::sortMenu)
+                    if (Section.Guide !in phoneSections(library)) ToolButton(R.drawable.ic_guide, stringResource(R.string.view_guide), size = 48.dp) { onGuide(true) }
                 }
+                if (continueItem != null) ContinueButton(continueItem, Modifier.padding(top = 8.dp), height = 48.dp, onClick = onContinue)
                 // The window opens over the list and pushes it down: the list scrolls by as much, so the channel just
                 // tapped stays under the finger and a second tap on it opens full screen (not the one that slid there).
                 Column(Modifier.fillMaxWidth().onSizeChanged { size ->
@@ -1186,15 +1231,7 @@ fun LiveScreen(
                     channelArea(Modifier.weight(1f), true)
                 }
             }
-            PhoneNav(if (guide) Section.Guide else Section.Live, library) { s ->
-                when (s) {
-                    Section.Live -> onGuide(false)
-                    Section.Guide -> onGuide(true)
-                    Section.Movies -> onLibrary(VodKind.MOVIE)
-                    Section.Series -> onLibrary(VodKind.SERIES)
-                    Section.More -> onOpenSettings()
-                }
-            }
+            PhoneNav(if (guide && Section.Guide in phoneSections(library)) Section.Guide else Section.Live, library, onSection)
             }
             task?.let { TaskPill(it, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 92.dp)) }
             }

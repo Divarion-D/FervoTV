@@ -228,6 +228,10 @@ private fun settingsJson(s: Settings): JSONObject = JSONObject()
     .put("seriesSort", s.seriesSort.name)
     .put("movieList", s.movieList)
     .put("seriesList", s.seriesList)
+    .put("startScreen", s.startScreen.name)
+    .put("homeRows", s.homeRows)
+    .put("homeChannels", s.homeChannels)
+    .put("homeGuide", s.homeGuide)
 
 private fun readSettings(j: JSONObject): Settings {
     val d = Settings()
@@ -252,6 +256,10 @@ private fun readSettings(j: JSONObject): Settings {
         seriesSort = j.enum("seriesSort", d.seriesSort),
         movieList = j.optBoolean("movieList", d.movieList),
         seriesList = j.optBoolean("seriesList", d.seriesList),
+        startScreen = j.enum("startScreen", d.startScreen),
+        homeRows = j.optString("homeRows", d.homeRows),
+        homeChannels = j.optBoolean("homeChannels", d.homeChannels),
+        homeGuide = j.optBoolean("homeGuide", d.homeGuide),
     )
 }
 

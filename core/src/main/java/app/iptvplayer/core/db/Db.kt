@@ -193,11 +193,11 @@ data class ItemRow(
     entities = [
         SourceRow::class, CategoryRow::class, ChannelRow::class, ChannelFts::class,
         ChannelState::class, CategoryState::class, ChannelOrder::class, CollectionRow::class, CollectionChannel::class,
-        Recent::class, EpgSource::class, EpgChannel::class, ProgrammeRow::class, StagedProgramme::class,
+        Recent::class, EpgSource::class, EpgChannel::class, ProgrammeRow::class, ProgrammeFts::class, StagedProgramme::class,
         LibraryRow::class, VodCategoryRow::class, VodRow::class, VodFts::class, EpisodeRow::class,
         VodState::class, VodCategoryState::class, VodOrder::class, VodCollection::class, VodCollectionItem::class, Watch::class,
     ],
-    version = 4,
+    version = 5,
 )
 abstract class AppDb : RoomDatabase() {
     abstract fun playlist(): PlaylistDao
@@ -211,7 +211,7 @@ abstract class AppDb : RoomDatabase() {
 
         fun get(ctx: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(ctx.applicationContext, AppDb::class.java, "fervo.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build().also { instance = it }
         }
     }
@@ -270,6 +270,26 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
+/** v4 → v5 (P2.3): index the saved guide with the same word rules as channels and VOD. */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        for (table in listOf("programme", "programme_stage")) {
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `searchTitle` TEXT NOT NULL DEFAULT ''")
+            val update = db.compileStatement("UPDATE `$table` SET searchTitle = ? WHERE id = ?")
+            db.query("SELECT id, title FROM `$table`").use { c ->
+                while (c.moveToNext()) {
+                    update.bindString(1, searchText(c.getString(1)))
+                    update.bindLong(2, c.getLong(0))
+                    update.executeUpdateDelete()
+                }
+            }
+        }
+        db.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS `programme_fts` USING FTS4(`searchTitle` TEXT NOT NULL, content=`programme`)")
+        db.execSQL("INSERT INTO programme_fts(programme_fts) VALUES ('rebuild')")
+        // Room reinstalls the content-sync triggers after migration.
+    }
+}
+
 /** Copied from the exported schema `core/schemas/…/3.json`; checked by MigrationTest. */
 private val MIGRATION_2_3_SQL = listOf(
     "CREATE TABLE IF NOT EXISTS `library` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `sourceKey` TEXT NOT NULL, `savedAt` INTEGER)",
@@ -308,9 +328,12 @@ fun searchText(s: String): String = buildString(s.length) {
 fun matchName(s: String): String = searchText(s).replace(" ", "")
 
 /** The same match as the channel search, for short in-memory lists (categories): every query word starts a word of [text]. */
-fun matchesWords(text: String, query: String): Boolean {
+fun matchesWords(text: String, query: String): Boolean = matchesWords(text, searchText(query).split(' ').filter { it.isNotEmpty() })
+
+/** [matchesWords] with the query already split into [searchText] words (one query against many texts). */
+fun matchesWords(text: String, query: List<String>): Boolean {
     val words = searchText(text).split(' ').filter { it.isNotEmpty() }
-    return searchText(query).split(' ').filter { it.isNotEmpty() }.all { q -> words.any { it.startsWith(q) } }
+    return query.all { q -> words.any { it.startsWith(q) } }
 }
 /** Copied from the exported schema `core/schemas/…/2.json`; checked by MigrationTest. */
 private val MIGRATION_1_2_SQL = listOf(
