@@ -25,9 +25,9 @@ subprojects {
     plugins.withId("com.android.application") {
         extensions.configure<com.android.build.api.dsl.ApplicationExtension> {
             defaultConfig {
-                // 2: 0.1.0 supersedes the initial two-component 0.1 build.
-                versionCode = 2
-                versionName = "0.1.0"
+                // 3: test release for BAK-009 update flow; 0.1.0 was the first public build.
+                versionCode = 3
+                versionName = "0.1.1"
             }
 
             signingConfigs {
