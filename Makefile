@@ -72,9 +72,10 @@ bundle: local.properties ## AAB для Google Play (app-tv) → dist/
 
 dist: release bundle verify ## APK + AAB + проверка подписи → dist/
 
-ci-release: local.properties ## Как release.yml: тесты, lint, APK, AAB, проверка подписи → dist/
+ci-release: local.properties ## Как release.yml: тесты, lint, APK, проверка подписи → dist/
 	$(GRADLE) testReleaseUnitTest lintRelease
-	$(MAKE) dist
+	$(MAKE) release
+	$(MAKE) verify
 
 verify: ## Проверить подпись APK в dist/
 	@ls $(DIST)/*.apk >/dev/null 2>&1 || { echo "В $(DIST)/ нет APK: сначала make release"; exit 1; }

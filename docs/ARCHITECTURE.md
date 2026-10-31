@@ -154,7 +154,7 @@ res/values/strings.xml, res/values-ru/strings.xml  все строки инте�
 app-tv/src/test/java/app/iptvplayer/NoUiTextInCodeTest.kt  кириллица в строковых литералах app-tv — ошибка теста
 app-tv/src/main/res/drawable/ic_*.xml   иконки Material Symbols Rounded (banner.xml — только в app-tv)
 .github/workflows/ci.yml       на каждый push/PR: testDebugUnitTest + lintDebug + assembleDebug всех модулей (оба debug APK — артефакт)
-.github/workflows/release.yml  тег v<versionName>: тесты и lint всех модулей, подписанные APK/AAB app-tv, GitHub Release с текстом из CHANGELOG.md
+.github/workflows/release.yml  тег v<versionName>: тесты и lint всех модулей, подписанный APK app-tv, GitHub Release с текстом из CHANGELOG.md; AAB в релиз не публикуется
 ```
 
 Пакеты Kotlin: `app.iptvplayer.core.*` в `core`; в приложениях — прежние `app.iptvplayer` и `app.iptvplayer.ui`

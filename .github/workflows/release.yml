@@ -1,5 +1,5 @@
-# Signed release: push a tag "v<versionName>" (e.g. v0.2.0) -> tests, lint, signed APK + AAB, GitHub Release.
-# Manual run (Actions -> Release -> Run workflow) builds the same files as an artifact without publishing a release.
+# Signed release: push a tag "v<versionName>" (e.g. v0.2.0) -> tests, lint, signed APK, GitHub Release.
+# Manual run (Actions -> Release -> Run workflow) builds the same APK as an artifact without publishing a release.
 #
 # Repository secrets:
 #   FERVO_KEYSTORE_BASE64   base64 of the .jks file
@@ -50,8 +50,8 @@ jobs:
           FERVO_KEYSTORE_PASSWORD: ${{ secrets.FERVO_KEYSTORE_PASSWORD }}
           FERVO_KEY_ALIAS: ${{ secrets.FERVO_KEY_ALIAS }}
           FERVO_KEY_PASSWORD: ${{ secrets.FERVO_KEY_PASSWORD }}
-        # Tests and lint of all modules; until the end of P0 only app-tv (runs on TV and phones) is shipped.
-        run: ./gradlew testReleaseUnitTest lintRelease :app-tv:assembleRelease :app-tv:bundleRelease --stacktrace
+        # Tests and lint of all modules; app-tv (runs on TV and phones) is the public package.
+        run: ./gradlew testReleaseUnitTest lintRelease :app-tv:assembleRelease --stacktrace
 
       - name: Collect files
         run: |
@@ -59,7 +59,6 @@ jobs:
           echo "VERSION=$v" >> "$GITHUB_ENV"
           mkdir dist
           cp app-tv/build/outputs/apk/release/app-tv-release.apk "dist/FervoTV-$v.apk"
-          cp app-tv/build/outputs/bundle/release/app-tv-release.aab "dist/FervoTV-$v.aab"
           # Refuse to ship an unsigned APK (e.g. a secret is missing). Runners have several build-tools: take the newest.
           apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
           "$apksigner" verify --print-certs "dist/FervoTV-$v.apk"

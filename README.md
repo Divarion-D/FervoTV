@@ -169,7 +169,8 @@ Debug ставится отдельным приложением со своим
    git tag v0.2.0 && git push origin v0.2.0
    ```
    GitHub Actions (`release.yml`) проверит, что тег совпадает с `versionName`, прогонит тесты и lint, соберёт
-   подписанные `FervoTV-0.2.0.apk` и `FervoTV-0.2.0.aab` и создаст GitHub Release.
+   подписанный `FervoTV-0.2.0.apk` и создаст GitHub Release. AAB для магазина собирается только вручную через
+   `make bundle` и в GitHub Release не публикуется.
 
 </details>
 
