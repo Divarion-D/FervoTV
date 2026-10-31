@@ -17,8 +17,9 @@ class ExoRecoveryTest {
     @Test
     fun untypedLinkIsRetriedAsHlsOnce() {
         assertEquals(Recovery.AsHls, recovery(PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED, typed = false))
-        // Already retried (the HLS retry sets the MIME type): now it's an error.
-        assertNull(recovery(PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED, typed = true))
+        assertEquals(Recovery.AsProgressive, recovery(PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED, typed = true, formatRetries = 1))
+        // Both format variants have failed: do not loop forever.
+        assertNull(recovery(PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED, typed = false, formatRetries = 2))
     }
 
     @Test

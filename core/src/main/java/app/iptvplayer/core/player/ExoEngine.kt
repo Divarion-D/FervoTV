@@ -45,6 +45,7 @@ class ExoEngine(ctx: Context) : PlaybackEngine {
 
     private val main = Handler(Looper.getMainLooper())
     private val stall = StallWatch(Defaults.BUFFER_STALL_TIMEOUT_MS)
+    private var formatRetries = 0
 
     /** Once a second while buffering: no progress for [Defaults.BUFFER_STALL_TIMEOUT_MS] → stop and show an error. */
     private val checkStall = object : Runnable {
@@ -82,13 +83,20 @@ class ExoEngine(ctx: Context) : PlaybackEngine {
 
             override fun onPlayerError(e: PlaybackException) {
                 val item = exo.currentMediaItem
-                when (recovery(e.errorCode, item?.localConfiguration?.mimeType != null)) {
+                when (recovery(e.errorCode, item?.localConfiguration?.mimeType != null, formatRetries)) {
                     Recovery.ToLiveEdge -> {
                         exo.seekToDefaultPosition()
                         exo.prepare()
                     }
                     Recovery.AsHls -> {
+                        formatRetries = 1
                         exo.setMediaItem(item!!.buildUpon().setMimeType(MimeTypes.APPLICATION_M3U8).build())
+                        exo.prepare()
+                    }
+                    Recovery.AsProgressive -> {
+                        formatRetries = 2
+                        val uri = item!!.localConfiguration!!.uri
+                        exo.setMediaItem(MediaItem.fromUri(uri))
                         exo.prepare()
                     }
                     null -> _state.update {
@@ -100,6 +108,7 @@ class ExoEngine(ctx: Context) : PlaybackEngine {
     }
 
     override fun play(item: PlayItem) {
+        formatRetries = 0
         _state.update { it.copy(error = null, height = 0, fps = 0f, ended = false) }
         // Without a start position a live stream begins at its live edge; with one, a film resumes (VOD-010).
         if (item.start > 0) exo.setMediaItem(MediaItem.fromUri(item.url), item.start) else exo.setMediaItem(MediaItem.fromUri(item.url))
@@ -108,6 +117,7 @@ class ExoEngine(ctx: Context) : PlaybackEngine {
     }
 
     override fun retry() {
+        formatRetries = 0
         _state.update { it.copy(error = null) }
         exo.prepare()
         exo.play()
@@ -169,16 +179,17 @@ internal class StallWatch(private val timeoutMs: Long) {
     }
 }
 
-internal enum class Recovery { ToLiveEdge, AsHls }
+internal enum class Recovery { ToLiveEdge, AsHls, AsProgressive }
 
 /**
  * What to do about an error before showing it: fell behind the live window → back to the live edge; a link
  * without a known type that didn't parse as a file → once more as HLS (extensionless HLS links). [typed] = the item
  * already has a MIME type (set by us on the HLS retry), so the retry happens only once.
  */
-internal fun recovery(errorCode: Int, typed: Boolean): Recovery? = when {
+internal fun recovery(errorCode: Int, typed: Boolean, formatRetries: Int = 0): Recovery? = when {
     errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> Recovery.ToLiveEdge
-    errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED && !typed -> Recovery.AsHls
+    errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED && !typed && formatRetries == 0 -> Recovery.AsHls
+    errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED && typed && formatRetries == 1 -> Recovery.AsProgressive
     else -> null
 }
 
