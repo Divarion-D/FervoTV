@@ -45,7 +45,7 @@ jobs:
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
           echo "FERVO_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
-      - name: Tests, lint, signed APK and AAB
+      - name: Tests, lint and signed APK
         env:
           FERVO_KEYSTORE_PASSWORD: ${{ secrets.FERVO_KEYSTORE_PASSWORD }}
           FERVO_KEY_ALIAS: ${{ secrets.FERVO_KEY_ALIAS }}
