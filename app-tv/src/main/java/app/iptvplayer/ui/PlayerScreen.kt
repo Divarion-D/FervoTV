@@ -1,6 +1,8 @@
 package app.iptvplayer.ui
 
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
@@ -17,6 +19,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -44,6 +47,8 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.type
@@ -57,6 +62,7 @@ import app.iptvplayer.core.db.ChannelGroup
 import androidx.compose.foundation.layout.BoxScope
 import app.iptvplayer.core.player.PlayItem
 import app.iptvplayer.core.player.PlayerSession
+import app.iptvplayer.core.player.playItem
 import android.view.SurfaceView
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.runtime.collectAsState
@@ -100,6 +106,7 @@ fun PlayerScreen(
     var ch by remember { mutableStateOf<Channel?>(null) }
     val total by rememberUpdatedState(count) // a background refresh can change it
     var showInfo by remember { mutableStateOf(true) }
+    var controls by remember { mutableStateOf(false) }
     val state by player.state.collectAsState()
     val noConnection = stringResource(R.string.no_connection)
     val error = state.error?.let { if (offline) noConnection else playbackErrorText(LocalContext.current, it) }
@@ -110,7 +117,7 @@ fun PlayerScreen(
         val next = channelAt(index) ?: return@LaunchedEffect
         ch = next
         onIndexChange(index, next)
-        player.open(PlayItem(next.url, live = true)) // the preview's stream goes on as is
+        player.open(next.playItem()) // the preview's stream goes on as is
     }
     LaunchedEffect(index, showInfo) {
         if (showInfo) {
@@ -138,6 +145,7 @@ fun PlayerScreen(
         commit()
     }
     BackHandler(dial.text.isNotEmpty()) { dial = NumberDial() }
+    BackHandler(controls) { controls = false }
 
     val latestSide by rememberUpdatedState(onSide)
     val panelNow by rememberUpdatedState(panelOpen)
@@ -151,9 +159,9 @@ fun PlayerScreen(
                 Action.Ok -> when {
                     dial.text.isNotEmpty() -> commit()
                     player.state.value.error != null -> player.retry()
-                    else -> showInfo = !showInfo
+                    else -> controls = !controls
                 }
-                Action.Menu -> showInfo = !showInfo
+                Action.Menu -> controls = !controls
                 Action.PlayPause -> player.togglePause()
                 Action.Recall -> jump(Zap.Previous)
                 Action.Left, Action.Right -> latestSide(a) // channel list / recent channels (LIVE-019/020)
@@ -188,7 +196,21 @@ fun PlayerScreen(
                     player.setVideoView(this)
                 }
             },
-            modifier = (if (state.aspect > 0f) Modifier.aspectRatio(state.aspect) else Modifier.fillMaxSize())
+            modifier = when (state.scale) {
+                app.iptvplayer.core.player.VideoScale.FIT,
+                app.iptvplayer.core.player.VideoScale.ORIGINAL,
+                app.iptvplayer.core.player.VideoScale.RATIO_16_9,
+                app.iptvplayer.core.player.VideoScale.RATIO_4_3 ->
+                    (if (state.aspect > 0f) Modifier.aspectRatio(
+                        when (state.scale) {
+                            app.iptvplayer.core.player.VideoScale.RATIO_16_9 -> 16f / 9f
+                            app.iptvplayer.core.player.VideoScale.RATIO_4_3 -> 4f / 3f
+                            else -> state.aspect
+                        },
+                    ) else Modifier.fillMaxSize())
+                app.iptvplayer.core.player.VideoScale.FILL,
+                app.iptvplayer.core.player.VideoScale.STRETCH -> Modifier.fillMaxSize()
+            }
                 .align(Alignment.Center),
             onRelease = { player.releaseVideoView(it) },
         )
@@ -197,6 +219,7 @@ fun PlayerScreen(
         if (shown != null && (showInfo || error != null)) {
             InfoBar(shown, index + 1, total, error, Modifier.align(Alignment.BottomStart))
         }
+        if (controls) PlayerControls(player, state, Modifier.align(Alignment.BottomCenter))
         // The dialed number at the top right (LIVE-009); no clock in the player (UI-009, owner's decision).
         if (dial.text.isNotEmpty()) Text(
             dial.text, style = TvType.display,
@@ -248,5 +271,63 @@ private fun InfoBar(ch: Channel, number: Int, total: Int, error: String?, modifi
                 }
             }
         }
+    }
+}
+
+/** Compact D-pad/touch panel shared by live and VOD entry points (PLR-007/008/009/024/027/028). */
+@Composable
+private fun PlayerControls(player: PlayerSession, state: app.iptvplayer.core.player.PlaybackState, modifier: Modifier) {
+    val c = MaterialTheme.colorScheme
+    val context = LocalContext.current
+    val subtitlePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { player.addSubtitle(it.toString(), "text/vtt") }
+    }
+    Column(
+        modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.88f), RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
+            .padding(horizontal = 18.dp, vertical = 10.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.player_controls), style = MaterialTheme.typography.titleMedium, color = Color.White, modifier = Modifier.weight(1f))
+            state.streamInfo?.let { info ->
+                Text("${info.width}×${info.height} · ${info.videoCodec.orEmpty()} · ${info.audioCodec.orEmpty()} · ${info.audioChannels}ch · ${info.bufferedMs / 1000}s", style = MaterialTheme.typography.labelSmall, color = c.onSurfaceVariant)
+            }
+        }
+        Row(Modifier.fillMaxWidth()) {
+            TextButton(onClick = { player.togglePause() }) { Text(stringResource(if (state.paused) R.string.player_play else R.string.player_pause)) }
+            TextButton(onClick = { player.seekTo(player.position - Defaults.SEEK_STEP_MS) }) { Text("−10s") }
+            TextButton(onClick = { player.seekTo(player.position + Defaults.SEEK_STEP_MS) }) { Text("+10s") }
+            TextButton(onClick = { player.setSpeed(if (state.speed >= 2f) 0.5f else state.speed + 0.5f) }) { Text(stringResource(R.string.player_speed, state.speed)) }
+            TextButton(onClick = { player.setVolume(if (state.volume >= 150) 50 else state.volume + 25) }) { Text(stringResource(R.string.player_volume, state.volume)) }
+        }
+        Row(Modifier.fillMaxWidth()) {
+            TextButton(onClick = {
+                val next = state.audioTracks.indexOfFirst { it.selected }.let { if (it < 0) 0 else (it + 1) % state.audioTracks.size.coerceAtLeast(1) }
+                if (state.audioTracks.isNotEmpty()) player.selectAudioTrack(next)
+            }) { Text(stringResource(R.string.player_audio)) }
+            TextButton(onClick = {
+                val next = state.subtitleTracks.indexOfFirst { it.selected }
+                if (next >= 0 && next + 1 < state.subtitleTracks.size) player.selectSubtitleTrack(next + 1) else player.disableSubtitles()
+            }) { Text(stringResource(R.string.player_subtitles)) }
+            TextButton(onClick = { player.setVideoEnabled(!state.videoEnabled) }) {
+                Text(stringResource(if (state.videoEnabled) R.string.player_audio_only else R.string.player_video_on))
+            }
+            TextButton(onClick = {
+                val values = app.iptvplayer.core.player.VideoScale.entries
+                player.setScale(values[(values.indexOf(state.scale) + 1) % values.size])
+            }) { Text(state.scale.name) }
+            TextButton(onClick = { subtitlePicker.launch(arrayOf("text/vtt", "application/x-subrip", "text/plain")) }) {
+                Text(stringResource(R.string.player_subtitle_file))
+            }
+            TextButton(onClick = { player.setSleepTimer(30 * 60_000L) }) { Text(stringResource(R.string.player_sleep)) }
+            TextButton(onClick = {
+                player.current?.let { item ->
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)).setType("video/*"))
+                }
+            }) { Text(stringResource(R.string.player_external)) }
+        }
+        if (state.audioTracks.isEmpty() && state.subtitleTracks.isEmpty()) {
+            Text(stringResource(R.string.player_no_tracks), style = MaterialTheme.typography.labelSmall, color = c.onSurfaceVariant)
+        }
+        state.sleepRemainingMs?.let { Text("${it / 60_000} min", style = MaterialTheme.typography.labelSmall, color = c.primary) }
     }
 }

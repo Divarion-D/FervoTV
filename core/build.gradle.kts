@@ -40,6 +40,8 @@ dependencies {
     val media3 = "1.5.1"
     implementation("androidx.media3:media3-exoplayer:$media3")
     implementation("androidx.media3:media3-exoplayer-hls:$media3")
+    implementation("androidx.media3:media3-exoplayer-dash:$media3") // PLR-020 DASH container support
+    implementation("androidx.media3:media3-session:$media3") // PLR-029 media keys and audio focus
 
     implementation("com.google.zxing:core:3.5.3") // QR codes (Qr.kt); R8 keeps only the encoder
 

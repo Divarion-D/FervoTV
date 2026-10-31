@@ -108,6 +108,7 @@ import app.iptvplayer.core.model.Settings
 import app.iptvplayer.core.model.Source
 import app.iptvplayer.core.model.VodKind
 import app.iptvplayer.core.player.PlayItem
+import app.iptvplayer.core.player.playItem
 import app.iptvplayer.core.player.PlayerSession
 import app.iptvplayer.core.source.cacheKey
 import app.iptvplayer.isTv
@@ -322,7 +323,7 @@ fun LiveScreen(
             return
         }
         player.setMuted(!settings.previewSound)
-        player.open(PlayItem(item.channel.url))
+        player.open(item.channel.playItem())
         playingKey = item.channel.key
     }
 
@@ -780,7 +781,7 @@ fun LiveScreen(
             playingKey = null
         } else if (p != null) {
             player.setMuted(!settings.previewSound)
-            player.open(PlayItem(p.channel.url))
+            player.open(p.channel.playItem())
             playingKey = p.channel.key
         }
     }

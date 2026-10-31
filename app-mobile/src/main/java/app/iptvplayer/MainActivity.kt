@@ -6,6 +6,7 @@ import app.iptvplayer.core.Repository
 import app.iptvplayer.core.model.Source
 import app.iptvplayer.core.player.ExoEngine
 import app.iptvplayer.core.player.PlayerSession
+import app.iptvplayer.core.player.PlaybackConfig
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.DisposableEffect
@@ -105,7 +106,21 @@ private fun App(repo: Repository) {
     val screens = rememberSaveableStateHolder()
 
     // One playback session above the screens (spec 01 §6.3); released with the activity.
-    val player = remember { PlayerSession { ExoEngine(ctx.applicationContext) } }
+    val player = remember {
+        PlayerSession {
+            ExoEngine(
+                ctx.applicationContext,
+                PlaybackConfig(
+                    giveUpAfterMs = settings.playerGiveUpSeconds * 1_000L,
+                    reconnectAttempts = settings.playerReconnectAttempts,
+                    defaultVolume = settings.playerVolume,
+                    audioOnly = settings.playerAudioOnly,
+                    preferredAudioLanguages = settings.playerAudioLanguages.split(',').map(String::trim).filter(String::isNotEmpty),
+                    preferredSubtitleLanguages = settings.playerSubtitleLanguages.split(',').map(String::trim).filter(String::isNotEmpty),
+                ),
+            )
+        }
+    }
     DisposableEffect(player) { onDispose { player.release() } }
 
     // After an update: offer "Что нового" once.

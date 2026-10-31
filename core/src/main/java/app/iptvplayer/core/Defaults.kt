@@ -78,6 +78,15 @@ object Defaults {
     /** Playback buffering with no progress this long is an error (with retry), not an endless spinner. */
     const val BUFFER_STALL_TIMEOUT_MS = 20_000L
 
+    /** PLR-005/006: total time spent reconnecting a live stream before showing an error. */
+    const val PLAYER_GIVE_UP_AFTER_MS = 30_000L
+    const val PLAYER_GIVE_UP_SECONDS = 30
+    const val PLAYER_RECONNECT_ATTEMPTS = 5
+    const val PLAYER_VOLUME = 100
+    const val PLAYER_MIN_BUFFER_MS = 5_000
+    const val PLAYER_MAX_BUFFER_MS = 30_000
+    const val PLAYER_BUFFER_FOR_PLAYBACK_MS = 1_000
+
     /** How long the downloaded logo index is used before re-downloading. */
     const val LOGO_INDEX_MAX_AGE_MS = 7L * 24 * 60 * 60 * 1000
 

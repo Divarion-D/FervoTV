@@ -22,6 +22,11 @@ data class Channel(
     val number: Int? = null,
     /** Archive (catch-up) depth in days, 0 = no archive. */
     val archiveDays: Int = 0,
+    /** Optional per-stream HTTP headers from M3U EXT-X/EXTVLCOPT metadata. */
+    val userAgent: String? = null,
+    val referer: String? = null,
+    val drmLicenseUrl: String? = null,
+    val drmScheme: String? = null,
 )
 
 /** One programme of the guide; times are epoch ms with the guide's time shift already applied. */
@@ -110,6 +115,24 @@ data class Settings(
     val homeVisible: Boolean = Defaults.HOME_VISIBLE,
     /** HOME-002: muted preview of the focused Continue card. */
     val homePreview: Boolean = Defaults.HOME_PREVIEW,
+    /** PLR-005: total retry window for a live stream, seconds; 0 = never give up. */
+    val playerGiveUpSeconds: Int = Defaults.PLAYER_GIVE_UP_SECONDS,
+    /** PLR-006: maximum automatic reconnect attempts during the retry window. */
+    val playerReconnectAttempts: Int = Defaults.PLAYER_RECONNECT_ATTEMPTS,
+    /** PLR-013: comma-separated preferred audio language tags. */
+    val playerAudioLanguages: String = "",
+    /** PLR-013: comma-separated preferred subtitle language tags. */
+    val playerSubtitleLanguages: String = "",
+    /** PLR-023: match display frame rate when the platform allows it. */
+    val playerMatchFrameRate: Boolean = false,
+    /** PLR-027: start playback with the picture hidden. */
+    val playerAudioOnly: Boolean = false,
+    /** PLR-015: default output volume, 0..150. */
+    val playerVolume: Int = Defaults.PLAYER_VOLUME,
+    /** PLR-021: user-selectable buffer bounds in seconds. */
+    val playerMinBufferSeconds: Int = Defaults.PLAYER_MIN_BUFFER_MS / 1000,
+    val playerMaxBufferSeconds: Int = Defaults.PLAYER_MAX_BUFFER_MS / 1000,
+    val playerPrebufferSeconds: Int = Defaults.PLAYER_BUFFER_FOR_PLAYBACK_MS / 1000,
 )
 
 /** HOME-001: where the app opens. The apps name them. */

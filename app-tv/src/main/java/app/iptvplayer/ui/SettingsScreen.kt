@@ -46,6 +46,8 @@ import app.iptvplayer.R
 import app.iptvplayer.core.Defaults
 import app.iptvplayer.core.model.PlaylistRefresh
 import app.iptvplayer.core.model.Settings
+import app.iptvplayer.core.player.PlaybackLog
+import android.widget.Toast
 import app.iptvplayer.core.model.ResumeMode
 import app.iptvplayer.initialFocus
 import app.iptvplayer.isTv
@@ -91,6 +93,7 @@ internal enum class SettingsGroup(
     HOME(R.string.settings_home, R.drawable.ic_home),
     LIVE(R.string.settings_live, R.drawable.ic_live_tv),
     LIBRARY(R.string.settings_library, R.drawable.ic_play_arrow),
+    PLAYER(R.string.settings_player, R.drawable.ic_play_arrow),
     LOGOS(R.string.settings_logos, R.drawable.ic_image),
     INTERFACE(R.string.settings_interface, R.drawable.ic_language),
     FILE(R.string.settings_file, R.drawable.ic_save),
@@ -131,6 +134,7 @@ fun SettingsScreen(
     var daysDialog by remember { mutableStateOf(false) }
     var languageDialog by remember { mutableStateOf(false) }
     var resumeDialog by remember { mutableStateOf(false) }
+    var playerGiveUpDialog by remember { mutableStateOf(false) }
     var startDialog by remember { mutableStateOf(false) }
     var qrUrl by remember { mutableStateOf<String?>(null) }
     var groupName by rememberSaveable { mutableStateOf<String?>(null) }
@@ -142,8 +146,8 @@ fun SettingsScreen(
         focusRequester(rows.getOrPut(key) { FocusRequester() }).onFocusChanged { if (it.isFocused) lastRow = key }
     // TV: focus on the first row when opened, on the row we left from when back.
     val tv = remember { ctx.isTv() }
-    LaunchedEffect(refreshDialog, daysDialog, languageDialog, resumeDialog, startDialog, qrUrl) {
-        if (!tv || refreshDialog || daysDialog || languageDialog || resumeDialog || startDialog || qrUrl != null) return@LaunchedEffect
+    LaunchedEffect(refreshDialog, daysDialog, languageDialog, resumeDialog, playerGiveUpDialog, startDialog, qrUrl) {
+        if (!tv || refreshDialog || daysDialog || languageDialog || resumeDialog || playerGiveUpDialog || startDialog || qrUrl != null) return@LaunchedEffect
         withFrameNanos {}
         runCatching { rows[lastRow]?.requestFocus() }
     }
@@ -310,6 +314,47 @@ fun SettingsScreen(
                     onDismiss = { resumeDialog = false },
                 )
             }
+
+            if (group == SettingsGroup.PLAYER) {
+            SectionTitle(stringResource(R.string.settings_player))
+            SettingItem(
+                R.drawable.ic_play_arrow, stringResource(R.string.settings_player_give_up),
+                stringResource(R.string.settings_player_give_up_summary, settings.playerGiveUpSeconds), Modifier.row("playerGiveUp"),
+            ) { playerGiveUpDialog = true }
+            if (playerGiveUpDialog) ChoiceDialog(
+                title = stringResource(R.string.settings_player_give_up),
+                options = listOf(0, 15, 30, 60), selected = settings.playerGiveUpSeconds,
+                label = { if (it == 0) ctx.getString(R.string.settings_player_give_up_summary, 0) else ctx.getString(R.string.settings_player_give_up_summary, it) },
+                onSelect = { onChange(settings.copy(playerGiveUpSeconds = it)); playerGiveUpDialog = false },
+                onDismiss = { playerGiveUpDialog = false },
+            )
+            SettingItem(
+                R.drawable.ic_refresh, stringResource(R.string.settings_player_reconnect),
+                stringResource(R.string.settings_player_reconnect_summary), Modifier.row("playerReconnect"),
+            ) { onChange(settings.copy(playerReconnectAttempts = (settings.playerReconnectAttempts + 1).mod(11))) }
+            var audioLanguages by remember(settings.playerAudioLanguages) { mutableStateOf(settings.playerAudioLanguages) }
+            OutlinedTextField(audioLanguages, { audioLanguages = it; onChange(settings.copy(playerAudioLanguages = it)) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.settings_player_audio_languages)) }, placeholder = { Text(stringResource(R.string.settings_player_languages_hint)) })
+            var subtitleLanguages by remember(settings.playerSubtitleLanguages) { mutableStateOf(settings.playerSubtitleLanguages) }
+            OutlinedTextField(subtitleLanguages, { subtitleLanguages = it; onChange(settings.copy(playerSubtitleLanguages = it)) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.settings_player_subtitle_languages)) }, placeholder = { Text(stringResource(R.string.settings_player_languages_hint)) })
+            SettingItem(
+                R.drawable.ic_live_tv, stringResource(R.string.settings_player_match_frame_rate), stringResource(R.string.settings_player_match_frame_rate_summary), Modifier.row("playerMatchFrameRate"), trailing = { Switch(settings.playerMatchFrameRate, onCheckedChange = null) },
+            ) { onChange(settings.copy(playerMatchFrameRate = !settings.playerMatchFrameRate)) }
+            SettingItem(
+                R.drawable.ic_play_arrow, stringResource(R.string.settings_player_audio_only), stringResource(R.string.settings_player_audio_only_summary), Modifier.row("playerAudioOnly"), trailing = { Switch(settings.playerAudioOnly, onCheckedChange = null) },
+            ) { onChange(settings.copy(playerAudioOnly = !settings.playerAudioOnly)) }
+            SettingItem(
+                R.drawable.ic_play_arrow, stringResource(R.string.settings_player_volume), stringResource(R.string.settings_player_volume_summary, settings.playerVolume), Modifier.row("playerVolume"),
+            ) { onChange(settings.copy(playerVolume = if (settings.playerVolume >= 150) 50 else settings.playerVolume + 25)) }
+            SettingItem(
+                R.drawable.ic_refresh, stringResource(R.string.settings_player_min_buffer), stringResource(R.string.settings_player_buffer_summary, settings.playerMinBufferSeconds), Modifier.row("playerMinBuffer"),
+            ) { onChange(settings.copy(playerMinBufferSeconds = if (settings.playerMinBufferSeconds >= 30) 5 else settings.playerMinBufferSeconds + 5)) }
+            SettingItem(
+                R.drawable.ic_refresh, stringResource(R.string.settings_player_max_buffer), stringResource(R.string.settings_player_buffer_summary, settings.playerMaxBufferSeconds), Modifier.row("playerMaxBuffer"),
+            ) { onChange(settings.copy(playerMaxBufferSeconds = if (settings.playerMaxBufferSeconds >= 120) 30 else settings.playerMaxBufferSeconds + 30)) }
+            SettingItem(
+                R.drawable.ic_refresh, stringResource(R.string.settings_player_prebuffer), stringResource(R.string.settings_player_buffer_summary, settings.playerPrebufferSeconds), Modifier.row("playerPrebuffer"),
+            ) { onChange(settings.copy(playerPrebufferSeconds = if (settings.playerPrebufferSeconds >= 10) 0 else settings.playerPrebufferSeconds + 2)) }
+            }
             SettingItem(
                 R.drawable.ic_skip_next, stringResource(R.string.settings_auto_next), stringResource(R.string.settings_auto_next_summary),
                 Modifier.row("autoNext"), trailing = { Switch(settings.autoNext, onCheckedChange = null) },
@@ -393,6 +438,12 @@ fun SettingsScreen(
             SettingItem(
                 R.drawable.ic_info, stringResource(R.string.settings_licenses), stringResource(R.string.settings_licenses_summary), Modifier.row("licenses"),
             ) { subpage = R.string.settings_licenses to "LICENSES.md" }
+            SettingItem(
+                R.drawable.ic_save, stringResource(R.string.settings_playback_log), stringResource(R.string.settings_playback_log_summary), Modifier.row("playbackLog"),
+            ) {
+                val file = PlaybackLog(ctx).exportToDownloads()
+                Toast.makeText(ctx, if (file == null) R.string.settings_playback_log_failed else R.string.settings_playback_log_saved, Toast.LENGTH_LONG).show()
+            }
             }
         }
     }

@@ -190,6 +190,13 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
             homeGuide = settingsPrefs.getBoolean("homeGuide", Defaults.HOME_GUIDE),
             homeVisible = settingsPrefs.getBoolean("homeVisible", Defaults.HOME_VISIBLE),
             homePreview = settingsPrefs.getBoolean("homePreview", Defaults.HOME_PREVIEW),
+            playerGiveUpSeconds = settingsPrefs.getInt("playerGiveUpSeconds", Defaults.PLAYER_GIVE_UP_SECONDS).coerceIn(0, 300),
+            playerReconnectAttempts = settingsPrefs.getInt("playerReconnectAttempts", Defaults.PLAYER_RECONNECT_ATTEMPTS).coerceIn(0, 20),
+            playerAudioLanguages = settingsPrefs.getString("playerAudioLanguages", "").orEmpty(),
+            playerSubtitleLanguages = settingsPrefs.getString("playerSubtitleLanguages", "").orEmpty(),
+            playerMatchFrameRate = settingsPrefs.getBoolean("playerMatchFrameRate", false),
+            playerAudioOnly = settingsPrefs.getBoolean("playerAudioOnly", false),
+            playerVolume = settingsPrefs.getInt("playerVolume", Defaults.PLAYER_VOLUME).coerceIn(0, 150),
         )
         set(v) {
             settingsPrefs.edit()
@@ -218,6 +225,13 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
                 .putBoolean("homeGuide", v.homeGuide)
                 .putBoolean("homeVisible", v.homeVisible)
                 .putBoolean("homePreview", v.homePreview)
+                .putInt("playerGiveUpSeconds", v.playerGiveUpSeconds)
+                .putInt("playerReconnectAttempts", v.playerReconnectAttempts)
+                .putString("playerAudioLanguages", v.playerAudioLanguages)
+                .putString("playerSubtitleLanguages", v.playerSubtitleLanguages)
+                .putBoolean("playerMatchFrameRate", v.playerMatchFrameRate)
+                .putBoolean("playerAudioOnly", v.playerAudioOnly)
+                .putInt("playerVolume", v.playerVolume)
                 .apply { if (v.liveTiles == null) remove("liveTiles") else putBoolean("liveTiles", v.liveTiles) }
                 .apply()
         }

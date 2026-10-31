@@ -34,7 +34,7 @@ class M3uParserTest {
     @Test
     fun crlfBomAndUnknownTags() {
         val list = parseM3u("\uFEFF#EXTM3U\r\n#EXTINF:-1,A\r\n#EXTVLCOPT:http-user-agent=x\r\nhttp://a\r\n\r\n")
-        assertEquals(listOf(Channel("A", "http://a", NO_GROUP)), list)
+        assertEquals(listOf(Channel("A", "http://a", NO_GROUP, userAgent = "x")), list)
     }
 
     @Test
@@ -76,6 +76,9 @@ class M3uParserTest {
             #EXTM3U url-tvg="http://e/a.xml.gz, http://e/b.xml" x-tvg-url="http://e/b.xml" tvg-shift="0"
             #EXTINF:-1 tvg-chno="7" catchup="default" catchup-days="3",Семь
             #EXTVLCOPT:http-user-agent=X
+            #EXTVLCOPT:http-referrer=https://ref.example/p3
+            #KODIPROP:inputstream.adaptive.license_type=clearkey
+            #KODIPROP:inputstream.adaptive.license_key=https://license.example/key
             #KODIPROP:inputstream=x
             http://s/7
             #EXTINF:-1 tvg-chno="x" tvg-rec="2",Без номера
@@ -90,6 +93,10 @@ class M3uParserTest {
         assertEquals(listOf(listOf("http://e/a.xml.gz", "http://e/b.xml"), listOf("http://e/c.xml")), urls)
         assertEquals(listOf(7, null, null), channels.map { it.number })
         assertEquals(listOf(3, 2, 0), channels.map { it.archiveDays })
+        assertEquals("X", channels.first().userAgent)
+        assertEquals("https://ref.example/p3", channels.first().referer)
+        assertEquals("clearkey", channels.first().drmScheme)
+        assertEquals("https://license.example/key", channels.first().drmLicenseUrl)
         assertEquals(listOf("http://s/7", "http://s/0", "http://s/1"), channels.map { it.key }) // M3U key = stream URL
     }
 

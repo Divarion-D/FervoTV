@@ -28,6 +28,10 @@ class M3uEntry(val channel: Channel, val type: String?)
 fun parseM3uEntries(reader: Reader, baseUrl: String? = null, onEpgUrls: (List<String>) -> Unit = {}, onEntry: (M3uEntry) -> Unit) {
     var info: String? = null
     var extGroup: String? = null
+    var userAgent: String? = null
+    var referer: String? = null
+    var drmScheme: String? = null
+    var drmLicense: String? = null
     var first = true
     for (raw in BufferedReader(reader).lineSequence()) {
         val line = (if (first) raw.removePrefix("\uFEFF") else raw).trim()
@@ -37,18 +41,36 @@ fun parseM3uEntries(reader: Reader, baseUrl: String? = null, onEpgUrls: (List<St
             line.startsWith("#EXTM3U", ignoreCase = true) -> epgUrls(line).takeIf { it.isNotEmpty() }?.let(onEpgUrls)
             line.startsWith("#EXTINF", ignoreCase = true) -> { info = line; extGroup = null }
             line.startsWith("#EXTGRP:", ignoreCase = true) -> extGroup = line.substring(8).trim()
+            line.startsWith("#EXTVLCOPT:", ignoreCase = true) -> {
+                val option = line.substringAfter(':', "")
+                when {
+                    option.startsWith("http-user-agent=", ignoreCase = true) -> userAgent = option.substringAfter('=').trim().ifBlank { null }
+                    option.startsWith("http-referrer=", ignoreCase = true) -> referer = option.substringAfter('=').trim().ifBlank { null }
+                }
+            }
+            line.startsWith("#KODIPROP:", ignoreCase = true) -> {
+                val option = line.substringAfter(':', "")
+                when {
+                    option.contains("license_type", ignoreCase = true) -> drmScheme = option.substringAfter('=').trim().ifBlank { null }
+                    option.contains("license_key", ignoreCase = true) -> drmLicense = option.substringAfter('=').trim().ifBlank { null }
+                }
+            }
             line.startsWith("#") -> {}
             else -> {
                 // A broken entry skips only itself.
-                runCatching { toEntry(info, extGroup, line, baseUrl) }.onSuccess(onEntry)
+                runCatching { toEntry(info, extGroup, line, baseUrl, userAgent, referer, drmLicense, drmScheme) }.onSuccess(onEntry)
                 info = null
                 extGroup = null
+                userAgent = null
+                referer = null
+                drmScheme = null
+                drmLicense = null
             }
         }
     }
 }
 
-private fun toEntry(info: String?, extGroup: String?, url: String, baseUrl: String?): M3uEntry {
+private fun toEntry(info: String?, extGroup: String?, url: String, baseUrl: String?, userAgent: String?, referer: String?, drmLicense: String?, drmScheme: String?): M3uEntry {
     val attrs = info?.let { ATTR.findAll(it).associate { m -> m.groupValues[1].lowercase() to m.groupValues[2] } }.orEmpty()
     val name = info?.let(::displayName).orEmpty()
         .ifBlank { attrs["tvg-name"].orEmpty() }
@@ -64,6 +86,10 @@ private fun toEntry(info: String?, extGroup: String?, url: String, baseUrl: Stri
         // Archive depth in days: catchup-days is the common one, tvg-rec and timeshift are older spellings.
         archiveDays = listOf("catchup-days", "tvg-rec", "timeshift").firstNotNullOfOrNull { attrs[it]?.trim()?.toIntOrNull() }
             ?.coerceAtLeast(0) ?: 0,
+        userAgent = userAgent,
+        referer = referer,
+        drmLicenseUrl = drmLicense,
+        drmScheme = drmScheme,
     )
     return M3uEntry(channel, (attrs["type"] ?: attrs["tvg-type"])?.ifBlank { null })
 }

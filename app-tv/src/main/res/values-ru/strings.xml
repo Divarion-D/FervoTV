@@ -295,6 +295,10 @@
     <string name="settings_whats_new_summary">Список изменений по версиям</string>
     <string name="settings_licenses">Лицензии</string>
     <string name="settings_licenses_summary">Библиотеки и сервисы, на которых построено приложение</string>
+    <string name="settings_playback_log">Экспорт журнала плеера</string>
+    <string name="settings_playback_log_summary">Сохранить ошибки воспроизведения в Downloads</string>
+    <string name="settings_playback_log_saved">Журнал сохранён в Downloads</string>
+    <string name="settings_playback_log_failed">Не удалось сохранить журнал</string>
     <!-- The documents are in Russian: no note in the Russian interface. -->
     <string name="doc_russian_only"></string>
     <string name="qr_title">Откройте на телефоне</string>
@@ -400,6 +404,24 @@
     <string name="library_summary">Фильмы и сериалы: добавлено %1$d, обновлено %2$d, удалено %3$d</string>
     <!-- Настройки: фильмы и сериалы -->
     <string name="settings_library">Фильмы и сериалы</string>
+    <string name="settings_player">Плеер</string>
+    <string name="settings_player_give_up">Сдаться через</string>
+    <string name="settings_player_give_up_summary">%1$d с; 0 — никогда</string>
+    <string name="settings_player_reconnect">Повторные подключения</string>
+    <string name="settings_player_reconnect_summary">Максимум автоматических попыток для эфира</string>
+    <string name="settings_player_audio_languages">Предпочитаемые языки звука</string>
+    <string name="settings_player_subtitle_languages">Предпочитаемые языки субтитров</string>
+    <string name="settings_player_languages_hint">Теги через запятую, например en,ru</string>
+    <string name="settings_player_match_frame_rate">Совпадение частоты кадров</string>
+    <string name="settings_player_match_frame_rate_summary">Просить ТВ использовать частоту видео</string>
+    <string name="settings_player_audio_only">Запускать только звук</string>
+    <string name="settings_player_audio_only_summary">Продолжать воспроизведение без показа видео</string>
+    <string name="settings_player_volume">Громкость по умолчанию</string>
+    <string name="settings_player_volume_summary">%1$d%%</string>
+    <string name="settings_player_min_buffer">Минимальный буфер</string>
+    <string name="settings_player_max_buffer">Максимальный буфер</string>
+    <string name="settings_player_prebuffer">Предбуфер</string>
+    <string name="settings_player_buffer_summary">%1$d с</string>
     <string name="settings_resume">Начатый фильм или эпизод</string>
     <string name="resume_continue">Продолжать с места остановки</string>
     <string name="resume_ask">Спрашивать</string>
@@ -471,4 +493,19 @@
     <string name="settings_home_guide">Избранные каналы: что идёт</string>
     <string name="settings_home_guide_summary">Каналы с текущей передачей вместо карточек</string>
     <string name="settings_home_row_summary">Ряд главной № %1$d</string>
+    <string name="player_controls">Управление плеером</string>
+    <string name="player_pause">Пауза</string>
+    <string name="player_play">Продолжить</string>
+    <string name="player_audio">Звук</string>
+    <string name="player_subtitles">Субтитры</string>
+    <string name="player_subtitles_off">Субтитры выключены</string>
+    <string name="player_subtitle_file">Файл субтитров</string>
+    <string name="player_speed">Скорость %1$.1fx</string>
+    <string name="player_volume">Громкость %1$d%%</string>
+    <string name="player_audio_only">Только звук</string>
+    <string name="player_video_on">Показать видео</string>
+    <string name="player_sleep">Таймер 30 мин</string>
+    <string name="player_stream_info">Сведения о потоке</string>
+    <string name="player_external">Внешний плеер</string>
+    <string name="player_no_tracks">Дорожек нет</string>
 </resources>

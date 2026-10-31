@@ -155,7 +155,9 @@ class PlaylistStore(private val db: AppDb, private val clock: () -> Long = Syste
             batch += ChannelRow(
                 sourceId = sourceId, categoryId = category(ch.group), position = count++,
                 name = ch.name, url = ch.url, logo = ch.logo, tvgId = ch.tvgId,
-                ckey = ch.key, number = ch.number, archiveDays = ch.archiveDays, epgId = epgIndex.find(ch),
+                ckey = ch.key, number = ch.number, archiveDays = ch.archiveDays, userAgent = ch.userAgent, referer = ch.referer,
+                drmLicenseUrl = ch.drmLicenseUrl, drmScheme = ch.drmScheme,
+                epgId = epgIndex.find(ch),
                 matchName = matchName(ch.name),
             )
             if (batch.size >= Defaults.IMPORT_BATCH_SIZE) flush()
@@ -492,6 +494,7 @@ private val GUIDE_TABLES = arrayOf("source", "channel", "channel_state", "epg_ch
 private const val ITEM_COLUMNS =
     "ch.id AS id, COALESCE(st.name, ch.name) AS name, ch.url AS url, cat.name AS `group`, COALESCE(st.logo, ch.logo) AS logo, " +
         "ch.tvgId AS tvgId, ch.autoLogo AS autoLogo, ch.ckey AS `key`, ch.number AS number, ch.archiveDays AS archiveDays, " +
+        "ch.userAgent AS userAgent, ch.referer AS referer, ch.drmLicenseUrl AS drmLicenseUrl, ch.drmScheme AS drmScheme, " +
         "COALESCE(ch.number, ch.position + 1) AS displayNumber, FAVORITE AS favorite, " +
         "HIDDEN AS hidden, ch.epgId AS epgId, COALESCE(st.epgShift, es.shift) AS shift"
 

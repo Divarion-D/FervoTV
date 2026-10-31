@@ -299,6 +299,10 @@
     <string name="settings_whats_new_summary">Changes by version</string>
     <string name="settings_licenses">Licences</string>
     <string name="settings_licenses_summary">Libraries and services the app is built on</string>
+    <string name="settings_playback_log">Export player log</string>
+    <string name="settings_playback_log_summary">Save playback errors to Downloads</string>
+    <string name="settings_playback_log_saved">Player log saved to Downloads</string>
+    <string name="settings_playback_log_failed">Could not save player log</string>
     <string name="doc_russian_only">This text is in Russian only.</string>
     <string name="qr_title">Open on your phone</string>
 
@@ -405,6 +409,24 @@
     <string name="library_summary">Films and series — added: %1$d, updated: %2$d, removed: %3$d</string>
     <!-- Settings: films and series -->
     <string name="settings_library">Films and series</string>
+    <string name="settings_player">Player</string>
+    <string name="settings_player_give_up">Give up after</string>
+    <string name="settings_player_give_up_summary">%1$d seconds; 0 means never</string>
+    <string name="settings_player_reconnect">Reconnect attempts</string>
+    <string name="settings_player_reconnect_summary">Maximum automatic attempts for live streams</string>
+    <string name="settings_player_audio_languages">Preferred audio languages</string>
+    <string name="settings_player_subtitle_languages">Preferred subtitle languages</string>
+    <string name="settings_player_languages_hint">Comma-separated tags, for example en,ru</string>
+    <string name="settings_player_match_frame_rate">Match frame rate</string>
+    <string name="settings_player_match_frame_rate_summary">Ask the TV to use the video frame rate</string>
+    <string name="settings_player_audio_only">Start with audio only</string>
+    <string name="settings_player_audio_only_summary">Keep playback running without showing video</string>
+    <string name="settings_player_volume">Default volume</string>
+    <string name="settings_player_volume_summary">%1$d%%</string>
+    <string name="settings_player_min_buffer">Minimum buffer</string>
+    <string name="settings_player_max_buffer">Maximum buffer</string>
+    <string name="settings_player_prebuffer">Prebuffer</string>
+    <string name="settings_player_buffer_summary">%1$d s</string>
     <string name="settings_resume">A started film or episode</string>
     <string name="resume_continue">Continue where it stopped</string>
     <string name="resume_ask">Ask</string>
@@ -474,4 +496,19 @@
     <string name="settings_home_guide">Favourite channels: what\'s on</string>
     <string name="settings_home_guide_summary">Channels with their current programme instead of cards</string>
     <string name="settings_home_row_summary">Home row %1$d</string>
+    <string name="player_controls">Player controls</string>
+    <string name="player_pause">Pause</string>
+    <string name="player_play">Play</string>
+    <string name="player_audio">Audio</string>
+    <string name="player_subtitles">Subtitles</string>
+    <string name="player_subtitles_off">Subtitles off</string>
+    <string name="player_subtitle_file">Subtitle file</string>
+    <string name="player_speed">Speed %1$.1fx</string>
+    <string name="player_volume">Volume %1$d%%</string>
+    <string name="player_audio_only">Audio only</string>
+    <string name="player_video_on">Show video</string>
+    <string name="player_sleep">Sleep 30 min</string>
+    <string name="player_stream_info">Stream info</string>
+    <string name="player_external">External player</string>
+    <string name="player_no_tracks">No tracks</string>
 </resources>

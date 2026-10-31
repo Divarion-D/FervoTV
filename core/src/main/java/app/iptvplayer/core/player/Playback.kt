@@ -1,13 +1,73 @@
 package app.iptvplayer.core.player
 
+import android.os.Handler
+import android.os.Looper
 import android.view.View
+import app.iptvplayer.core.Defaults
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * What to play. [live] = a channel of the live list: dropped in the background, resumed at the live edge.
  * [start] = where a film or an episode begins, ms (VOD-010); 0 = the start (live: the live edge).
  */
-data class PlayItem(val url: String, val live: Boolean = true, val start: Long = 0)
+data class PlayItem(
+    val url: String,
+    val live: Boolean = true,
+    val start: Long = 0,
+    val subtitleUrl: String? = null,
+    val subtitleMimeType: String? = null,
+    val subtitleOffsetMs: Long = 0,
+    val drmLicenseUrl: String? = null,
+    val drmScheme: String? = null,
+    /** Per-stream request headers; credentials must never be put in this map. */
+    val headers: Map<String, String> = emptyMap(),
+)
+
+/** Converts a channel's playlist metadata into request headers without ever placing credentials in the URL. */
+fun app.iptvplayer.core.model.Channel.playItem(live: Boolean = true, start: Long = 0): PlayItem = PlayItem(
+    url = url,
+    live = live,
+    start = start,
+    drmLicenseUrl = drmLicenseUrl,
+    drmScheme = drmScheme,
+    headers = buildMap {
+        userAgent?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
+        referer?.takeIf { it.isNotBlank() }?.let { put("Referer", it) }
+    },
+)
+
+data class AudioTrack(val language: String?, val codec: String?, val channels: Int, val selected: Boolean)
+data class SubtitleTrack(val language: String?, val codec: String?, val selected: Boolean)
+data class StreamInfo(
+    val videoCodec: String? = null,
+    val audioCodec: String? = null,
+    val width: Int = 0,
+    val height: Int = 0,
+    val fps: Float = 0f,
+    val bitrate: Int = 0,
+    val audioChannels: Int = 0,
+    val hdr: String? = null,
+    val durationMs: Long = 0,
+    val bufferedMs: Long = 0,
+    val engine: String = "ExoPlayer",
+)
+
+enum class VideoScale { FIT, FILL, STRETCH, ORIGINAL, RATIO_16_9, RATIO_4_3 }
+
+data class PlaybackConfig(
+    val giveUpAfterMs: Long = Defaults.PLAYER_GIVE_UP_AFTER_MS,
+    val reconnectAttempts: Int = Defaults.PLAYER_RECONNECT_ATTEMPTS,
+    val defaultVolume: Int = Defaults.PLAYER_VOLUME,
+    val audioOnly: Boolean = false,
+    val preferredAudioLanguages: List<String> = emptyList(),
+    val preferredSubtitleLanguages: List<String> = emptyList(),
+    val minBufferMs: Int = Defaults.PLAYER_MIN_BUFFER_MS,
+    val maxBufferMs: Int = Defaults.PLAYER_MAX_BUFFER_MS,
+    val bufferForPlaybackMs: Int = Defaults.PLAYER_BUFFER_FOR_PLAYBACK_MS,
+    val matchFrameRate: Boolean = false,
+)
 
 data class PlaybackState(
     val buffering: Boolean = false,
@@ -21,6 +81,17 @@ data class PlaybackState(
     val fps: Float = 0f,
     /** Played to the end (a film or an episode; VOD-009 goes on to the next one). */
     val ended: Boolean = false,
+    val reconnecting: Boolean = false,
+    val reconnectAttempt: Int = 0,
+    val videoEnabled: Boolean = true,
+    val speed: Float = 1f,
+    val volume: Int = Defaults.PLAYER_VOLUME,
+    val scale: VideoScale = VideoScale.FIT,
+    val audioOffsetMs: Long = 0L,
+    val audioTracks: List<AudioTrack> = emptyList(),
+    val subtitleTracks: List<SubtitleTrack> = emptyList(),
+    val streamInfo: StreamInfo? = null,
+    val sleepRemainingMs: Long? = null,
 )
 
 /**
@@ -66,6 +137,18 @@ interface PlaybackEngine {
     /** Where the picture goes; null detaches. Switching views doesn't restart the stream. */
     fun setVideoView(view: View?)
 
+    /** Optional P3 controls. Default implementations keep test engines source-compatible. */
+    fun selectAudioTrack(index: Int) = Unit
+    fun selectSubtitleTrack(index: Int) = Unit
+    fun disableSubtitles() = Unit
+    fun setSpeed(speed: Float) = Unit
+    fun setVolume(percent: Int) = Unit
+    fun setAudioOffset(ms: Long) = Unit
+    fun setVideoEnabled(enabled: Boolean) = Unit
+    fun setScale(scale: VideoScale) = Unit
+    fun addSubtitle(url: String, mimeType: String? = null, offsetMs: Long = 0) = Unit
+    fun streamInfo(): StreamInfo? = null
+
     fun release()
 }
 
@@ -80,6 +163,23 @@ class PlayerSession(newEngine: () -> PlaybackEngine) {
     private var item: PlayItem? = null
     private var dropped = false // a live stream released in the background
     private var view: View? = null
+    private var videoEnabled = true
+    private val _sleepRemainingMs = MutableStateFlow<Long?>(null)
+    val sleepRemainingMs: StateFlow<Long?> = _sleepRemainingMs.asStateFlow()
+    private val sleepHandler = Handler(Looper.getMainLooper())
+    private var sleepDeadline = 0L
+    private val sleepTick = object : Runnable {
+        override fun run() {
+            val left = sleepDeadline - android.os.SystemClock.elapsedRealtime()
+            if (left <= 0L) {
+                _sleepRemainingMs.value = 0L
+                close()
+            } else {
+                _sleepRemainingMs.value = left
+                sleepHandler.postDelayed(this, 1_000L)
+            }
+        }
+    }
 
     val state: StateFlow<PlaybackState> get() = engine.state
 
@@ -119,6 +219,33 @@ class PlayerSession(newEngine: () -> PlaybackEngine) {
     }
 
     fun setMuted(muted: Boolean) = engine.setMuted(muted)
+    fun selectAudioTrack(index: Int) = engine.selectAudioTrack(index)
+    fun selectSubtitleTrack(index: Int) = engine.selectSubtitleTrack(index)
+    fun disableSubtitles() = engine.disableSubtitles()
+    fun setSpeed(speed: Float) = engine.setSpeed(speed)
+    fun setVolume(percent: Int) = engine.setVolume(percent)
+    fun setAudioOffset(ms: Long) = engine.setAudioOffset(ms)
+    fun setScale(scale: VideoScale) = engine.setScale(scale)
+    fun addSubtitle(url: String, mimeType: String? = null, offsetMs: Long = 0) = engine.addSubtitle(url, mimeType, offsetMs)
+    fun streamInfo(): StreamInfo? = engine.streamInfo()
+
+    fun setVideoEnabled(enabled: Boolean) {
+        videoEnabled = enabled
+        engine.setVideoEnabled(enabled)
+        if (enabled) engine.setVideoView(view)
+    }
+
+    /** Starts a one-shot sleep timer. A value of null cancels it. */
+    fun setSleepTimer(remainingMs: Long?) {
+        sleepHandler.removeCallbacks(sleepTick)
+        if (remainingMs == null) {
+            sleepDeadline = 0L
+            _sleepRemainingMs.value = null
+        } else {
+            sleepDeadline = android.os.SystemClock.elapsedRealtime() + remainingMs.coerceAtLeast(0)
+            sleepTick.run()
+        }
+    }
 
     /** Position and length of what plays, ms (0 = unknown or nothing open). */
     val position: Long get() = if (item != null) engine.position else 0
@@ -147,11 +274,15 @@ class PlayerSession(newEngine: () -> PlaybackEngine) {
         item = null
         dropped = false
         if (lazyEngine.isInitialized()) engine.stop()
+        sleepHandler.removeCallbacks(sleepTick)
+        _sleepRemainingMs.value = null
     }
 
     fun release() {
         item = null
         if (lazyEngine.isInitialized()) engine.release()
+        sleepHandler.removeCallbacks(sleepTick)
+        _sleepRemainingMs.value = null
     }
 }
 

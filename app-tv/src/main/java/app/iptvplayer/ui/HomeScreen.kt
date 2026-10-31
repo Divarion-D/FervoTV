@@ -83,6 +83,7 @@ import app.iptvplayer.core.model.Source
 import app.iptvplayer.core.model.VodItem
 import app.iptvplayer.core.model.VodKind
 import app.iptvplayer.core.player.PlayItem
+import app.iptvplayer.core.player.playItem
 import app.iptvplayer.core.player.PlayerSession
 import app.iptvplayer.core.source.cacheKey
 import app.iptvplayer.findActivity
@@ -187,7 +188,7 @@ fun HomeScreen(
         }
         delay(3_000)
         val play = when (item) {
-            is ChannelContinue -> PlayItem(item.channel.channel.url)
+            is ChannelContinue -> item.channel.channel.playItem()
             is VodContinue -> {
                 val url = if (item.kind == VodKind.MOVIE) repo.vodItem(source, VodKind.MOVIE, item.watch.vkey)?.url
                 else repo.episode(source, item.watch.vkey)?.url

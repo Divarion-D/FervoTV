@@ -2,6 +2,8 @@ package app.iptvplayer
 
 import android.os.Bundle
 import android.os.Build
+import android.app.PictureInPictureParams
+import android.util.Rational
 import android.os.StatFs
 import android.net.Uri
 import android.widget.Toast
@@ -11,6 +13,7 @@ import app.iptvplayer.core.Repository
 import app.iptvplayer.core.model.Source
 import app.iptvplayer.core.player.ExoEngine
 import app.iptvplayer.core.player.PlayerSession
+import app.iptvplayer.core.player.PlaybackConfig
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.DisposableEffect
@@ -107,6 +110,15 @@ internal fun shouldOfferContinueInBackground(source: Source, state: LibraryState
     source is Source.Xtream && state is LibraryState.Running
 
 class MainActivity : ComponentActivity() {
+    private var currentPlayer: PlayerSession? = null
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (Build.VERSION.SDK_INT >= 26 && currentPlayer?.current != null) {
+            enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build())
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Always-dark UI: light system bar icons regardless of the system theme. Screens pad themselves with
         // safeDrawingPadding; the player stays full-bleed.
@@ -122,7 +134,7 @@ class MainActivity : ComponentActivity() {
             var language by remember { mutableStateOf(repo.settings.language) }
             Localized(language) {
                 AppTheme {
-                    Surface(Modifier.fillMaxSize()) { App(repo, onLanguage = { language = it }) }
+                    Surface(Modifier.fillMaxSize()) { App(repo, onLanguage = { language = it }, onPlayer = { currentPlayer = it }) }
                 }
             }
         }
@@ -132,7 +144,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun App(repo: Repository, onLanguage: (String) -> Unit) {
+private fun App(repo: Repository, onLanguage: (String) -> Unit, onPlayer: (PlayerSession?) -> Unit = {}) {
     var source by remember { mutableStateOf(repo.source) }
     // BAK-011: the source came from a settings file without its password: ask for it before loading.
     var askPassword by remember { mutableStateOf(repo.passwordMissing) }
@@ -197,8 +209,32 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
     val sectionBack: (() -> Unit)? = backTo?.let { b -> { go(b) } } ?: if (!wide && shown != startSection) ({ go(startSection) }) else null
 
     // One playback session above the screens (spec 01 §6.3); released with the activity.
-    val player = remember { PlayerSession { ExoEngine(ctx.applicationContext) } }
-    DisposableEffect(player) { onDispose { player.release() } }
+    val player = remember {
+        PlayerSession {
+            ExoEngine(
+                ctx.applicationContext,
+                PlaybackConfig(
+                    giveUpAfterMs = settings.playerGiveUpSeconds * 1_000L,
+                    reconnectAttempts = settings.playerReconnectAttempts,
+                    defaultVolume = settings.playerVolume,
+                    audioOnly = settings.playerAudioOnly,
+                    preferredAudioLanguages = settings.playerAudioLanguages.split(',').map(String::trim).filter(String::isNotEmpty),
+                    preferredSubtitleLanguages = settings.playerSubtitleLanguages.split(',').map(String::trim).filter(String::isNotEmpty),
+                    minBufferMs = settings.playerMinBufferSeconds * 1_000,
+                    maxBufferMs = maxOf(settings.playerMaxBufferSeconds, settings.playerMinBufferSeconds + 1) * 1_000,
+                    bufferForPlaybackMs = settings.playerPrebufferSeconds * 1_000,
+                    matchFrameRate = settings.playerMatchFrameRate,
+                ),
+            )
+        }
+    }
+    DisposableEffect(player) {
+        onPlayer(player)
+        onDispose {
+            onPlayer(null)
+            player.release()
+        }
+    }
 
     // After an update: offer "Что нового" once.
     val version = remember { installedVersion(ctx) }

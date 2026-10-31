@@ -72,6 +72,10 @@ data class ChannelRow(
     @ColumnInfo(defaultValue = "") val ckey: String,
     val number: Int? = null,
     @ColumnInfo(defaultValue = "0") val archiveDays: Int = 0,
+    val userAgent: String? = null,
+    val referer: String? = null,
+    val drmLicenseUrl: String? = null,
+    val drmScheme: String? = null,
     /** The guide channel ([EpgChannel.id]) bound by [app.iptvplayer.core.epg.EpgIndex]; kept up to date by [EpgStore]. */
     val epgId: Long? = null,
     /** [matchName] of [name]: how a favourite of another source finds this channel (LIVE-008). */
@@ -158,7 +162,7 @@ abstract class PlaylistDao {
     /** Keyset pages over a source in id order, for passes over every channel (logo and guide matching). */
     @Query(
         """SELECT ch.id, ch.name, ch.url, cat.name AS `group`, ch.logo, ch.tvgId, ch.autoLogo, ch.ckey AS `key`,
-        ch.number, ch.archiveDays
+        ch.number, ch.archiveDays, ch.userAgent, ch.referer, ch.drmLicenseUrl, ch.drmScheme
         FROM channel ch JOIN category cat ON cat.id = ch.categoryId
         WHERE ch.sourceId = :sourceId AND ch.id > :after ORDER BY ch.id LIMIT :limit"""
     )
@@ -197,7 +201,7 @@ data class ItemRow(
         LibraryRow::class, VodCategoryRow::class, VodRow::class, VodFts::class, EpisodeRow::class,
         VodState::class, VodCategoryState::class, VodOrder::class, VodCollection::class, VodCollectionItem::class, Watch::class,
     ],
-    version = 5,
+    version = 7,
 )
 abstract class AppDb : RoomDatabase() {
     abstract fun playlist(): PlaylistDao
@@ -211,7 +215,7 @@ abstract class AppDb : RoomDatabase() {
 
         fun get(ctx: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(ctx.applicationContext, AppDb::class.java, "fervo.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .build().also { instance = it }
         }
     }
@@ -287,6 +291,22 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
         db.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS `programme_fts` USING FTS4(`searchTitle` TEXT NOT NULL, content=`programme`)")
         db.execSQL("INSERT INTO programme_fts(programme_fts) VALUES ('rebuild')")
         // Room reinstalls the content-sync triggers after migration.
+    }
+}
+
+/** v5 → v6 (P3/SRC-009): preserve per-stream User-Agent and Referer from M3U metadata. */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `channel` ADD COLUMN `userAgent` TEXT")
+        db.execSQL("ALTER TABLE `channel` ADD COLUMN `referer` TEXT")
+    }
+}
+
+/** v6 → v7 (P3/PLR-019): preserve per-stream DRM metadata from M3U KODIPROP tags. */
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `channel` ADD COLUMN `drmLicenseUrl` TEXT")
+        db.execSQL("ALTER TABLE `channel` ADD COLUMN `drmScheme` TEXT")
     }
 }
 

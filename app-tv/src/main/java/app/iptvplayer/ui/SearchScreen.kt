@@ -70,6 +70,7 @@ import app.iptvplayer.core.model.Source
 import app.iptvplayer.core.model.VodItem
 import app.iptvplayer.core.model.VodKind
 import app.iptvplayer.core.player.PlayItem
+import app.iptvplayer.core.player.playItem
 import app.iptvplayer.core.player.PlayerSession
 import app.iptvplayer.core.search.SearchKind
 import app.iptvplayer.core.search.SearchResults
@@ -184,7 +185,7 @@ fun SearchScreen(
         if (!wide || !settings.preview) return@LaunchedEffect
         delay(Defaults.PREVIEW_DELAY_MS)
         player.setMuted(!settings.previewSound)
-        player.open(PlayItem(ch.channel.url))
+        player.open(ch.channel.playItem())
         playingKey = ch.channel.key
     }
     DisposableEffect(player) { onDispose { player.close() } }

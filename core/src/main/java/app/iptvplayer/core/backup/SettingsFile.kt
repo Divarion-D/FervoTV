@@ -234,6 +234,16 @@ private fun settingsJson(s: Settings): JSONObject = JSONObject()
     .put("homeGuide", s.homeGuide)
     .put("homeVisible", s.homeVisible)
     .put("homePreview", s.homePreview)
+    .put("playerGiveUpSeconds", s.playerGiveUpSeconds)
+    .put("playerReconnectAttempts", s.playerReconnectAttempts)
+    .put("playerAudioLanguages", s.playerAudioLanguages)
+    .put("playerSubtitleLanguages", s.playerSubtitleLanguages)
+    .put("playerMatchFrameRate", s.playerMatchFrameRate)
+    .put("playerAudioOnly", s.playerAudioOnly)
+    .put("playerVolume", s.playerVolume)
+    .put("playerMinBufferSeconds", s.playerMinBufferSeconds)
+    .put("playerMaxBufferSeconds", s.playerMaxBufferSeconds)
+    .put("playerPrebufferSeconds", s.playerPrebufferSeconds)
 
 private fun readSettings(j: JSONObject): Settings {
     val d = Settings()
@@ -264,6 +274,16 @@ private fun readSettings(j: JSONObject): Settings {
         homeGuide = j.optBoolean("homeGuide", d.homeGuide),
         homeVisible = j.optBoolean("homeVisible", d.homeVisible),
         homePreview = j.optBoolean("homePreview", d.homePreview),
+        playerGiveUpSeconds = j.optInt("playerGiveUpSeconds", d.playerGiveUpSeconds).coerceIn(0, 300),
+        playerReconnectAttempts = j.optInt("playerReconnectAttempts", d.playerReconnectAttempts).coerceIn(0, 20),
+        playerAudioLanguages = j.optString("playerAudioLanguages", d.playerAudioLanguages),
+        playerSubtitleLanguages = j.optString("playerSubtitleLanguages", d.playerSubtitleLanguages),
+        playerMatchFrameRate = j.optBoolean("playerMatchFrameRate", d.playerMatchFrameRate),
+        playerAudioOnly = j.optBoolean("playerAudioOnly", d.playerAudioOnly),
+        playerVolume = j.optInt("playerVolume", d.playerVolume).coerceIn(0, 150),
+        playerMinBufferSeconds = j.optInt("playerMinBufferSeconds", d.playerMinBufferSeconds).coerceIn(1, 60),
+        playerMaxBufferSeconds = j.optInt("playerMaxBufferSeconds", d.playerMaxBufferSeconds).coerceIn(2, 120),
+        playerPrebufferSeconds = j.optInt("playerPrebufferSeconds", d.playerPrebufferSeconds).coerceIn(0, 30),
     )
 }
 

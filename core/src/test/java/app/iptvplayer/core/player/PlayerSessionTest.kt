@@ -114,4 +114,17 @@ class PlayerSessionTest {
         session.releaseVideoView(full)
         assertEquals(listOf("view", "view", "view null"), engine.calls)
     }
+
+    @Test
+    fun channelHeadersTravelWithPlayItem() {
+        val channel = app.iptvplayer.core.model.Channel(
+            "Synthetic", "http://test/stream", "P3",
+            userAgent = "FervoTV-Test", referer = "https://test.invalid/",
+        )
+        session.open(channel.playItem())
+        assertEquals(
+            mapOf("User-Agent" to "FervoTV-Test", "Referer" to "https://test.invalid/"),
+            session.current?.headers,
+        )
+    }
 }

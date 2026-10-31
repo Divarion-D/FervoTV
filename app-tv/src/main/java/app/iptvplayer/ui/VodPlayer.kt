@@ -3,6 +3,8 @@ package app.iptvplayer.ui
 import android.app.Activity
 import android.view.SurfaceView
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -111,6 +114,9 @@ fun VodPlayer(
     val error = state.error?.let { if (offline) stringResource(R.string.no_connection) else playbackErrorText(ctx, it) }
     val latestSave by rememberUpdatedState(onSave)
     val current by rememberUpdatedState(play)
+    val subtitlePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { player.addSubtitle(it.toString(), "text/vtt") }
+    }
 
     fun save() {
         val d = player.duration
@@ -222,7 +228,21 @@ fun VodPlayer(
                     player.setVideoView(this)
                 }
             },
-            modifier = (if (state.aspect > 0f) Modifier.aspectRatio(state.aspect) else Modifier.fillMaxSize()).align(Alignment.Center),
+            modifier = when (state.scale) {
+                app.iptvplayer.core.player.VideoScale.FIT,
+                app.iptvplayer.core.player.VideoScale.ORIGINAL,
+                app.iptvplayer.core.player.VideoScale.RATIO_16_9,
+                app.iptvplayer.core.player.VideoScale.RATIO_4_3 ->
+                    (if (state.aspect > 0f) Modifier.aspectRatio(
+                        when (state.scale) {
+                            app.iptvplayer.core.player.VideoScale.RATIO_16_9 -> 16f / 9f
+                            app.iptvplayer.core.player.VideoScale.RATIO_4_3 -> 4f / 3f
+                            else -> state.aspect
+                        },
+                    ) else Modifier.fillMaxSize())
+                app.iptvplayer.core.player.VideoScale.FILL,
+                app.iptvplayer.core.player.VideoScale.STRETCH -> Modifier.fillMaxSize()
+            }.align(Alignment.Center),
             onRelease = { player.releaseVideoView(it) },
         )
         Box(Modifier.matchParentSize().pointerInput(Unit) { detectTapGestures { panel = !panel; panelTick++ } })
@@ -236,13 +256,14 @@ fun VodPlayer(
             Text(stringResource(if (tv) R.string.vod_retry_tv else R.string.vod_retry_touch), style = TvType.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
         }
         if (panel || state.paused || error != null) VodPanel(
-            title, subtitle, position, duration, state.paused, tv, previous != null, next != null,
+            title, subtitle, position, duration, state, player, tv, previous != null, next != null,
             Modifier.align(Alignment.BottomStart),
             onSeekTo = { player.seekTo(it); position = it; panelTick++ },
             onSeek = ::seek,
             onPause = { player.togglePause(); panelTick++ },
             onPrevious = { previous?.let(::goTo) },
             onNext = { next?.let(::goTo) },
+            onSubtitleFile = { subtitlePicker.launch(arrayOf("text/vtt", "application/x-subrip", "text/plain")) },
         )
         if (!tv && (panel || state.paused)) Icon(
             painterResource(R.drawable.ic_arrow_back), stringResource(R.string.back), tint = Color.White,
@@ -272,9 +293,11 @@ fun VodPlayer(
 /** Title, the seek bar with times and (touch) the buttons, on a gradient at the bottom (4.12). */
 @Composable
 private fun VodPanel(
-    title: String, subtitle: String?, position: Long, duration: Long, paused: Boolean, tv: Boolean,
+    title: String, subtitle: String?, position: Long, duration: Long, state: app.iptvplayer.core.player.PlaybackState,
+    player: PlayerSession, tv: Boolean,
     hasPrevious: Boolean, hasNext: Boolean, modifier: Modifier,
     onSeekTo: (Long) -> Unit, onSeek: (Long) -> Unit, onPause: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit,
+    onSubtitleFile: () -> Unit,
 ) {
     Column(
         modifier.fillMaxWidth()
@@ -302,7 +325,7 @@ private fun VodPanel(
         Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(clockText(position), style = TvType.label, color = Color.White)
             Spacer(Modifier.weight(1f))
-            if (tv && paused) Icon(painterResource(R.drawable.ic_pause), stringResource(R.string.pause), tint = Color.White, modifier = Modifier.size(24.dp))
+            if (tv && state.paused) Icon(painterResource(R.drawable.ic_pause), stringResource(R.string.pause), tint = Color.White, modifier = Modifier.size(24.dp))
             Spacer(Modifier.weight(1f))
             Text(if (duration > 0) clockText(duration) else "", style = TvType.label, color = Color.White.copy(alpha = 0.7f))
         }
@@ -310,9 +333,24 @@ private fun VodPanel(
         if (!tv) Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
             if (hasPrevious) PanelButton(R.drawable.ic_skip_previous, stringResource(R.string.episode_previous), onPrevious)
             PanelButton(R.drawable.ic_replay_10, stringResource(R.string.seek_back)) { onSeek(-Defaults.SEEK_STEP_MS) }
-            PanelButton(if (paused) R.drawable.ic_play_arrow else R.drawable.ic_pause, stringResource(if (paused) R.string.play else R.string.pause), onPause)
+            PanelButton(if (state.paused) R.drawable.ic_play_arrow else R.drawable.ic_pause, stringResource(if (state.paused) R.string.play else R.string.pause), onPause)
             PanelButton(R.drawable.ic_forward_10, stringResource(R.string.seek_forward)) { onSeek(Defaults.SEEK_STEP_MS) }
             if (hasNext) PanelButton(R.drawable.ic_skip_next, stringResource(R.string.episode_next), onNext)
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
+            TextButton(onClick = { player.setVolume(if (state.volume >= 150) 50 else state.volume + 25) }) {
+                Text(stringResource(R.string.player_volume, state.volume))
+            }
+            TextButton(onClick = { player.setSpeed(if (state.speed >= 2f) 0.5f else state.speed + 0.5f) }) {
+                Text(stringResource(R.string.player_speed, state.speed))
+            }
+            TextButton(onClick = { player.setVideoEnabled(!state.videoEnabled) }) {
+                Text(stringResource(if (state.videoEnabled) R.string.player_audio_only else R.string.player_video_on))
+            }
+            TextButton(onClick = onSubtitleFile) { Text(stringResource(R.string.player_subtitle_file)) }
+            TextButton(onClick = { player.setScale(app.iptvplayer.core.player.VideoScale.entries[(app.iptvplayer.core.player.VideoScale.entries.indexOf(state.scale) + 1) % app.iptvplayer.core.player.VideoScale.entries.size]) }) {
+                Text(state.scale.name)
+            }
         }
     }
 }
