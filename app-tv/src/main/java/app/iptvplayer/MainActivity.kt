@@ -1,7 +1,12 @@
 package app.iptvplayer
 
 import android.os.Bundle
+import android.os.Build
+import android.os.StatFs
+import android.net.Uri
 import android.widget.Toast
+import android.content.Intent
+import androidx.core.content.FileProvider
 import app.iptvplayer.core.Repository
 import app.iptvplayer.core.model.Source
 import app.iptvplayer.core.player.ExoEngine
@@ -78,8 +83,14 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.runtime.saveable.rememberSaveable
 import app.iptvplayer.core.Defaults
 import app.iptvplayer.core.net.onlineFlow
+import app.iptvplayer.core.update.AppRelease
+import app.iptvplayer.core.update.checkLatestRelease
+import app.iptvplayer.core.net.httpStream
 import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 import app.iptvplayer.ui.SettingsScreen
 import app.iptvplayer.ui.HomeScreen
 import app.iptvplayer.ui.SearchScreen
@@ -194,6 +205,68 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
     var changelogOffer by remember { mutableStateOf(false) }
     var changelogOpen by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { changelogOffer = repo.offerChangelog(version.first, version.second) }
+
+    // BAK-009: the first slice is an explicit check with release notes; downloading/installing follows after it.
+    var updateChecking by remember { mutableStateOf(false) }
+    var updateInstalling by remember { mutableStateOf(false) }
+    var updateStatus by remember { mutableStateOf<Txt?>(null) }
+    var availableUpdate by remember { mutableStateOf<AppRelease?>(null) }
+    fun checkForUpdate() {
+        if (updateChecking) return
+        scope.launch {
+            updateChecking = true
+            updateStatus = Txt(R.string.update_checking)
+            availableUpdate = null
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    checkLatestRelease(version.first, Build.SUPPORTED_ABIS.toList())
+                }
+            }.onSuccess { release ->
+                availableUpdate = release
+                if (release != null) changelogOffer = false
+                updateStatus = if (release == null) Txt(R.string.update_none) else Txt(R.string.update_available, release.version)
+            }.onFailure { e -> updateStatus = Txt(R.string.update_failed, errorText(ctx, e)) }
+            updateChecking = false
+        }
+    }
+    fun installUpdate(release: AppRelease) {
+        if (updateInstalling) return
+        scope.launch {
+            updateInstalling = true
+            updateStatus = Txt(R.string.update_downloading)
+            try {
+                val file = File(ctx.cacheDir, "updates/${release.apk.name}")
+                val enough = release.apk.size <= 0L || StatFs(ctx.cacheDir.path).availableBytes >= release.apk.size + (1L shl 20)
+                if (!enough) {
+                    updateStatus = Txt(R.string.update_no_space)
+                    return@launch
+                }
+                withContext(Dispatchers.IO) {
+                    val complete = file.isFile && file.length() > 0L && (release.apk.size <= 0L || file.length() == release.apk.size)
+                    if (!complete) {
+                        file.parentFile?.mkdirs()
+                        httpStream(release.apk.url) { input -> file.outputStream().use { input.copyTo(it) } }
+                    }
+                }
+                if (Build.VERSION.SDK_INT >= 26 && !ctx.packageManager.canRequestPackageInstalls()) {
+                    ctx.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${ctx.packageName}")))
+                    updateStatus = Txt(R.string.update_allow_install)
+                    return@launch
+                }
+                val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
+                ctx.startActivity(Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+            } catch (e: Exception) {
+                updateStatus = Txt(R.string.update_failed, errorText(ctx, e))
+            } finally {
+                updateInstalling = false
+            }
+        }
+    }
+    // BAK-009: check once when the app opens; failures stay silent here and remain visible in Settings.
+    LaunchedEffect(Unit) { checkForUpdate() }
 
     // Channels are shown right away; logos found in the index are stored next to them and fill in when ready.
     suspend fun loadLogos(s: Source) {
@@ -417,6 +490,13 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
                     onChange = ::changeSettings,
                     onEditSource = { editing = true },
                     onRefreshNow = { refreshRequest++ },
+                    updateStatus = updateStatus?.text().orEmpty(),
+                    updateChecking = updateChecking,
+                    updateInstalling = updateInstalling,
+                    availableUpdate = availableUpdate,
+                    onCheckUpdate = ::checkForUpdate,
+                    onInstallUpdate = ::installUpdate,
+                    onDismissUpdate = { availableUpdate = null },
                     onSaveFile = file.save,
                     onLoadFile = file.load,
                     onClose = close,
@@ -526,6 +606,31 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit) {
             },
             dismissButton = {
                 TextButton(onClick = { changelogOffer = false }, Modifier.focusRing(shape)) { Text(stringResource(R.string.later)) }
+            },
+        )
+    }
+    if (availableUpdate != null && !settingsOpen) {
+        val release = availableUpdate!!
+        val shape = RoundedCornerShape(50)
+        AlertDialog(
+            onDismissRequest = { availableUpdate = null },
+            icon = { Icon(painterResource(R.drawable.ic_refresh), contentDescription = null) },
+            title = { Text(stringResource(R.string.update_available_title, release.version)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.update_prompt_text))
+                    Text(release.notes.ifBlank { stringResource(R.string.update_no_notes) })
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { installUpdate(release) },
+                    enabled = !updateInstalling,
+                    modifier = Modifier.initialFocus().focusRing(shape),
+                ) { Text(stringResource(if (updateInstalling) R.string.update_downloading else R.string.update_now)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { availableUpdate = null }, Modifier.focusRing(shape)) { Text(stringResource(R.string.cancel)) }
             },
         )
     }

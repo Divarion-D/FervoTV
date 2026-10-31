@@ -66,6 +66,7 @@ import app.iptvplayer.core.home.encodeHomeRows
 import app.iptvplayer.core.home.homeRows
 import app.iptvplayer.core.home.moved
 import app.iptvplayer.core.model.StartScreen
+import app.iptvplayer.core.update.AppRelease
 
 @androidx.annotation.StringRes
 private fun StartScreen.title(): Int = when (this) {
@@ -108,6 +109,13 @@ fun SettingsScreen(
     onChange: (Settings) -> Unit,
     onEditSource: () -> Unit,
     onRefreshNow: () -> Unit,
+    updateStatus: String,
+    updateChecking: Boolean,
+    updateInstalling: Boolean,
+    availableUpdate: AppRelease?,
+    onCheckUpdate: () -> Unit,
+    onInstallUpdate: (AppRelease) -> Unit,
+    onDismissUpdate: () -> Unit,
     onSaveFile: () -> Unit,
     onLoadFile: () -> Unit,
     onClose: () -> Unit,
@@ -370,6 +378,11 @@ fun SettingsScreen(
             if (group == SettingsGroup.ABOUT) {
             SectionTitle(stringResource(R.string.settings_about))
             SettingItem(R.drawable.ic_info, stringResource(R.string.settings_version), versionLabel(ctx), Modifier.row("version")) {}
+            SettingItem(
+                R.drawable.ic_refresh, stringResource(R.string.update_check), updateStatus.ifEmpty { null }, Modifier.row("update"),
+                trailing = if (updateChecking) { { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) } } else null,
+                onClick = onCheckUpdate,
+            )
             SettingItem(R.drawable.ic_person, stringResource(R.string.settings_author), Defaults.AUTHOR, Modifier.row("author")) {}
             SettingItem(R.drawable.ic_code, stringResource(R.string.settings_github), Defaults.GITHUB_URL, Modifier.row("github")) {
                 if (!openUrl(ctx, Defaults.GITHUB_URL)) qrUrl = Defaults.GITHUB_URL
@@ -384,6 +397,24 @@ fun SettingsScreen(
         }
     }
     qrUrl?.let { url -> QrDialog(url, onDismiss = { qrUrl = null }) }
+    availableUpdate?.let { release ->
+        AlertDialog(
+            onDismissRequest = onDismissUpdate,
+            title = { Text(stringResource(R.string.update_available_title, release.version)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(release.title, style = MaterialTheme.typography.titleMedium)
+                    Text(release.notes.ifBlank { stringResource(R.string.update_no_notes) })
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { onInstallUpdate(release) }, enabled = !updateInstalling) {
+                    Text(stringResource(if (updateInstalling) R.string.update_downloading else R.string.update_install))
+                }
+            },
+            dismissButton = { TextButton(onClick = onDismissUpdate) { Text(stringResource(R.string.later)) } },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -67,6 +67,7 @@ object Defaults {
     // --- About ---
     const val AUTHOR = "Divarion-D"
     const val GITHUB_URL = "https://github.com/Divarion-D/FervoTV"
+    const val RELEASES_API = "https://api.github.com/repos/Divarion-D/FervoTV/releases/latest"
 
     // --- Network ---
     const val USER_AGENT = "FervoTV/0.1.0 (Android)"

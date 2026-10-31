@@ -174,6 +174,8 @@ Debug ставится отдельным приложением со своим
 
 </details>
 
+Полный пошаговый чеклист перед выпуском: [docs/PRE_RELEASE.md](docs/PRE_RELEASE.md).
+
 <details>
 <summary>Ключ подписи</summary>
 
