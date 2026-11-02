@@ -6,15 +6,28 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import android.os.Environment
+import java.net.URI
+
+/** Provider paths can contain credentials (Xtream); hide the whole path rather than guessing their position. */
+fun redactStreamUrl(url: String): String = runCatching {
+    val uri = URI(url)
+    require(uri.scheme.equals("http", true) || uri.scheme.equals("https", true))
+    require(!uri.host.isNullOrBlank())
+    val origin = URI(uri.scheme, null, uri.host, uri.port, null, null, null).toASCIIString()
+    val path = if (uri.rawPath.isNullOrEmpty() || uri.rawPath == "/") uri.rawPath.orEmpty() else "/***"
+    val query = uri.rawQuery?.split('&')?.joinToString("&", prefix = "?") { parameter ->
+        val name = parameter.substringBefore('=')
+        if ('=' in parameter && name.matches(Regex("[A-Za-z_][A-Za-z0-9_.-]{0,63}"))) "$name=***" else "***"
+    }.orEmpty()
+    origin + path + query
+}.getOrDefault("***")
 
 /** Small persistent playback log for PLR-025. It deliberately stores no credentials. */
 class PlaybackLog(private val context: Context) {
     private val file = File(context.filesDir, "playback-errors.log")
 
     fun record(url: String?, event: String) {
-        val safe = url.orEmpty()
-            .replace(Regex("(?i)(https?://)([^/@?]+):([^/@?]+)@"), "$1***:***@")
-            .replace(Regex("(?i)(password|pass|token|user)=[^&\\s]+"), "$1=***")
+        val safe = url?.let(::redactStreamUrl).orEmpty()
         val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
         runCatching {
             file.parentFile?.mkdirs()

@@ -8,6 +8,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.LooperMode
+import android.os.Looper
+import java.time.Duration
 
 /** Test engine: records calls, state is set by the test. */
 class FakeEngine : PlaybackEngine {
@@ -30,6 +34,47 @@ class FakeEngine : PlaybackEngine {
 class PlayerSessionTest {
     private val engine = FakeEngine()
     private val session = PlayerSession { engine }
+
+    @Test
+    @LooperMode(LooperMode.Mode.PAUSED)
+    fun sleepTimerStopsAtTheDeadlineEvenBetweenTicks() {
+        session.open(PlayItem("http://a/film.mp4", live = false))
+        session.setSleepTimer(1_500)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1_499))
+        assertEquals("http://a/film.mp4", session.current?.url)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1))
+        assertEquals(null, session.current)
+        assertEquals(null, session.sleepRemainingMs.value)
+        assertEquals(listOf("play http://a/film.mp4", "stop"), engine.calls)
+    }
+
+    @Test
+    @LooperMode(LooperMode.Mode.PAUSED)
+    fun sleepTimerCanBeReplacedAndCancelledWithoutStoppingPlayback() {
+        session.open(PlayItem("http://a/1.ts"))
+        session.setSleepTimer(1_000)
+        session.setSleepTimer(3_000)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+        assertEquals(2_000L, session.sleepRemainingMs.value)
+        session.setSleepTimer(null)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(4))
+        assertEquals("http://a/1.ts", session.current?.url)
+        assertEquals(null, session.sleepRemainingMs.value)
+        assertEquals(listOf("play http://a/1.ts"), engine.calls)
+    }
+
+    @Test
+    @LooperMode(LooperMode.Mode.PAUSED)
+    fun closingTheSessionRemovesTheOldTimerBeforeAnotherChannel() {
+        session.open(PlayItem("http://a/1.ts"))
+        session.setSleepTimer(1_000)
+        session.close()
+        session.open(PlayItem("http://a/2.ts"))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+        assertEquals("http://a/2.ts", session.current?.url)
+        assertEquals(null, session.sleepRemainingMs.value)
+        assertEquals(listOf("play http://a/1.ts", "stop", "play http://a/2.ts"), engine.calls)
+    }
 
     @Test
     fun liveIsReleasedInBackgroundAndStartsAgainInFront() {

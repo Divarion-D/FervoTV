@@ -91,7 +91,6 @@ data class PlaybackState(
     val audioTracks: List<AudioTrack> = emptyList(),
     val subtitleTracks: List<SubtitleTrack> = emptyList(),
     val streamInfo: StreamInfo? = null,
-    val sleepRemainingMs: Long? = null,
 )
 
 /**
@@ -176,7 +175,7 @@ class PlayerSession(newEngine: () -> PlaybackEngine) {
                 close()
             } else {
                 _sleepRemainingMs.value = left
-                sleepHandler.postDelayed(this, 1_000L)
+                sleepHandler.postDelayed(this, minOf(left, 1_000L))
             }
         }
     }

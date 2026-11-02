@@ -1,8 +1,6 @@
 package app.iptvplayer.ui
 
 import android.app.Activity
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
@@ -19,7 +17,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -47,8 +44,6 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.type
@@ -179,6 +174,7 @@ fun PlayerScreen(
             // Consume every mapped key so D-pad presses never move focus to the list underneath.
             .onKeyEvent { e ->
                 if (panelNow) return@onKeyEvent false // the panel's list moves its own focus
+                if (controls && e.toAction() in listOf(Action.Up, Action.Down, Action.Left, Action.Right, Action.Ok)) return@onKeyEvent false
                 val digit = if (e.type == KeyEventType.KeyDown) keyDigit(e.nativeKeyEvent.keyCode) else null
                 if (digit != null) {
                     dial = dial.digit(digit, System.currentTimeMillis())
@@ -217,9 +213,9 @@ fun PlayerScreen(
         Box(Modifier.matchParentSize().touchActions(handle))
         if (state.buffering && error == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
         if (shown != null && (showInfo || error != null)) {
-            InfoBar(shown, index + 1, total, error, Modifier.align(Alignment.BottomStart))
+            InfoBar(shown, index + 1, total, error, Modifier.align(if (controls) Alignment.TopStart else Alignment.BottomStart))
         }
-        if (controls) PlayerControls(player, state, Modifier.align(Alignment.BottomCenter))
+        if (controls) PlayerControls(player, Modifier.align(Alignment.BottomCenter))
         // The dialed number at the top right (LIVE-009); no clock in the player (UI-009, owner's decision).
         if (dial.text.isNotEmpty()) Text(
             dial.text, style = TvType.display,
@@ -274,60 +270,13 @@ private fun InfoBar(ch: Channel, number: Int, total: Int, error: String?, modifi
     }
 }
 
-/** Compact D-pad/touch panel shared by live and VOD entry points (PLR-007/008/009/024/027/028). */
+/** Compact live D-pad/touch panel; timer and details are shared with VOD through PlayerTools. */
 @Composable
-private fun PlayerControls(player: PlayerSession, state: app.iptvplayer.core.player.PlaybackState, modifier: Modifier) {
-    val c = MaterialTheme.colorScheme
-    val context = LocalContext.current
-    val subtitlePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { player.addSubtitle(it.toString(), "text/vtt") }
-    }
+private fun PlayerControls(player: PlayerSession, modifier: Modifier) {
     Column(
         modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.88f), RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
-            .padding(horizontal = 18.dp, vertical = 10.dp),
+            .padding(horizontal = 18.dp, vertical = 16.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.player_controls), style = MaterialTheme.typography.titleMedium, color = Color.White, modifier = Modifier.weight(1f))
-            state.streamInfo?.let { info ->
-                Text("${info.width}×${info.height} · ${info.videoCodec.orEmpty()} · ${info.audioCodec.orEmpty()} · ${info.audioChannels}ch · ${info.bufferedMs / 1000}s", style = MaterialTheme.typography.labelSmall, color = c.onSurfaceVariant)
-            }
-        }
-        Row(Modifier.fillMaxWidth()) {
-            TextButton(onClick = { player.togglePause() }) { Text(stringResource(if (state.paused) R.string.player_play else R.string.player_pause)) }
-            TextButton(onClick = { player.seekTo(player.position - Defaults.SEEK_STEP_MS) }) { Text("−10s") }
-            TextButton(onClick = { player.seekTo(player.position + Defaults.SEEK_STEP_MS) }) { Text("+10s") }
-            TextButton(onClick = { player.setSpeed(if (state.speed >= 2f) 0.5f else state.speed + 0.5f) }) { Text(stringResource(R.string.player_speed, state.speed)) }
-            TextButton(onClick = { player.setVolume(if (state.volume >= 150) 50 else state.volume + 25) }) { Text(stringResource(R.string.player_volume, state.volume)) }
-        }
-        Row(Modifier.fillMaxWidth()) {
-            TextButton(onClick = {
-                val next = state.audioTracks.indexOfFirst { it.selected }.let { if (it < 0) 0 else (it + 1) % state.audioTracks.size.coerceAtLeast(1) }
-                if (state.audioTracks.isNotEmpty()) player.selectAudioTrack(next)
-            }) { Text(stringResource(R.string.player_audio)) }
-            TextButton(onClick = {
-                val next = state.subtitleTracks.indexOfFirst { it.selected }
-                if (next >= 0 && next + 1 < state.subtitleTracks.size) player.selectSubtitleTrack(next + 1) else player.disableSubtitles()
-            }) { Text(stringResource(R.string.player_subtitles)) }
-            TextButton(onClick = { player.setVideoEnabled(!state.videoEnabled) }) {
-                Text(stringResource(if (state.videoEnabled) R.string.player_audio_only else R.string.player_video_on))
-            }
-            TextButton(onClick = {
-                val values = app.iptvplayer.core.player.VideoScale.entries
-                player.setScale(values[(values.indexOf(state.scale) + 1) % values.size])
-            }) { Text(state.scale.name) }
-            TextButton(onClick = { subtitlePicker.launch(arrayOf("text/vtt", "application/x-subrip", "text/plain")) }) {
-                Text(stringResource(R.string.player_subtitle_file))
-            }
-            TextButton(onClick = { player.setSleepTimer(30 * 60_000L) }) { Text(stringResource(R.string.player_sleep)) }
-            TextButton(onClick = {
-                player.current?.let { item ->
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.url)).setType("video/*"))
-                }
-            }) { Text(stringResource(R.string.player_external)) }
-        }
-        if (state.audioTracks.isEmpty() && state.subtitleTracks.isEmpty()) {
-            Text(stringResource(R.string.player_no_tracks), style = MaterialTheme.typography.labelSmall, color = c.onSurfaceVariant)
-        }
-        state.sleepRemainingMs?.let { Text("${it / 60_000} min", style = MaterialTheme.typography.labelSmall, color = c.primary) }
+        PlayerTools(player)
     }
 }

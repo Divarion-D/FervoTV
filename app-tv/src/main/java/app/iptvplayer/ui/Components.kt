@@ -3,6 +3,8 @@ package app.iptvplayer.ui
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -85,7 +87,7 @@ fun <T> ChoiceDialog(
     onDismissRequest = onDismiss,
     title = { Text(title) },
     text = {
-        Column {
+        Column(Modifier.verticalScroll(rememberScrollState())) {
             for (option in options) {
                 val shape = RoundedCornerShape(12.dp)
                 Row(

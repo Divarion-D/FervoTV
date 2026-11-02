@@ -3,12 +3,12 @@ package app.iptvplayer.ui
 import android.app.Activity
 import android.view.SurfaceView
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -31,7 +31,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -48,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
@@ -81,7 +81,7 @@ data class VodPlay(val item: VodItem, val episode: Episode? = null, val start: L
 
 /**
  * Full-screen film or episode (VOD-009, VOD-010; the P3 panel will grow from this): the same [PlayerSession] as live,
- * with a seek bar. Remote: ◀▶ seek by [Defaults.SEEK_STEP_MS] (held — keeps going), OK shows the panel and then
+ * with a seek bar. Remote: with the panel hidden ◀▶ seek by [Defaults.SEEK_STEP_MS]; on the panel arrows move focus. OK shows it and then
  * pauses, ▲▼ / Menu show it, CH± previous / next episode, Back hides the panel, then closes. Touch: a tap shows the
  * panel with its buttons and the seek bar.
  *
@@ -110,13 +110,12 @@ fun VodPlayer(
     var duration by remember { mutableLongStateOf(0L) }
     var panel by remember { mutableStateOf(true) }
     var panelTick by remember { mutableIntStateOf(0) } // any key restarts the hide timer
+    var toolsOpen by remember { mutableStateOf(false) }
+    var surfaceFocused by remember { mutableStateOf(true) }
     var cancelled by remember(play) { mutableStateOf(false) } // the "next episode" card was dismissed
     val error = state.error?.let { if (offline) stringResource(R.string.no_connection) else playbackErrorText(ctx, it) }
     val latestSave by rememberUpdatedState(onSave)
     val current by rememberUpdatedState(play)
-    val subtitlePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { player.addSubtitle(it.toString(), "text/vtt") }
-    }
 
     fun save() {
         val d = player.duration
@@ -151,8 +150,8 @@ fun VodPlayer(
             player.background()
         }
     }
-    LaunchedEffect(panel, panelTick, state.paused) {
-        if (panel && !state.paused) {
+    LaunchedEffect(panel, panelTick, state.paused, toolsOpen, surfaceFocused) {
+        if (panel && !state.paused && !toolsOpen && surfaceFocused) {
             delay(Defaults.PLAYER_INFO_HIDE_MS)
             panel = false
         }
@@ -217,7 +216,13 @@ fun VodPlayer(
     Box(
         Modifier.fillMaxSize().background(Color.Black)
             .focusRequester(focus)
-            .onKeyEvent { e -> e.toAction()?.let(handle) ?: false }
+            .onFocusChanged { surfaceFocused = it.isFocused }
+            .onKeyEvent { e ->
+                val action = e.toAction()
+                if (panel && action in listOf(Action.Up, Action.Down, Action.Left, Action.Right)) false
+                else if (!surfaceFocused && action == Action.Ok) false
+                else action?.let(handle) ?: false
+            }
             .focusable()
     ) {
         AndroidView(
@@ -263,7 +268,7 @@ fun VodPlayer(
             onPause = { player.togglePause(); panelTick++ },
             onPrevious = { previous?.let(::goTo) },
             onNext = { next?.let(::goTo) },
-            onSubtitleFile = { subtitlePicker.launch(arrayOf("text/vtt", "application/x-subrip", "text/plain")) },
+            onToolsOpen = { toolsOpen = it },
         )
         if (!tv && (panel || state.paused)) Icon(
             painterResource(R.drawable.ic_arrow_back), stringResource(R.string.back), tint = Color.White,
@@ -297,11 +302,12 @@ private fun VodPanel(
     player: PlayerSession, tv: Boolean,
     hasPrevious: Boolean, hasNext: Boolean, modifier: Modifier,
     onSeekTo: (Long) -> Unit, onSeek: (Long) -> Unit, onPause: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit,
-    onSubtitleFile: () -> Unit,
+    onToolsOpen: (Boolean) -> Unit,
 ) {
     Column(
         modifier.fillMaxWidth()
             .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))))
+            .verticalScroll(rememberScrollState())
             .padding(start = if (tv) 48.dp else 20.dp, end = if (tv) 48.dp else 20.dp, top = 64.dp, bottom = 24.dp),
     ) {
         if (subtitle != null) Text(subtitle, style = TvType.label, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -329,39 +335,11 @@ private fun VodPanel(
             Spacer(Modifier.weight(1f))
             Text(if (duration > 0) clockText(duration) else "", style = TvType.label, color = Color.White.copy(alpha = 0.7f))
         }
-        // Touch: the buttons in a row of their own, so a phone held upright fits them all.
-        if (!tv) Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
-            if (hasPrevious) PanelButton(R.drawable.ic_skip_previous, stringResource(R.string.episode_previous), onPrevious)
-            PanelButton(R.drawable.ic_replay_10, stringResource(R.string.seek_back)) { onSeek(-Defaults.SEEK_STEP_MS) }
-            PanelButton(if (state.paused) R.drawable.ic_play_arrow else R.drawable.ic_pause, stringResource(if (state.paused) R.string.play else R.string.pause), onPause)
-            PanelButton(R.drawable.ic_forward_10, stringResource(R.string.seek_forward)) { onSeek(Defaults.SEEK_STEP_MS) }
-            if (hasNext) PanelButton(R.drawable.ic_skip_next, stringResource(R.string.episode_next), onNext)
-        }
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
-            TextButton(onClick = { player.setVolume(if (state.volume >= 150) 50 else state.volume + 25) }) {
-                Text(stringResource(R.string.player_volume, state.volume))
-            }
-            TextButton(onClick = { player.setSpeed(if (state.speed >= 2f) 0.5f else state.speed + 0.5f) }) {
-                Text(stringResource(R.string.player_speed, state.speed))
-            }
-            TextButton(onClick = { player.setVideoEnabled(!state.videoEnabled) }) {
-                Text(stringResource(if (state.videoEnabled) R.string.player_audio_only else R.string.player_video_on))
-            }
-            TextButton(onClick = onSubtitleFile) { Text(stringResource(R.string.player_subtitle_file)) }
-            TextButton(onClick = { player.setScale(app.iptvplayer.core.player.VideoScale.entries[(app.iptvplayer.core.player.VideoScale.entries.indexOf(state.scale) + 1) % app.iptvplayer.core.player.VideoScale.entries.size]) }) {
-                Text(state.scale.name)
-            }
-        }
+        PlayerTools(
+            player, onDialogOpen = onToolsOpen, onSeek = onSeek, onPause = onPause,
+            onPrevious = onPrevious.takeIf { hasPrevious }, onNext = onNext.takeIf { hasNext },
+        )
     }
-}
-
-@Composable
-private fun PanelButton(@DrawableRes icon: Int, description: String, onClick: () -> Unit) {
-    Box(
-        Modifier.size(48.dp).background(Color.White.copy(alpha = 0.15f), CircleShape)
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) { Icon(painterResource(icon), description, tint = Color.White, modifier = Modifier.size(28.dp)) }
 }
 
 /** VOD-009: "Next episode in 12 s" with «Смотреть сейчас» and «Отмена» (remote: OK / Back). */
