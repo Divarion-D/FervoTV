@@ -304,7 +304,6 @@
     <string name="settings_playback_log_saved">Player log saved to Downloads</string>
     <string name="settings_playback_log_failed">Could not save player log</string>
     <string name="doc_russian_only">This text is in Russian only.</string>
-    <string name="qr_title">Open on your phone</string>
 
     <!-- Interface language (UI-022) -->
     <string name="settings_interface">Interface</string>
@@ -505,6 +504,7 @@
     <string name="player_subtitles">Subtitles</string>
     <string name="player_subtitles_off">Subtitles off</string>
     <string name="player_subtitle_file">Subtitle file</string>
+    <string name="player_subtitle_file_error">Cannot open subtitles. Select an SRT or WebVTT file.</string>
     <string name="player_speed">Speed %1$.1fx</string>
     <string name="player_volume">Volume %1$d%%</string>
     <string name="player_audio_only">Audio only</string>

@@ -198,6 +198,7 @@ class ExoEngine(ctx: Context, private val config: PlaybackConfig = PlaybackConfi
 
     override fun play(item: PlayItem) {
         current = item
+        http.setUserAgent(item.headers.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }?.value ?: Defaults.USER_AGENT)
         http.setDefaultRequestProperties(item.headers)
         formatRetries = 0
         reconnectAttempt = 0

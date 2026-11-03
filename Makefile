@@ -21,7 +21,7 @@ APK_RELEASE := app-$(APP)/build/outputs/apk/release/app-$(APP)-release.apk
 APK_DEBUG   := app-$(APP)/build/outputs/apk/debug/app-$(APP)-debug.apk
 
 .DEFAULT_GOAL := help
-.PHONY: help version test test-fast lint check p3-fixtures debug release release-mobile bundle dist ci-release \
+.PHONY: help version test test-fast test-fixtures lint check p3-fixtures debug release release-mobile bundle dist ci-release \
         verify install install-debug uninstall uninstall-debug run run-debug devices clean
 
 help: ## Список целей
@@ -48,8 +48,11 @@ lint: local.properties ## Lint всех модулей
 check: local.properties ## То же, что CI на каждый коммит: тесты + lint + debug-сборка
 	$(GRADLE) testDebugUnitTest lintDebug assembleDebug
 
-p3-fixtures: ## Синтетические MP4/TS/HLS/MKV-DTS/DASH/extensionless/SRT и M3U для проверки P3 (нужен ffmpeg)
-	tools/p3-synthetic-streams.sh
+test-fixtures: ## Тесты Python-генератора, включая реальные медиа (нужны ffmpeg и ffprobe)
+	python3 -m unittest discover -s tools/tests -v
+
+p3-fixtures: ## Синтетические потоки, субтитры и M3U для P3 (нужны Python 3, ffmpeg и ffprobe)
+	python3 tools/p3-synthetic-streams.py
 
 # --- Сборки ---
 

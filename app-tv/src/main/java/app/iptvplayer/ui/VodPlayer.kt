@@ -51,6 +51,9 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -208,6 +211,8 @@ fun VodPlayer(
                 else -> player.togglePause()
             }
             Action.PlayPause -> { player.togglePause(); panel = true }
+            Action.Play -> { player.setPaused(false); panel = true }
+            Action.Pause -> { player.setPaused(true); panel = true }
             Action.ChannelUp -> next?.let(::goTo)
             Action.ChannelDown -> previous?.let(::goTo)
             Action.Recall -> {}
@@ -223,6 +228,15 @@ fun VodPlayer(
         Modifier.fillMaxSize().background(Color.Black)
             .focusRequester(focus)
             .onFocusChanged { surfaceFocused = it.isFocused }
+            .onPreviewKeyEvent { e ->
+                // Compose's focused button consumes TV Back to clear focus before BackHandler sees it.
+                if (panel && !toolsOpen && e.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_BACK) {
+                    if (e.type == KeyEventType.KeyUp) {
+                        if (countdown) cancelled = true else panel = false
+                    }
+                    true
+                } else false
+            }
             .onKeyEvent { e ->
                 val action = e.toAction()
                 if (action != null) panelTick++

@@ -8,6 +8,7 @@ import java.io.Reader
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.LinkedBlockingQueue
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -162,6 +163,7 @@ class FakeServer(private val answer: (String) -> Pair<Int, String>) : AutoClosea
     private val socket = ServerSocket(0)
     val url = "http://127.0.0.1:${socket.localPort}"
     val requests = CopyOnWriteArrayList<String>()
+    val headers = LinkedBlockingQueue<Map<String, String>>()
 
     init {
         thread(isDaemon = true) {
@@ -175,7 +177,12 @@ class FakeServer(private val answer: (String) -> Pair<Int, String>) : AutoClosea
     private fun serve(c: Socket) {
         val r = c.getInputStream().bufferedReader()
         val line = r.readLine() ?: return
-        while (!r.readLine().isNullOrEmpty()) {}
+        val fields = mutableMapOf<String, String>()
+        while (true) {
+            val field = r.readLine()?.takeIf { it.isNotEmpty() } ?: break
+            fields[field.substringBefore(':').lowercase()] = field.substringAfter(':').trim()
+        }
+        headers.add(fields)
         val path = line.split(' ')[1]
         requests += path
         val (status, body) = answer(path)

@@ -301,7 +301,6 @@
     <string name="settings_playback_log_failed">Не удалось сохранить журнал</string>
     <!-- The documents are in Russian: no note in the Russian interface. -->
     <string name="doc_russian_only"></string>
-    <string name="qr_title">Откройте на телефоне</string>
 
     <string name="settings_interface">Интерфейс</string>
     <string name="settings_language">Язык интерфейса</string>
@@ -502,6 +501,7 @@
     <string name="player_subtitles">Субтитры</string>
     <string name="player_subtitles_off">Субтитры выключены</string>
     <string name="player_subtitle_file">Файл субтитров</string>
+    <string name="player_subtitle_file_error">Не удалось открыть субтитры. Выберите файл SRT или WebVTT.</string>
     <string name="player_speed">Скорость %1$.1fx</string>
     <string name="player_volume">Громкость %1$d%%</string>
     <string name="player_audio_only">Только звук</string>

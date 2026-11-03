@@ -222,7 +222,7 @@ fun settingsFile(repo: Repository, onRestored: (Backup) -> Unit): SettingsFileAc
 private const val MIME = "application/octet-stream"
 
 /** The name the user gave the file in the document window. */
-private fun displayName(ctx: Context, uri: Uri): String =
+internal fun displayName(ctx: Context, uri: Uri): String =
     runCatching {
         ctx.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
     }.getOrNull() ?: uri.lastPathSegment.orEmpty()

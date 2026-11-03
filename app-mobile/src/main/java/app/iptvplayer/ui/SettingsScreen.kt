@@ -55,7 +55,6 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.text.style.TextAlign
 
 /** New options: add a field to [Settings] + its default to [Defaults], then a [SettingItem] here. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -80,7 +79,6 @@ fun SettingsScreen(
     }
     var refreshDialog by remember { mutableStateOf(false) }
     var daysDialog by remember { mutableStateOf(false) }
-    var qrUrl by remember { mutableStateOf<String?>(null) }
     BackHandler(onBack = onClose)
     val ctx = LocalContext.current
     val rows = remember { mutableMapOf<String, FocusRequester>() }
@@ -88,8 +86,8 @@ fun SettingsScreen(
         focusRequester(rows.getOrPut(key) { FocusRequester() }).onFocusChanged { if (it.isFocused) lastRow = key }
     // TV: focus on the first row when opened, on the row we left from when back.
     val tv = remember { ctx.isTv() }
-    LaunchedEffect(refreshDialog, daysDialog, qrUrl) {
-        if (!tv || refreshDialog || daysDialog || qrUrl != null) return@LaunchedEffect
+    LaunchedEffect(refreshDialog, daysDialog) {
+        if (!tv || refreshDialog || daysDialog) return@LaunchedEffect
         withFrameNanos {}
         runCatching { rows[lastRow]?.requestFocus() }
     }
@@ -189,7 +187,7 @@ fun SettingsScreen(
             SettingItem(R.drawable.ic_info, "Версия", remember { versionLabel(ctx) }, Modifier.row("version")) {}
             SettingItem(R.drawable.ic_person, "Автор", Defaults.AUTHOR, Modifier.row("author")) {}
             SettingItem(R.drawable.ic_code, "Исходный код на GitHub", Defaults.GITHUB_URL, Modifier.row("github")) {
-                if (!openUrl(ctx, Defaults.GITHUB_URL)) qrUrl = Defaults.GITHUB_URL
+                openUrl(ctx, Defaults.GITHUB_URL)
             }
             SettingItem(R.drawable.ic_history, "Что нового", "Список изменений по версиям", Modifier.row("changelog")) {
                 subpage = "Что нового" to "CHANGELOG.md"
@@ -199,26 +197,9 @@ fun SettingsScreen(
             ) { subpage = "Лицензии" to "LICENSES.md" }
         }
     }
-    qrUrl?.let { url -> QrDialog(url, onDismiss = { qrUrl = null }) }
 }
 
 private fun daysText(n: Int) = "$n ${plural(n, "день", "дня", "дней")}"
-
-/** No browser (common on TV boxes): the link as a QR code for the phone, and as text. */
-@Composable
-private fun QrDialog(url: String, onDismiss: () -> Unit) = AlertDialog(
-    onDismissRequest = onDismiss,
-    title = { Text("Откройте на телефоне") },
-    text = {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            QrCode(url, Modifier.size(220.dp))
-            Text(url, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
-        }
-    },
-    confirmButton = {
-        TextButton(onClick = onDismiss, modifier = Modifier.initialFocus().focusRing(RoundedCornerShape(50))) { Text("Закрыть") }
-    },
-)
 
 /** "0.1 · сборка 1 · debug" — from the installed package, so it always matches build.gradle.kts. */
 private fun versionLabel(ctx: Context): String {
@@ -230,12 +211,10 @@ private fun versionLabel(ctx: Context): String {
     return "${info.versionName} · сборка $code" + if (debug) " · debug" else ""
 }
 
-/** False when there is no browser (TV boxes often have none). */
-private fun openUrl(ctx: Context, url: String): Boolean = try {
+/** Without a browser the repository URL remains visible in the settings row. */
+private fun openUrl(ctx: Context, url: String) = try {
     ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-    true
-} catch (e: ActivityNotFoundException) {
-    false
+} catch (_: ActivityNotFoundException) {
 }
 
 /**

@@ -60,7 +60,6 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.Row
 import app.iptvplayer.core.home.HomeRow
 import app.iptvplayer.core.home.HomeRowSetting
@@ -136,7 +135,6 @@ fun SettingsScreen(
     var resumeDialog by remember { mutableStateOf(false) }
     var playerGiveUpDialog by remember { mutableStateOf(false) }
     var startDialog by remember { mutableStateOf(false) }
-    var qrUrl by remember { mutableStateOf<String?>(null) }
     var groupName by rememberSaveable { mutableStateOf<String?>(null) }
     val group = groupName?.let(SettingsGroup::valueOf)
     BackHandler(onBack = { if (group == null) onClose() else groupName = null })
@@ -146,8 +144,8 @@ fun SettingsScreen(
         focusRequester(rows.getOrPut(key) { FocusRequester() }).onFocusChanged { if (it.isFocused) lastRow = key }
     // TV: focus on the first row when opened, on the row we left from when back.
     val tv = remember { ctx.isTv() }
-    LaunchedEffect(refreshDialog, daysDialog, languageDialog, resumeDialog, playerGiveUpDialog, startDialog, qrUrl) {
-        if (!tv || refreshDialog || daysDialog || languageDialog || resumeDialog || playerGiveUpDialog || startDialog || qrUrl != null) return@LaunchedEffect
+    LaunchedEffect(refreshDialog, daysDialog, languageDialog, resumeDialog, playerGiveUpDialog, startDialog) {
+        if (!tv || refreshDialog || daysDialog || languageDialog || resumeDialog || playerGiveUpDialog || startDialog) return@LaunchedEffect
         withFrameNanos {}
         runCatching { rows[lastRow]?.requestFocus() }
     }
@@ -314,6 +312,11 @@ fun SettingsScreen(
                     onDismiss = { resumeDialog = false },
                 )
             }
+            SettingItem(
+                R.drawable.ic_skip_next, stringResource(R.string.settings_auto_next), stringResource(R.string.settings_auto_next_summary),
+                Modifier.row("autoNext"), trailing = { Switch(settings.autoNext, onCheckedChange = null) },
+            ) { onChange(settings.copy(autoNext = !settings.autoNext)) }
+            }
 
             if (group == SettingsGroup.PLAYER) {
             SectionTitle(stringResource(R.string.settings_player))
@@ -354,11 +357,6 @@ fun SettingsScreen(
             SettingItem(
                 R.drawable.ic_refresh, stringResource(R.string.settings_player_prebuffer), stringResource(R.string.settings_player_buffer_summary, settings.playerPrebufferSeconds), Modifier.row("playerPrebuffer"),
             ) { onChange(settings.copy(playerPrebufferSeconds = if (settings.playerPrebufferSeconds >= 10) 0 else settings.playerPrebufferSeconds + 2)) }
-            }
-            SettingItem(
-                R.drawable.ic_skip_next, stringResource(R.string.settings_auto_next), stringResource(R.string.settings_auto_next_summary),
-                Modifier.row("autoNext"), trailing = { Switch(settings.autoNext, onCheckedChange = null) },
-            ) { onChange(settings.copy(autoNext = !settings.autoNext)) }
             }
 
             if (group == SettingsGroup.LOGOS) {
@@ -430,7 +428,7 @@ fun SettingsScreen(
             )
             SettingItem(R.drawable.ic_person, stringResource(R.string.settings_author), Defaults.AUTHOR, Modifier.row("author")) {}
             SettingItem(R.drawable.ic_code, stringResource(R.string.settings_github), Defaults.GITHUB_URL, Modifier.row("github")) {
-                if (!openUrl(ctx, Defaults.GITHUB_URL)) qrUrl = Defaults.GITHUB_URL
+                openUrl(ctx, Defaults.GITHUB_URL)
             }
             SettingItem(R.drawable.ic_history, stringResource(R.string.whats_new), stringResource(R.string.settings_whats_new_summary), Modifier.row("changelog")) {
                 subpage = R.string.whats_new to "CHANGELOG.md"
@@ -447,7 +445,6 @@ fun SettingsScreen(
             }
         }
     }
-    qrUrl?.let { url -> QrDialog(url, onDismiss = { qrUrl = null }) }
     availableUpdate?.let { release ->
         AlertDialog(
             onDismissRequest = onDismissUpdate,
@@ -502,22 +499,6 @@ private fun languageName(ctx: Context, tag: String): String = when (tag) {
     else -> ctx.getString(R.string.language_system)
 }
 
-/** No browser (common on TV boxes): the link as a QR code for the phone, and as text. */
-@Composable
-private fun QrDialog(url: String, onDismiss: () -> Unit) = AlertDialog(
-    onDismissRequest = onDismiss,
-    title = { Text(stringResource(R.string.qr_title)) },
-    text = {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            QrCode(url, Modifier.size(220.dp))
-            Text(url, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
-        }
-    },
-    confirmButton = {
-        TextButton(onClick = onDismiss, modifier = Modifier.initialFocus().focusRing(RoundedCornerShape(50))) { Text(stringResource(R.string.close)) }
-    },
-)
-
 /** "0.1 · build 1 · debug" — from the installed package, so it always matches build.gradle.kts. */
 private fun versionLabel(ctx: Context): String {
     @Suppress("DEPRECATION") // getPackageInfo(String, PackageInfoFlags) is API 33+
@@ -528,12 +509,10 @@ private fun versionLabel(ctx: Context): String {
     return ctx.getString(R.string.settings_version_value, info.versionName, code) + if (debug) " · debug" else ""
 }
 
-/** False when there is no browser (TV boxes often have none). */
-private fun openUrl(ctx: Context, url: String): Boolean = try {
+/** Without a browser the repository URL remains visible in the settings row. */
+private fun openUrl(ctx: Context, url: String) = try {
     ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-    true
-} catch (e: ActivityNotFoundException) {
-    false
+} catch (_: ActivityNotFoundException) {
 }
 
 /**

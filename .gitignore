@@ -4,6 +4,7 @@ local.properties
 .idea/
 *.iml
 .kotlin/
+__pycache__/
 .claude/worktrees/
 dist/
 

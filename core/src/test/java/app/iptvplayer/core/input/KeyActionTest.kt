@@ -25,6 +25,14 @@ class KeyActionTest {
     }
 
     @Test
+    fun explicitPlayAndPauseAreNotToggleCommands() {
+        assertEquals("Play", keyAction(KEYCODE_MEDIA_PLAY)?.name)
+        assertEquals("Pause", keyAction(KEYCODE_MEDIA_PAUSE)?.name)
+        assertEquals(Action.PlayPause, keyAction(KEYCODE_MEDIA_PLAY_PAUSE))
+        assertEquals(Action.PlayPause, keyAction(KEYCODE_SPACE))
+    }
+
+    @Test
     fun digits() {
         assertEquals(0, keyDigit(KEYCODE_0))
         assertEquals(9, keyDigit(KEYCODE_9))

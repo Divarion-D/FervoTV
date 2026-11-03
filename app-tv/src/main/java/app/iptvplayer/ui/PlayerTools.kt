@@ -78,7 +78,17 @@ fun PlayerTools(
     var audio by remember { mutableStateOf(false) }
     var subtitles by remember { mutableStateOf(false) }
     val subtitlePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { player.addSubtitle(it.toString(), "text/vtt") }
+        if (uri != null) runCatching {
+            val name = displayName(context, uri)
+            val type = context.contentResolver.getType(uri)
+            val mime = when {
+                name.endsWith(".srt", ignoreCase = true) -> "application/x-subrip"
+                name.endsWith(".vtt", ignoreCase = true) -> "text/vtt"
+                type == "application/x-subrip" || type == "text/vtt" -> type
+                else -> error("Unsupported subtitle format")
+            }
+            player.addSubtitle(uri.toString(), mime)
+        }.onFailure { Toast.makeText(context, R.string.player_subtitle_file_error, Toast.LENGTH_LONG).show() }
     }
     DisposableEffect(timer, details, more, audio, subtitles) {
         onDialogOpen(timer || details || more || audio || subtitles)

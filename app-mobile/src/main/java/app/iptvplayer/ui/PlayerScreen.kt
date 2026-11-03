@@ -105,6 +105,8 @@ fun PlayerScreen(
                 Action.Ok -> if (player.state.value.error != null) player.retry() else showInfo = !showInfo
                 Action.Menu -> showInfo = !showInfo
                 Action.PlayPause -> player.togglePause()
+                Action.Play -> player.setPaused(false)
+                Action.Pause -> player.setPaused(true)
                 Action.Left, Action.Right, Action.Recall -> {} // reserved: channel list / audio tracks, previous channel
             }
         }

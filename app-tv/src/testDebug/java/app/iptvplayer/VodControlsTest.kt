@@ -1,6 +1,7 @@
 package app.iptvplayer
 
 import android.view.View
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsActions
@@ -66,6 +67,43 @@ class VodControlsTest {
         compose.mainClock.advanceTimeBy(100)
         compose.onNodeWithContentDescription(compose.activity.getString(R.string.player_play)).assertIsDisplayed()
         compose.mainClock.autoAdvance = true
+    }
+
+    @Test
+    @Config(sdk = [25, 34], qualifiers = "en-land-television")
+    fun repeatedMediaPlayDoesNotPauseAndRepeatedPauseDoesNotResume() {
+        startPlayer()
+        compose.mainClock.autoAdvance = true
+        dispatchKey(KeyEvent.KEYCODE_MEDIA_PLAY)
+        assertEquals(false, engine.state.value.paused)
+        dispatchKey(KeyEvent.KEYCODE_MEDIA_PAUSE)
+        assertEquals(true, engine.state.value.paused)
+        dispatchKey(KeyEvent.KEYCODE_MEDIA_PAUSE)
+        assertEquals(true, engine.state.value.paused)
+        dispatchKey(KeyEvent.KEYCODE_MEDIA_PLAY)
+        assertEquals(false, engine.state.value.paused)
+        assertEquals(120_000L, engine.position)
+    }
+
+    private fun dispatchKey(code: Int) {
+        compose.runOnUiThread {
+            compose.activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
+            compose.activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
+        }
+        compose.waitForIdle()
+    }
+
+    @Test
+    @Config(sdk = [25], qualifiers = "en-land-television")
+    fun nativeBackFromFocusedTvButtonHidesPanelInOnePress() {
+        showPausedAfterAutoHide()
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+        compose.onNodeWithContentDescription(compose.activity.getString(R.string.player_play)).assertIsFocused()
+        dispatchKey(KeyEvent.KEYCODE_BACK)
+        assertEquals(0, closed)
+        compose.onNodeWithContentDescription(compose.activity.getString(R.string.player_play)).assertDoesNotExist()
+        dispatchKey(KeyEvent.KEYCODE_BACK)
+        assertEquals(1, closed)
     }
 
     @Test

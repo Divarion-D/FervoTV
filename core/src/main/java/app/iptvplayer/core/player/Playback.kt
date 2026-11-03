@@ -216,7 +216,12 @@ class PlayerSession(newEngine: () -> PlaybackEngine) {
 
     fun togglePause() {
         if (item == null) return
-        if (engine.state.value.paused) engine.resume() else engine.pause()
+        setPaused(!engine.state.value.paused)
+    }
+
+    fun setPaused(paused: Boolean) {
+        if (item == null) return
+        if (paused) engine.pause() else engine.resume()
     }
 
     fun setMuted(muted: Boolean) = engine.setMuted(muted)

@@ -100,6 +100,21 @@ class PlayerSessionTest {
     }
 
     @Test
+    fun explicitPauseAndPlayNeverToggleOrReopenTheItem() {
+        session.setPaused(true)
+        session.setPaused(false)
+        assertEquals(emptyList<String>(), engine.calls)
+        session.open(PlayItem("http://a/film.mp4", live = false))
+        engine.position = 12_000L
+        repeat(2) { session.setPaused(false) }
+        assertEquals(false, engine.state.value.paused)
+        repeat(2) { session.setPaused(true) }
+        assertEquals(true, engine.state.value.paused)
+        assertEquals(12_000L, session.position)
+        assertEquals(1, engine.calls.count { it.startsWith("play ") })
+    }
+
+    @Test
     fun togglePauseRetryAndClose() {
         session.togglePause() // nothing open: ignored
         session.retry()

@@ -9,7 +9,7 @@ import android.view.KeyEvent.*
  * Back is not here: it goes through BackHandler, which covers remote, phone button and gesture.
  */
 enum class Action {
-    Up, Down, Left, Right, Ok, ChannelUp, ChannelDown, PlayPause, Menu,
+    Up, Down, Left, Right, Ok, ChannelUp, ChannelDown, PlayPause, Play, Pause, Menu,
 
     /** The previous channel (LIVE-018): Last/Recall on the remote. */
     Recall,
@@ -24,7 +24,9 @@ fun keyAction(keyCode: Int): Action? = when (keyCode) {
     KEYCODE_DPAD_CENTER, KEYCODE_ENTER, KEYCODE_NUMPAD_ENTER -> Action.Ok
     KEYCODE_CHANNEL_UP, KEYCODE_PAGE_UP, KEYCODE_MEDIA_NEXT -> Action.ChannelUp
     KEYCODE_CHANNEL_DOWN, KEYCODE_PAGE_DOWN, KEYCODE_MEDIA_PREVIOUS -> Action.ChannelDown
-    KEYCODE_MEDIA_PLAY_PAUSE, KEYCODE_MEDIA_PLAY, KEYCODE_MEDIA_PAUSE, KEYCODE_SPACE -> Action.PlayPause
+    KEYCODE_MEDIA_PLAY_PAUSE, KEYCODE_SPACE -> Action.PlayPause
+    KEYCODE_MEDIA_PLAY -> Action.Play
+    KEYCODE_MEDIA_PAUSE -> Action.Pause
     KEYCODE_MENU, KEYCODE_INFO, KEYCODE_GUIDE -> Action.Menu
     KEYCODE_LAST_CHANNEL -> Action.Recall
     else -> null
