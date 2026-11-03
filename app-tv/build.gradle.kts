@@ -16,6 +16,7 @@ android {
     }
 
     buildFeatures { compose = true }
+    testOptions.unitTests.isIncludeAndroidResources = true
     // UI-022: the language is switched inside the app, so every translation must be in the APK, not in Play splits.
     bundle { language { enableSplit = false } }
     compileOptions {
@@ -36,4 +37,7 @@ dependencies {
     implementation("androidx.paging:paging-compose:3.3.5") // channel grid straight from the database
 
     testImplementation("junit:junit:4.13.2") // NoUiTextInCodeTest
+    add("testDebugImplementation", "org.robolectric:robolectric:4.14.1")
+    add("testDebugImplementation", "androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

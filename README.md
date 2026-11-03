@@ -111,7 +111,7 @@ Fervo TV развивается по фазам. Сейчас в работе P3
 
 ```bash
 make check        # то же, что CI на каждый коммит: тесты + lint + debug-сборка
-make test         # все unit-тесты;  make test-fast — только ядро
+make test         # unit-тесты и debug UI-регрессии; make test-fast — только ядро
 make release      # один подписанный универсальный APK для TV, телефона и планшета → dist/
 make release-mobile  # отдельный APK устаревшего мобильного интерфейса → dist/
 make install run  # собрать release, поставить по adb и запустить (данные сохраняются)
@@ -120,6 +120,10 @@ make dist         # подписанные dist/FervoTV-<версия>.apk и .a
 make ci-release   # как release.yml: тесты и lint release, затем dist
 make p3-fixtures  # синтетические потоки и M3U для проверки P3 (нужен ffmpeg)
 ```
+
+UI-регрессии VOD в `app-tv/src/testDebug` запускаются на хосте через Compose/Robolectric,
+без подключённого устройства. Они проверяют панель, крестовину, Back и автоскрытие с тестовым
+движком; реальные декодеры и аппаратный пульт этим не проверяются.
 
 Для проверки потоков с телефона или ТВ укажите адрес хоста в `P3_BASE_URL`, например:
 

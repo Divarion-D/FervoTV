@@ -58,6 +58,7 @@ class ExoEngine(ctx: Context, private val config: PlaybackConfig = PlaybackConfi
             .build()
     }
     private val mediaSession = MediaSession.Builder(ctx, exo).build()
+    private val videoDecoder = VideoDecoderInfo()
 
     private val main = Handler(Looper.getMainLooper())
     private val stall = StallWatch(Defaults.BUFFER_STALL_TIMEOUT_MS)
@@ -73,6 +74,7 @@ class ExoEngine(ctx: Context, private val config: PlaybackConfig = PlaybackConfi
     private val log = PlaybackLog(ctx)
 
     init {
+        exo.addAnalyticsListener(videoDecoder)
         exo.setVideoChangeFrameRateStrategy(
             if (config.matchFrameRate) C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS
             else C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF,
@@ -354,9 +356,11 @@ class ExoEngine(ctx: Context, private val config: PlaybackConfig = PlaybackConfi
         fps = exo.videoFormat?.frameRate?.takeIf { it > 0 } ?: 0f,
         bitrate = exo.videoFormat?.bitrate?.takeIf { it > 0 } ?: 0,
         audioChannels = exo.audioFormat?.channelCount ?: 0,
-        hdr = exo.videoFormat?.colorInfo?.colorTransfer?.toString(),
+        hdr = exo.videoFormat.dynamicRange(),
         durationMs = exo.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0,
         bufferedMs = (exo.bufferedPosition - exo.currentPosition).coerceAtLeast(0),
+        bitDepth = exo.videoFormat.colorBitDepth(),
+        videoDecoder = videoDecoder.name,
     )
 }
 

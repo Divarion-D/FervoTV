@@ -112,6 +112,8 @@ fun VodPlayer(
     var panelTick by remember { mutableIntStateOf(0) } // any key restarts the hide timer
     var toolsOpen by remember { mutableStateOf(false) }
     var surfaceFocused by remember { mutableStateOf(true) }
+    val focus = remember { FocusRequester() }
+    val controlsFocus = remember { FocusRequester() }
     var cancelled by remember(play) { mutableStateOf(false) } // the "next episode" card was dismissed
     val error = state.error?.let { if (offline) stringResource(R.string.no_connection) else playbackErrorText(ctx, it) }
     val latestSave by rememberUpdatedState(onSave)
@@ -127,6 +129,9 @@ fun VodPlayer(
         duration = 0
         player.setMuted(false)
         player.open(PlayItem(play.url, live = false, start = play.start))
+    }
+    LaunchedEffect(state.paused, state.error) {
+        if (state.paused || state.error != null) panel = true
     }
     // The bar's clock; the position is read from the engine, nothing is pushed per frame.
     LaunchedEffect(play) {
@@ -150,11 +155,14 @@ fun VodPlayer(
             player.background()
         }
     }
-    LaunchedEffect(panel, panelTick, state.paused, toolsOpen, surfaceFocused) {
-        if (panel && !state.paused && !toolsOpen && surfaceFocused) {
+    LaunchedEffect(panel, panelTick, state.paused, state.error, toolsOpen) {
+        if (panel && !state.paused && state.error == null && !toolsOpen) {
             delay(Defaults.PLAYER_INFO_HIDE_MS)
             panel = false
         }
+    }
+    LaunchedEffect(panel) {
+        if (!panel) runCatching { focus.requestFocus() }
     }
 
     val left = (duration - position).coerceAtLeast(0)
@@ -189,7 +197,6 @@ fun VodPlayer(
     }
 
     val handle: (Action) -> Boolean = { a ->
-        panelTick++
         when (a) {
             Action.Left -> seek(-Defaults.SEEK_STEP_MS)
             Action.Right -> seek(Defaults.SEEK_STEP_MS)
@@ -212,14 +219,16 @@ fun VodPlayer(
     BackHandler(panel && !countdown) { panel = false }
     BackHandler(countdown) { cancelled = true }
 
-    val focus = remember { FocusRequester() }
     Box(
         Modifier.fillMaxSize().background(Color.Black)
             .focusRequester(focus)
             .onFocusChanged { surfaceFocused = it.isFocused }
             .onKeyEvent { e ->
                 val action = e.toAction()
-                if (panel && action in listOf(Action.Up, Action.Down, Action.Left, Action.Right)) false
+                if (action != null) panelTick++
+                if (panel && action in listOf(Action.Up, Action.Down, Action.Left, Action.Right)) {
+                    if (surfaceFocused) { controlsFocus.requestFocus(); true } else false
+                }
                 else if (!surfaceFocused && action == Action.Ok) false
                 else action?.let(handle) ?: false
             }
@@ -260,8 +269,8 @@ fun VodPlayer(
             Text(error, style = TvType.body, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.padding(top = 8.dp))
             Text(stringResource(if (tv) R.string.vod_retry_tv else R.string.vod_retry_touch), style = TvType.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
         }
-        if (panel || state.paused || error != null) VodPanel(
-            title, subtitle, position, duration, state, player, tv, previous != null, next != null,
+        if (panel) VodPanel(
+            title, subtitle, position, duration, state, player, tv, controlsFocus, previous != null, next != null,
             Modifier.align(Alignment.BottomStart),
             onSeekTo = { player.seekTo(it); position = it; panelTick++ },
             onSeek = ::seek,
@@ -270,7 +279,7 @@ fun VodPlayer(
             onNext = { next?.let(::goTo) },
             onToolsOpen = { toolsOpen = it },
         )
-        if (!tv && (panel || state.paused)) Icon(
+        if (!tv && panel) Icon(
             painterResource(R.drawable.ic_arrow_back), stringResource(R.string.back), tint = Color.White,
             modifier = Modifier.align(Alignment.TopStart).padding(16.dp).size(48.dp).background(Color.Black.copy(alpha = 0.4f), CircleShape)
                 .clickable(onClick = ::close).padding(12.dp),
@@ -299,7 +308,7 @@ fun VodPlayer(
 @Composable
 private fun VodPanel(
     title: String, subtitle: String?, position: Long, duration: Long, state: app.iptvplayer.core.player.PlaybackState,
-    player: PlayerSession, tv: Boolean,
+    player: PlayerSession, tv: Boolean, controlsFocus: FocusRequester,
     hasPrevious: Boolean, hasNext: Boolean, modifier: Modifier,
     onSeekTo: (Long) -> Unit, onSeek: (Long) -> Unit, onPause: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit,
     onToolsOpen: (Boolean) -> Unit,
@@ -338,6 +347,7 @@ private fun VodPanel(
         PlayerTools(
             player, onDialogOpen = onToolsOpen, onSeek = onSeek, onPause = onPause,
             onPrevious = onPrevious.takeIf { hasPrevious }, onNext = onNext.takeIf { hasNext },
+            primaryModifier = Modifier.focusRequester(controlsFocus),
         )
     }
 }

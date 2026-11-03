@@ -515,7 +515,15 @@
     <string name="player_info_fps">Частота кадров: %1$s fps</string>
     <string name="player_info_bitrate">Заявленный битрейт: %1$s кбит/с</string>
     <string name="player_info_audio">Аудио: %1$s · каналов: %2$s</string>
-    <string name="player_info_transfer">Передаточная функция цвета (Media3): %1$s</string>
+    <string name="player_info_transfer">Динамический диапазон (поток): %1$s</string>
+    <string name="player_info_depth">Глубина цвета: %1$s</string>
+    <plurals name="player_info_depth_bits">
+        <item quantity="one">%1$d бит</item>
+        <item quantity="few">%1$d бита</item>
+        <item quantity="many">%1$d бит</item>
+        <item quantity="other">%1$d бита</item>
+    </plurals>
+    <string name="player_info_decoder">Видеодекодер: %1$s</string>
     <string name="player_info_buffer">В буфере: %1$s с</string>
     <string name="player_info_engine">Движок: %1$s</string>
     <string name="player_info_url">Поток: %1$s</string>

@@ -518,7 +518,13 @@
     <string name="player_info_fps">Frame rate: %1$s fps</string>
     <string name="player_info_bitrate">Declared bitrate: %1$s kbps</string>
     <string name="player_info_audio">Audio: %1$s · channels: %2$s</string>
-    <string name="player_info_transfer">Colour transfer (Media3): %1$s</string>
+    <string name="player_info_transfer">Dynamic range (stream): %1$s</string>
+    <string name="player_info_depth">Colour depth: %1$s</string>
+    <plurals name="player_info_depth_bits">
+        <item quantity="one">%1$d bit</item>
+        <item quantity="other">%1$d bits</item>
+    </plurals>
+    <string name="player_info_decoder">Video decoder: %1$s</string>
     <string name="player_info_buffer">Buffered: %1$s s</string>
     <string name="player_info_engine">Engine: %1$s</string>
     <string name="player_info_url">Stream: %1$s</string>

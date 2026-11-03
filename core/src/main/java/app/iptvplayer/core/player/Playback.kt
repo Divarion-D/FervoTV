@@ -52,6 +52,8 @@ data class StreamInfo(
     val durationMs: Long = 0,
     val bufferedMs: Long = 0,
     val engine: String = "ExoPlayer",
+    val bitDepth: Int = 0,
+    val videoDecoder: String? = null,
 )
 
 enum class VideoScale { FIT, FILL, STRETCH, ORIGINAL, RATIO_16_9, RATIO_4_3 }

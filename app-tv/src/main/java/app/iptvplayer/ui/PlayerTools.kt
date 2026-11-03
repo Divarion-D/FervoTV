@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -65,6 +66,7 @@ fun PlayerTools(
     onPause: () -> Unit = player::togglePause,
     onPrevious: (() -> Unit)? = null,
     onNext: (() -> Unit)? = null,
+    primaryModifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val horizontal = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -88,7 +90,7 @@ fun PlayerTools(
             PlayerControlButton(
                 if (state.error != null) R.drawable.ic_replay else if (state.paused) R.drawable.ic_play_arrow else R.drawable.ic_pause,
                 stringResource(if (state.error != null) R.string.retry else if (state.paused) R.string.player_play else R.string.player_pause),
-                primary = true, modifier = Modifier.initialFocus(),
+                primary = true, modifier = primaryModifier.initialFocus(),
                 onClick = { if (state.error != null) player.retry() else onPause() },
             )
             PlayerControlButton(R.drawable.ic_forward_10, stringResource(R.string.seek_forward), onClick = { onSeek(Defaults.SEEK_STEP_MS) })
@@ -198,6 +200,7 @@ private fun StreamDetails(player: PlayerSession, onDismiss: () -> Unit) {
     }
     val unknown = stringResource(R.string.player_info_unknown)
     fun String?.known() = this?.takeIf { it.isNotBlank() } ?: unknown
+    val depth = info?.bitDepth?.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.player_info_depth_bits, it, it) } ?: unknown
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.player_stream_info)) },
@@ -208,7 +211,9 @@ private fun StreamDetails(player: PlayerSession, onDismiss: () -> Unit) {
                 Text(stringResource(R.string.player_info_fps, info?.fps?.takeIf { it > 0 }?.toString() ?: unknown))
                 Text(stringResource(R.string.player_info_bitrate, info?.bitrate?.takeIf { it > 0 }?.let { "${it / 1_000}" } ?: unknown))
                 Text(stringResource(R.string.player_info_audio, info?.audioCodec.known(), info?.audioChannels?.takeIf { it > 0 }?.toString() ?: unknown))
-                Text(stringResource(R.string.player_info_transfer, info?.hdr?.takeUnless { it == "-1" }.known()))
+                Text(stringResource(R.string.player_info_transfer, info?.hdr.known()))
+                Text(stringResource(R.string.player_info_depth, depth))
+                Text(stringResource(R.string.player_info_decoder, info?.videoDecoder.known()))
                 Text(stringResource(R.string.player_info_buffer, info?.bufferedMs?.let { "${it / 1_000}" } ?: unknown))
                 Text(stringResource(R.string.player_info_engine, info?.engine.known()))
                 Text(stringResource(R.string.player_info_url, player.current?.url?.let(::redactStreamUrl) ?: unknown))
