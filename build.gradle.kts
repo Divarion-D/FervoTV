@@ -25,9 +25,9 @@ subprojects {
     plugins.withId("com.android.application") {
         extensions.configure<com.android.build.api.dsl.ApplicationExtension> {
             defaultConfig {
-                // 4: test release for BAK-009 installer permission; 0.1.0 was the first public build.
-                versionCode = 4
-                versionName = "0.1.2"
+                // Monotonic for Android upgrades; 0.1.0 was the first public build.
+                versionCode = 5
+                versionName = "0.1.3"
             }
 
             signingConfigs {
