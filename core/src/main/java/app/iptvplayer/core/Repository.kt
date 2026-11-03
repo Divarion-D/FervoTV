@@ -252,12 +252,16 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
 
     /**
      * Should "Что нового" be offered for [version]? Once per new version, and only after an update ([updated]:
-     * the package was replaced, not freshly installed). Remembers [version] as seen.
+     * the package was replaced, not freshly installed). Pending offers remain until [acknowledgeChangelog].
      */
     fun offerChangelog(version: String, updated: Boolean): Boolean {
         val offer = changelogDue(settingsPrefs.getString("seenVersion", null), version, updated)
-        settingsPrefs.edit().putString("seenVersion", version).apply()
+        if (!offer) acknowledgeChangelog(version) // A fresh install establishes the baseline without a prompt.
         return offer
+    }
+
+    fun acknowledgeChangelog(version: String) {
+        settingsPrefs.edit().putString("seenVersion", version).apply()
     }
 
     /**

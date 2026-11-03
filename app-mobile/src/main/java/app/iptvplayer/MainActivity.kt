@@ -12,6 +12,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import android.content.Context
 import kotlinx.coroutines.delay
@@ -125,9 +126,14 @@ private fun App(repo: Repository) {
 
     // After an update: offer "Что нового" once.
     val version = remember { installedVersion(ctx) }
-    var changelogOffer by remember { mutableStateOf(false) }
-    var changelogOpen by remember { mutableStateOf(false) }
+    var changelogOffer by rememberSaveable { mutableStateOf(false) }
+    var changelogOpen by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) { changelogOffer = repo.offerChangelog(version.first, version.second) }
+    fun dismissChangelog(showChanges: Boolean = false) {
+        repo.acknowledgeChangelog(version.first)
+        changelogOffer = false
+        if (showChanges) changelogOpen = true
+    }
 
     // Channels are shown right away; logos found in the index are stored next to them and fill in when ready.
     suspend fun loadLogos(s: Source) {
@@ -282,18 +288,18 @@ private fun App(repo: Repository) {
     if (changelogOffer) {
         val shape = RoundedCornerShape(50)
         AlertDialog(
-            onDismissRequest = { changelogOffer = false },
+            onDismissRequest = { dismissChangelog() },
             icon = { Icon(painterResource(R.drawable.ic_history), contentDescription = null) },
             title = { Text("Fervo TV обновлён") },
             text = { Text("Версия ${version.first}. Посмотреть, что изменилось?") },
             confirmButton = {
                 TextButton(
-                    onClick = { changelogOffer = false; changelogOpen = true },
+                    onClick = { dismissChangelog(showChanges = true) },
                     Modifier.initialFocus().focusRing(shape),
                 ) { Text("Что нового") }
             },
             dismissButton = {
-                TextButton(onClick = { changelogOffer = false }, Modifier.focusRing(shape)) { Text("Позже") }
+                TextButton(onClick = { dismissChangelog() }, Modifier.focusRing(shape)) { Text("Позже") }
             },
         )
     }

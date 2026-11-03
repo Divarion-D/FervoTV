@@ -238,9 +238,14 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit, onPlayer: (Playe
 
     // After an update: offer "Что нового" once.
     val version = remember { installedVersion(ctx) }
-    var changelogOffer by remember { mutableStateOf(false) }
-    var changelogOpen by remember { mutableStateOf(false) }
+    var changelogOffer by rememberSaveable { mutableStateOf(false) }
+    var changelogOpen by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) { changelogOffer = repo.offerChangelog(version.first, version.second) }
+    fun dismissChangelog(showChanges: Boolean = false) {
+        repo.acknowledgeChangelog(version.first)
+        changelogOffer = false
+        if (showChanges) changelogOpen = true
+    }
 
     // BAK-009: the first slice is an explicit check with release notes; downloading/installing follows after it.
     var updateChecking by remember { mutableStateOf(false) }
@@ -259,7 +264,6 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit, onPlayer: (Playe
                 }
             }.onSuccess { release ->
                 availableUpdate = release
-                if (release != null) changelogOffer = false
                 updateStatus = if (release == null) Txt(R.string.update_none) else Txt(R.string.update_available, release.version)
             }.onFailure { e -> updateStatus = Txt(R.string.update_failed, errorText(ctx, e)) }
             updateChecking = false
@@ -627,21 +631,21 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit, onPlayer: (Playe
         }
     }
 
-    if (changelogOffer) {
+    if (changelogOffer && availableUpdate == null) {
         val shape = RoundedCornerShape(50)
         AlertDialog(
-            onDismissRequest = { changelogOffer = false },
+            onDismissRequest = { dismissChangelog() },
             icon = { Icon(painterResource(R.drawable.ic_history), contentDescription = null) },
             title = { Text(stringResource(R.string.updated_title)) },
             text = { Text(stringResource(R.string.updated_text, version.first)) },
             confirmButton = {
                 TextButton(
-                    onClick = { changelogOffer = false; changelogOpen = true },
+                    onClick = { dismissChangelog(showChanges = true) },
                     Modifier.initialFocus().focusRing(shape),
                 ) { Text(stringResource(R.string.whats_new)) }
             },
             dismissButton = {
-                TextButton(onClick = { changelogOffer = false }, Modifier.focusRing(shape)) { Text(stringResource(R.string.later)) }
+                TextButton(onClick = { dismissChangelog() }, Modifier.focusRing(shape)) { Text(stringResource(R.string.later)) }
             },
         )
     }
