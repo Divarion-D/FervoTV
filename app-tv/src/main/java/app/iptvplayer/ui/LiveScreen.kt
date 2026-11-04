@@ -415,8 +415,22 @@ fun LiveScreen(
         if (!tilesNow) listState.scrollToItem(i, -listCenterOffset)
     }
 
-    LaunchedEffect(selected?.channel?.key, fullscreen, guideNow, tilesNow, listCenterOffset) {
-        if (tv && !fullscreen && !guideNow && !tilesNow && selected != null) focusRow(focusedRow[0])
+    LaunchedEffect(selected?.channel?.key, fullscreen, guideNow, tilesNow, listCenterOffset, area) {
+        if (tv && !fullscreen && !guideNow && !tilesNow && selected != null && area == Area.List) focusRow(focusedRow[0])
+    }
+
+    // Replacing database rows can move focus to the rail before the refreshed page is composed.
+    var refreshFocus by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(items.loadState.refresh) {
+        when (items.loadState.refresh) {
+            is LoadState.Loading -> refreshFocus = selected?.channel?.key.takeIf { tv && !fullscreen && area == Area.List }
+            is LoadState.NotLoading -> {
+                val key = refreshFocus ?: return@LaunchedEffect
+                refreshFocus = null
+                focusRow(repo.indexOf(currentFilter, key) ?: focusedRow[0])
+            }
+            else -> refreshFocus = null
+        }
     }
 
     var enteredList by remember { mutableStateOf(false) }
