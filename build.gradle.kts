@@ -26,8 +26,8 @@ subprojects {
         extensions.configure<com.android.build.api.dsl.ApplicationExtension> {
             defaultConfig {
                 // Monotonic for Android upgrades; 0.1.0 was the first public build.
-                versionCode = 5
-                versionName = "0.1.3"
+                versionCode = 6
+                versionName = "1.0.3"
             }
 
             signingConfigs {
