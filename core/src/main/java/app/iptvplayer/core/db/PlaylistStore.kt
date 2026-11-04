@@ -247,9 +247,16 @@ class PlaylistStore(private val db: AppDb, private val clock: () -> Long = Syste
     suspend fun first(f: ChannelFilter, n: Int): List<ChannelItem> = withContext(Dispatchers.IO) { rows(f, n, 0).map { it.item(null, null) } }
 
     /** Position of the channel [key] in the list (LIVE-017: focus where the user left), null if it isn't there. */
-    suspend fun indexOf(f: ChannelFilter, key: String): Int? = withContext(Dispatchers.IO) {
-        db.query(f.query("ch.ckey", order = true)).use { c ->
-            while (c.moveToNext()) if (c.getString(0) == key) return@use c.position
+    suspend fun indexOf(f: ChannelFilter, key: String, occurrence: Int? = null): Int? = withContext(Dispatchers.IO) {
+        db.query(f.query("ch.ckey, ch.sourceId, ch.position", order = true)).use { c ->
+            while (c.moveToNext()) if (c.getString(0) == key) {
+                if (occurrence == null) return@use c.position
+                val ordinal = db.query(SimpleSQLiteQuery(
+                    "SELECT COUNT(*) FROM channel WHERE sourceId = ? AND ckey = ? AND position < ?",
+                    arrayOf<Any>(c.getLong(1), key, c.getInt(2)),
+                )).use { n -> n.moveToFirst(); n.getInt(0) }
+                if (ordinal == occurrence) return@use c.position
+            }
             null
         }
     }
@@ -418,7 +425,7 @@ class PlaylistStore(private val db: AppDb, private val clock: () -> Long = Syste
 
 private fun ItemRow.shiftMs(global: Int) = (shift ?: global) * 60_000L
 
-private fun ItemRow.item(now: Programme?, next: Programme?) = ChannelItem(channel, displayNumber, favorite, hidden, now, next)
+private fun ItemRow.item(now: Programme?, next: Programme?) = ChannelItem(channel, displayNumber, favorite, hidden, now, next, occurrence)
 
 /** Emits the time now and then at the start of every minute (one shared "tick" for a list, 33-design 4.1). */
 fun minuteTicks(): Flow<Long> = flow {
@@ -496,6 +503,7 @@ private const val ITEM_COLUMNS =
         "ch.tvgId AS tvgId, ch.autoLogo AS autoLogo, ch.ckey AS `key`, ch.number AS number, ch.archiveDays AS archiveDays, " +
         "ch.userAgent AS userAgent, ch.referer AS referer, ch.drmLicenseUrl AS drmLicenseUrl, ch.drmScheme AS drmScheme, " +
         "COALESCE(ch.number, ch.position + 1) AS displayNumber, FAVORITE AS favorite, " +
+        "(SELECT COUNT(*) FROM channel d WHERE d.sourceId = ch.sourceId AND d.ckey = ch.ckey AND d.position < ch.position) AS occurrence, " +
         "HIDDEN AS hidden, ch.epgId AS epgId, COALESCE(st.epgShift, es.shift) AS shift"
 
 /** Tables a list depends on: its pages are reloaded when one of them changes. */

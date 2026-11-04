@@ -395,7 +395,7 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
 
     suspend fun channel(s: Source, key: String): ChannelItem? = store.channel(s.cacheKey(), key)
 
-    suspend fun indexOf(f: ChannelFilter, key: String): Int? = store.indexOf(f, key)
+    suspend fun indexOf(f: ChannelFilter, key: String, occurrence: Int? = null): Int? = store.indexOf(f, key, occurrence)
 
     suspend fun channelByNumber(s: Source, number: Int): Channel? = store.channelByNumber(s.cacheKey(), number)
 

@@ -183,6 +183,7 @@ abstract class PlaylistDao {
 data class ItemRow(
     @Embedded val channel: Channel,
     val displayNumber: Int,
+    val occurrence: Int,
     val favorite: Boolean,
     val hidden: Boolean,
     val epgId: Long?,

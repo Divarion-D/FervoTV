@@ -67,6 +67,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -240,6 +244,7 @@ fun LiveScreen(
     val scheduleState = rememberLazyListState()
     var area by remember { mutableStateOf(Area.List) }
     var beforeRail by remember { mutableStateOf(Area.List) }
+    var inputGeneration by remember { mutableIntStateOf(0) }
     val focusedRow = remember { intArrayOf(0) } // read in handlers only: moving the focus recomposes nothing
     val focusedCat = remember { intArrayOf(0) }
     var focusedProgramme by remember { mutableStateOf<Programme?>(null) }
@@ -392,7 +397,8 @@ fun LiveScreen(
     }
 
     // --- Moving the focus from code ---
-    suspend fun focusRow(index: Int) {
+    suspend fun focusRow(index: Int, wanted: () -> Boolean = { true }) {
+        if (!wanted() || items.itemCount == 0) return
         val i = index.coerceIn(0, (items.itemCount - 1).coerceAtLeast(0))
         listTarget = i
         if (guideNow) {
@@ -405,12 +411,17 @@ fun LiveScreen(
         }
         if (tilesNow) gridState.scrollToItem(i) else listState.scrollToItem(i, -listCenterOffset)
         if (tv) {
+            items[i]
+            snapshotFlow { !wanted() || items.itemSnapshotList.getOrNull(i) != null }.first { it }
+            if (!wanted()) return
             // Older TV devices can compose the first lazy row a frame later than the scroll request.
             repeat(2) {
                 withFrameNanos {}
+                if (!wanted()) return
                 runCatching { listFocus.requestFocus() }
             }
             delay(120)
+            if (!wanted()) return
             runCatching { listFocus.requestFocus() }
         }
         if (!tilesNow) listState.scrollToItem(i, -listCenterOffset)
@@ -421,16 +432,25 @@ fun LiveScreen(
     }
 
     // Replacing database rows can move focus to the rail before the refreshed page is composed.
-    val refreshTarget by rememberUpdatedState(selected?.channel?.key.takeIf { tv && !fullscreen && area == Area.List })
     LaunchedEffect(items) {
-        var target: String? = null
-        snapshotFlow { items.loadState.refresh }.collectLatest { state ->
+        var target: ChannelItem? = null
+        var generation = inputGeneration
+        snapshotFlow {
+            val state = items.loadState.refresh
+            state to if (state is LoadState.Loading) selected else null
+        }.collectLatest { (state, selection) ->
             when (state) {
-                is LoadState.Loading -> target = refreshTarget
+                is LoadState.Loading -> {
+                    target = selection.takeIf { tv && !fullscreen && area == Area.List }
+                    generation = inputGeneration
+                }
                 is LoadState.NotLoading -> {
-                    val key = target ?: return@collectLatest
+                    val item = target ?: return@collectLatest
                     target = null
-                    focusRow(repo.indexOf(currentFilter, key) ?: focusedRow[0])
+                    val wanted = { generation == inputGeneration && !fullscreen }
+                    if (!wanted()) return@collectLatest
+                    val at = repo.indexOf(currentFilter, item.channel.key, item.occurrence) ?: focusedRow[0]
+                    focusRow(at, wanted)
                 }
                 else -> target = null
             }
@@ -1286,7 +1306,18 @@ fun LiveScreen(
             task?.let { TaskPill(it, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 92.dp)) }
             }
 
-    Box(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize()
+        .onPreviewKeyEvent { event ->
+            if (event.type == KeyEventType.KeyDown) inputGeneration++
+            false
+        }
+        .pointerInput(Unit) {
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                inputGeneration++
+            }
+        }
+    ) {
         if (wide) wideLayout() else phoneLayout()
 
         if (fullscreen) {

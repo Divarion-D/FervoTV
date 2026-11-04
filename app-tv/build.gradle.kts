@@ -38,6 +38,7 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2") // NoUiTextInCodeTest
     add("testDebugImplementation", "org.robolectric:robolectric:4.14.1")
+    add("testDebugImplementation", "androidx.room:room-runtime:2.6.1")
     add("testDebugImplementation", "androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

@@ -51,6 +51,8 @@ data class ChannelItem(
     val hidden: Boolean,
     val now: Programme? = null,
     val next: Programme? = null,
+    /** Zero-based occurrence of this stream key in provider order, including other categories. */
+    val occurrence: Int = 0,
 )
 
 /** Previous, current and next programme of one channel (player info bar). */

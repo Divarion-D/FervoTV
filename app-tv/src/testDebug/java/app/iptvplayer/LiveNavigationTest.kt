@@ -2,6 +2,21 @@ package app.iptvplayer
 
 import android.app.UiModeManager
 import android.content.res.Configuration
+import android.view.SurfaceView
+import android.view.ViewGroup
+import androidx.compose.ui.platform.ComposeView
+import androidx.room.Room
+import androidx.room.RoomDatabase
+import app.iptvplayer.core.db.AppDb
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.*
+import org.junit.After
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
 import android.view.View
 import android.net.Uri
 import org.robolectric.Shadows.shadowOf
@@ -37,19 +52,50 @@ class LiveNavigationTest {
     private lateinit var repo: Repository
     private lateinit var source: Source
     private lateinit var playlist: java.io.File
+    private var database: AppDb? = null
+    private val engine = TestEngine()
+    private val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val blockPage = AtomicBoolean(false)
+    private val pageStarted = CountDownLatch(1)
+    private val pageReleased = CountDownLatch(1)
+    private val pageDelayMs = AtomicLong(0)
 
-    private fun start(tv: Boolean = true) {
+    @After fun close() {
+        pageReleased.countDown()
+        runBlocking { background.coroutineContext[Job]?.cancelAndJoin() }
+        compose.runOnUiThread {
+            val root = compose.activity.findViewById<ViewGroup>(android.R.id.content)
+            (root.getChildAt(0) as? ComposeView)?.disposeComposition()
+        }
+        database?.close()
+    }
+
+    private fun start(tv: Boolean = true, channels: Int = 30, duplicate: Boolean = false) {
         shadowOf(compose.activity.getSystemService(UiModeManager::class.java)).setCurrentModeType(if (tv) Configuration.UI_MODE_TYPE_TELEVISION else Configuration.UI_MODE_TYPE_NORMAL)
         val file = tmp.newFile("live.m3u")
         playlist = file
-        file.writeText("#EXTM3U\n" + (1..30).joinToString("") {
-            "#EXTINF:-1 group-title=\"News\",Channel $it\nhttps://example.invalid/$it\n"
+        file.writeText("#EXTM3U\n" + (1..channels).joinToString("") {
+            "#EXTINF:-1 group-title=\"News\",Channel $it\nhttps://example.invalid/${if (duplicate && it == 4) 1 else it}\n"
         })
         source = Source.M3u("content://test/live.m3u")
         shadowOf(compose.activity.contentResolver).registerInputStreamSupplier(Uri.parse("content://test/live.m3u")) { file.inputStream() }
-        repo = Repository(compose.activity)
+        val db = Room.databaseBuilder(compose.activity, AppDb::class.java, tmp.newFile("live.db").path)
+            .allowMainThreadQueries()
+            .setQueryCallback(object : RoomDatabase.QueryCallback {
+                override fun onQuery(sqlQuery: String, bindArgs: List<Any?>) {
+                    if (sqlQuery.contains("FROM channel ch")) {
+                        if (blockPage.compareAndSet(true, false)) {
+                            pageStarted.countDown()
+                            check(pageReleased.await(10, TimeUnit.SECONDS))
+                        }
+                        if (sqlQuery.startsWith("SELECT ch.id AS id")) Thread.sleep(pageDelayMs.get())
+                    }
+                }
+            }, Executor { it.run() }).build()
+        database = db
+        repo = Repository(compose.activity, db)
         runBlocking { repo.load(source) }
-        val player = PlayerSession { TestEngine() }
+        val player = PlayerSession { engine }
         compose.setContent {
             AppTheme {
                 LiveScreen(repo, source, player,
@@ -95,8 +141,9 @@ class LiveNavigationTest {
         compose.waitUntil(10_000) { compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 4")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 4"))
             .performTouchInput { click() }
-        compose.waitForIdle()
+        compose.runOnIdle { assertTrue(engine.view is SurfaceView) }
         compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.runOnIdle { assertNull(engine.view) }
         compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 4")).assertIsDisplayed()
         compose.onAllNodesWithText(compose.activity.getString(R.string.search_channels)).assertCountEquals(0)
     }
@@ -132,6 +179,73 @@ class LiveNavigationTest {
         compose.onNodeWithText(hint).assertIsFocused()
     }
 
+    @Test fun refreshRestoresTheFocusedDuplicateOccurrence() {
+        start(duplicate = true)
+        compose.onRoot().performKeyInput { repeat(3) { pressKey(Key.DirectionDown) } }
+        compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 4")).assertIsFocused()
+        playlist.writeText(playlist.readText().replace("Channel 4\n", "Updated 4\n")
+            .replace("#EXTM3U\n", "#EXTM3U\n#EXTINF:-1,Inserted\nhttps://example.invalid/new\n"))
+        runBlocking { repo.load(source) }
+        compose.waitUntil(10_000) { compose.onAllNodes(hasText("Updated 4") and isFocused()).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    private fun refreshWhileLoading(action: () -> Unit) {
+        blockPage.set(true)
+        playlist.writeText(playlist.readText().replace("Channel 4\n", "Updated 4\n"))
+        val refresh = background.async { repo.load(source) }
+        compose.waitUntil(10_000) { pageStarted.count == 0L }
+        try { action() } finally { pageReleased.countDown() }
+        runBlocking { withTimeout(10_000) { refresh.await() } }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Updated 4").fetchSemanticsNodes().isNotEmpty() }
+        compose.mainClock.advanceTimeBy(500)
+    }
+
+    @Test fun inputDuringRefreshKeepsTheNewlySelectedChannel() {
+        start()
+        compose.onRoot().performKeyInput { repeat(3) { pressKey(Key.DirectionDown) } }
+        refreshWhileLoading {
+            compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+            compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 5")).assertIsFocused()
+        }
+        compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 5")).assertIsFocused()
+    }
+
+    @Test fun inputDuringRefreshKeepsSearchEditing() {
+        start()
+        compose.onRoot().performKeyInput { repeat(3) { pressKey(Key.DirectionDown) } }
+        refreshWhileLoading {
+            compose.onNodeWithText(compose.activity.getString(R.string.search_channels))
+                .performTouchInput { click() }
+            compose.onNode(hasSetTextAction()).assertIsFocused()
+        }
+        compose.onNode(hasSetTextAction()).assertIsFocused()
+    }
+
+    @Test fun inputDuringRefreshKeepsThePlayerOpen() {
+        start()
+        compose.onRoot().performKeyInput { repeat(3) { pressKey(Key.DirectionDown) } }
+        refreshWhileLoading {
+            compose.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
+            compose.runOnIdle { assertTrue(engine.view is SurfaceView) }
+        }
+        compose.runOnIdle { assertTrue(engine.view is SurfaceView) }
+    }
+
+    @Test fun refreshWaitsForADistantPageToLoad() {
+        start(channels = 1_000)
+        compose.onNode(hasScrollToIndexAction() and hasAnyDescendant(hasText("Channel 1"))).performScrollToIndex(300)
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Channel 301").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 301"))
+            .performSemanticsAction(SemanticsActions.RequestFocus)
+        compose.mainClock.advanceTimeBy(500)
+        playlist.writeText(playlist.readText().replace("#EXTM3U\n", "#EXTM3U\n" + (1..500).joinToString("") {
+            "#EXTINF:-1 group-title=\"News\",Inserted $it\nhttps://example.invalid/new/$it\n"
+        }).replace("Channel 301\n", "Updated 301\n"))
+        pageDelayMs.set(300)
+        runBlocking { repo.load(source) }
+        compose.waitUntil(15_000) { compose.onAllNodes(hasText("Updated 301") and isFocused()).fetchSemanticsNodes().isNotEmpty() }
+    }
+
     private class TestEngine : PlaybackEngine {
         override val state = MutableStateFlow(PlaybackState())
         override val position = 0L
@@ -143,7 +257,8 @@ class LiveNavigationTest {
         override fun retry() = Unit
         override fun stop() = Unit
         override fun setMuted(muted: Boolean) = Unit
-        override fun setVideoView(view: View?) = Unit
+        var view: View? = null
+        override fun setVideoView(view: View?) { this.view = view }
         override fun release() = Unit
     }
 }
