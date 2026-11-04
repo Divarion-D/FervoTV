@@ -106,6 +106,23 @@ class PlaylistStoreTest {
     }
 
     @Test
+    fun duplicateOccurrenceSurvivesRefreshAndCategoryFiltering() {
+        val repeated = listOf(sample[0], sample[1], sample[0].copy(name = "Again", group = "Other"))
+        importSample(channels = repeated)
+        val filter = ChannelFilter("k")
+        val key = sample[0].key
+        assertEquals(listOf(0, 0, 1), runBlocking { store.first(filter, 10) }.map { it.occurrence })
+        assertEquals(0, runBlocking { store.indexOf(filter, key) })
+        assertEquals(2, runBlocking { store.indexOf(filter, key, 1) })
+        importSample(channels = listOf(Channel("Inserted", "http://new", "Other")) + repeated)
+        assertEquals(3, runBlocking { store.indexOf(filter, key, 1) })
+        val category = filter.copy(group = ChannelGroup.Category("Other"))
+        assertEquals(1, runBlocking { store.indexOf(category, key, 1) })
+        assertEquals(1, runBlocking { store.first(category, 10) }.last().occurrence)
+        assertNull(runBlocking { store.indexOf(filter, key, 2) })
+    }
+
+    @Test
     fun emptyOrFailedImportKeepsSavedChannels() {
         importSample()
         assertTrue(runCatching { store.import("k") { } }.exceptionOrNull() is IOException)

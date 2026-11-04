@@ -67,6 +67,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -114,6 +118,7 @@ import app.iptvplayer.core.source.cacheKey
 import app.iptvplayer.isTv
 import app.iptvplayer.remoteKeys
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -239,6 +244,8 @@ fun LiveScreen(
     val scheduleState = rememberLazyListState()
     var area by remember { mutableStateOf(Area.List) }
     var beforeRail by remember { mutableStateOf(Area.List) }
+    var inputGeneration by remember { mutableIntStateOf(0) }
+    var focusGeneration by remember { mutableIntStateOf(0) }
     val focusedRow = remember { intArrayOf(0) } // read in handlers only: moving the focus recomposes nothing
     val focusedCat = remember { intArrayOf(0) }
     var focusedProgramme by remember { mutableStateOf<Programme?>(null) }
@@ -391,8 +398,19 @@ fun LiveScreen(
     }
 
     // --- Moving the focus from code ---
-    suspend fun focusRow(index: Int) {
+    suspend fun focusRow(index: Int, wanted: () -> Boolean = { true }) {
+        val generation = inputGeneration
+        val request = ++focusGeneration
         val i = index.coerceIn(0, (items.itemCount - 1).coerceAtLeast(0))
+        val rowId = items.itemSnapshotList.getOrNull(i)?.channel?.id
+        val stillWanted = {
+            wanted() && generation == inputGeneration && request == focusGeneration && i < items.itemCount &&
+                (rowId == null || items.itemSnapshotList.getOrNull(i)?.channel?.id == rowId)
+        }
+        if (!stillWanted()) return
+        // A database lookup can resume off-thread in tests; remeasure the list on its next UI frame.
+        withFrameNanos {}
+        if (!stillWanted()) return
         listTarget = i
         if (guideNow) {
             cursor.row = i
@@ -404,19 +422,51 @@ fun LiveScreen(
         }
         if (tilesNow) gridState.scrollToItem(i) else listState.scrollToItem(i, -listCenterOffset)
         if (tv) {
+            items[i]
+            snapshotFlow { !stillWanted() || items.itemSnapshotList.getOrNull(i) != null }.first { it }
+            if (!stillWanted()) return
             // Older TV devices can compose the first lazy row a frame later than the scroll request.
             repeat(2) {
                 withFrameNanos {}
+                if (!stillWanted()) return
                 runCatching { listFocus.requestFocus() }
             }
             delay(120)
+            if (!stillWanted()) return
             runCatching { listFocus.requestFocus() }
         }
         if (!tilesNow) listState.scrollToItem(i, -listCenterOffset)
     }
 
-    LaunchedEffect(selected?.channel?.key, fullscreen, guideNow, tilesNow, listCenterOffset) {
-        if (tv && !fullscreen && !guideNow && !tilesNow && selected != null) focusRow(focusedRow[0])
+    LaunchedEffect(selected?.channel?.key, fullscreen, guideNow, tilesNow, listCenterOffset, area) {
+        if (tv && !fullscreen && !guideNow && !tilesNow && selected != null && area == Area.List) focusRow(focusedRow[0])
+    }
+
+    // Replacing database rows can move focus to the rail before the refreshed page is composed.
+    LaunchedEffect(items) {
+        var target: ChannelItem? = null
+        var generation = inputGeneration
+        snapshotFlow {
+            val state = items.loadState.refresh
+            state to if (state is LoadState.Loading) selected else null
+        }.collectLatest { (state, selection) ->
+            when (state) {
+                is LoadState.Loading -> {
+                    target = selection.takeIf { tv && !fullscreen && area == Area.List }
+                    generation = inputGeneration
+                }
+                is LoadState.NotLoading -> {
+                    val item = target ?: return@collectLatest
+                    target = null
+                    val wanted = { generation == inputGeneration && !fullscreen }
+                    withFrameNanos {}
+                    if (!wanted() || area == Area.List) return@collectLatest
+                    val at = repo.indexOf(currentFilter, item.channel.key, item.occurrence) ?: focusedRow[0]
+                    focusRow(at, wanted)
+                }
+                else -> target = null
+            }
+        }
     }
 
     var enteredList by remember { mutableStateOf(false) }
@@ -1002,11 +1052,16 @@ fun LiveScreen(
                 .remoteKeys(::listKeys)
             val row: @Composable (Int, Modifier) -> Unit = { i, m ->
                 val item = items[i]
+                var rowFocused by remember { mutableStateOf(false) }
                 val onFocus = {
                     focusedRow[0] = i
                     if (item != null) selected = item
                 }
-                val mod = if (i == listTarget) m.focusRequester(listFocus) else m
+                LaunchedEffect(item, rowFocused) {
+                    if (rowFocused && item != null) onFocus()
+                }
+                val mod = (if (i == listTarget) m.focusRequester(listFocus) else m)
+                    .onFocusChanged { rowFocused = it.isFocused }
                 val chosen = item != null && item.channel.key == playingKey && focusedRow[0] == i
                 if (useTiles) ChannelCard(item, chosen, now, tv, mod, onFocus, { if (item != null) activate(i, item, touch = true) }) { if (item != null) channelMenu(item, i) }
                 else ChannelRow(item, chosen, now, tall, mod, onFocus, { if (item != null) activate(i, item, touch = true) }) { if (item != null) channelMenu(item, i) }
@@ -1019,7 +1074,7 @@ fun LiveScreen(
                 verticalArrangement = Arrangement.spacedBy(if (wide && !compact) 16.dp else 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(if (wide && !compact) 16.dp else 12.dp),
             ) {
-                items(items.itemCount, key = items.itemKey { it.channel.id }) { i -> row(i, Modifier) }
+                items(items.itemCount, key = items.itemKey { "${it.channel.key}|${it.occurrence}" }) { i -> row(i, Modifier) }
             } else BoxWithConstraints(modifier.then(keyed)) {
                 val centerOffset = with(LocalDensity.current) { ((maxHeight - 60.dp) / 2).roundToPx() }
                 SideEffect { listCenterOffset = centerOffset }
@@ -1028,7 +1083,7 @@ fun LiveScreen(
                     contentPadding = PaddingValues(vertical = ((maxHeight - 60.dp) / 2).coerceAtLeast(0.dp)),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    items(items.itemCount, key = items.itemKey { it.channel.id }) { i -> row(i, Modifier) }
+                    items(items.itemCount, key = items.itemKey { "${it.channel.key}|${it.occurrence}" }) { i -> row(i, Modifier) }
                 }
             }
         }
@@ -1268,7 +1323,18 @@ fun LiveScreen(
             task?.let { TaskPill(it, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 92.dp)) }
             }
 
-    Box(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize()
+        .onPreviewKeyEvent { event ->
+            if (event.type == KeyEventType.KeyDown) inputGeneration++
+            false
+        }
+        .pointerInput(Unit) {
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                inputGeneration++
+            }
+        }
+    ) {
         if (wide) wideLayout() else phoneLayout()
 
         if (fullscreen) {

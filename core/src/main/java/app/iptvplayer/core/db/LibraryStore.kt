@@ -284,13 +284,17 @@ abstract class LibraryDao {
     /** Categories of a section with counts of visible items, the user's order first (as [PlaylistDao.categories]). */
     @Query(
         """SELECT cat.name AS name, COALESCE(cs.name, cat.name) AS title, COALESCE(cs.hidden, 0) AS hidden,
-        SUM(COALESCE(st.hidden, 0) = 0) AS count
+        total.count - COALESCE(h.count, 0) AS count
         FROM vod_category cat
-        JOIN vod v ON v.libraryId = cat.libraryId AND v.categoryId = cat.id
-        LEFT JOIN vod_state st ON st.vkey = v.ckey
+        JOIN (SELECT categoryId, COUNT(*) AS count FROM vod WHERE libraryId = $ACTIVE_LIBRARY GROUP BY categoryId) total
+            ON total.categoryId = cat.id
+        LEFT JOIN (
+            SELECT v.categoryId, COUNT(*) AS count FROM vod_state st CROSS JOIN vod v ON v.ckey = st.vkey
+            WHERE st.hidden = 1 AND v.libraryId = $ACTIVE_LIBRARY GROUP BY v.categoryId
+        ) h ON h.categoryId = cat.id
         LEFT JOIN vod_category_state cs ON cs.ckey = cat.ckey
         WHERE cat.libraryId = $ACTIVE_LIBRARY AND cat.kind = :kind
-        GROUP BY cat.id HAVING :withHidden OR (COALESCE(cs.hidden, 0) = 0 AND SUM(COALESCE(st.hidden, 0) = 0) > 0)
+        AND (:withHidden OR (COALESCE(cs.hidden, 0) = 0 AND total.count > COALESCE(h.count, 0)))
         ORDER BY cs.position IS NULL, cs.position, cat.position"""
     )
     abstract fun categories(sourceKey: String, kind: VodKind, withHidden: Boolean): Flow<List<CategoryCount>>
@@ -573,14 +577,20 @@ private fun VodFilter.query(
 ): SimpleSQLiteQuery {
     val args = ArrayList<Any>()
     // As in the live lists: a hidden category hides its items from "Все", not from the lists the user made.
-    val hidden = if (group == VodGroup.All) "(COALESCE(st.hidden, 0) OR COALESCE(cs.hidden, 0))" else "COALESCE(st.hidden, 0)"
-    val sql = StringBuilder("SELECT ${select.replace("HIDDEN", hidden)} FROM vod v JOIN vod_category cat ON cat.id = v.categoryId")
-    sql.append(" LEFT JOIN vod_state st ON st.vkey = v.ckey LEFT JOIN vod_category_state cs ON cs.ckey = cat.ckey")
+    val countAll = group == VodGroup.All && select == "COUNT(*)"
+    val page = group == VodGroup.All && progress && limit.isNotEmpty()
+    val rowHidden = if (group == VodGroup.All) "(COALESCE(st.hidden, 0) OR COALESCE(cs.hidden, 0))" else "COALESCE(st.hidden, 0)"
+    val hidden = if (countAll || page) {
+        "(v.ckey IN (SELECT vkey FROM vod_state WHERE hidden = 1) OR v.categoryId IN " +
+            "(SELECT c.id FROM vod_category c JOIN vod_category_state cs ON cs.ckey = c.ckey WHERE cs.hidden = 1))"
+    } else rowHidden
+    val joins = " JOIN vod_category cat ON cat.id = v.categoryId" +
+        " LEFT JOIN vod_state st ON st.vkey = v.ckey LEFT JOIN vod_category_state cs ON cs.ckey = cat.ckey"
     // VOD-008: a series shows the progress of its last episode started.
-    if (progress) sql.append(
-        " LEFT JOIN watch w ON w.vkey = CASE WHEN v.kind = 'MOVIE' THEN v.ckey" +
-            " ELSE (SELECT x.vkey FROM watch x WHERE x.seriesKey = v.ckey ORDER BY x.watchedAt DESC LIMIT 1) END"
-    )
+    val progressJoin = if (progress) " LEFT JOIN watch w ON w.vkey = CASE WHEN v.kind = 'MOVIE' THEN v.ckey" +
+        " ELSE (SELECT x.vkey FROM watch x WHERE x.seriesKey = v.ckey ORDER BY x.watchedAt DESC LIMIT 1) END" else ""
+    val sql = StringBuilder("SELECT ${if (page) "v.id" else select.replace("HIDDEN", hidden)} FROM vod v")
+    if (!countAll && !page) sql.append(joins).append(progressJoin)
     when (group) {
         VodGroup.Recent -> sql.append(" JOIN (SELECT COALESCE(seriesKey, vkey) AS k, MAX(watchedAt) AS at FROM watch GROUP BY k) r ON r.k = v.ckey")
         is VodGroup.Collection -> {
@@ -623,7 +633,12 @@ private fun VodFilter.query(
     args.addAll(whereArgs)
     if (order) sql.append(" ORDER BY ").append(orderBy())
     sql.append(limit)
-    return SimpleSQLiteQuery(sql.toString(), args.toTypedArray())
+    // Deep offsets walk the catalog index; metadata and progress joins touch only the selected page.
+    val result = if (page) {
+        "SELECT ${select.replace("HIDDEN", rowHidden)} FROM vod v$joins$progressJoin WHERE v.id IN ($sql)" +
+            if (order) " ORDER BY ${orderBy()}" else ""
+    } else sql.toString()
+    return SimpleSQLiteQuery(result, args.toTypedArray())
 }
 
 private fun VodFilter.orderBy(): String {
