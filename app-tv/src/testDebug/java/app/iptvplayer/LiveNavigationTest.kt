@@ -170,7 +170,9 @@ class LiveNavigationTest {
         start()
         compose.onRoot().performKeyInput { repeat(3) { pressKey(Key.DirectionDown) } }
         val hint = compose.activity.getString(R.string.search_channels)
-        compose.onNodeWithText(hint).performSemanticsAction(SemanticsActions.RequestFocus)
+        compose.onNodeWithText(hint).performTouchInput { click() }
+        compose.onNode(hasSetTextAction()).assertIsFocused()
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
         compose.onNodeWithText(hint).assertIsFocused()
         playlist.writeText(playlist.readText().replace("Channel 4\n", "Updated 4\n"))
         runBlocking { repo.load(source) }
