@@ -114,6 +114,7 @@ import app.iptvplayer.core.source.cacheKey
 import app.iptvplayer.isTv
 import app.iptvplayer.remoteKeys
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -420,16 +421,19 @@ fun LiveScreen(
     }
 
     // Replacing database rows can move focus to the rail before the refreshed page is composed.
-    var refreshFocus by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(items.loadState.refresh) {
-        when (items.loadState.refresh) {
-            is LoadState.Loading -> refreshFocus = selected?.channel?.key.takeIf { tv && !fullscreen && area == Area.List }
-            is LoadState.NotLoading -> {
-                val key = refreshFocus ?: return@LaunchedEffect
-                refreshFocus = null
-                focusRow(repo.indexOf(currentFilter, key) ?: focusedRow[0])
+    val refreshTarget by rememberUpdatedState(selected?.channel?.key.takeIf { tv && !fullscreen && area == Area.List })
+    LaunchedEffect(items) {
+        var target: String? = null
+        snapshotFlow { items.loadState.refresh }.collectLatest { state ->
+            when (state) {
+                is LoadState.Loading -> target = refreshTarget
+                is LoadState.NotLoading -> {
+                    val key = target ?: return@collectLatest
+                    target = null
+                    focusRow(repo.indexOf(currentFilter, key) ?: focusedRow[0])
+                }
+                else -> target = null
             }
-            else -> refreshFocus = null
         }
     }
 

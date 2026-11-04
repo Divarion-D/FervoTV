@@ -105,13 +105,18 @@ class LiveNavigationTest {
         start()
         compose.onRoot().performKeyInput { repeat(3) { pressKey(Key.DirectionDown) } }
         compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 4")).assertIsFocused()
-        playlist.writeText(playlist.readText().replace("Channel 4\n", "Updated 4\n")
-            .replace("#EXTM3U\n", "#EXTM3U\n#EXTINF:-1 group-title=\"News\",Inserted\nhttps://example.invalid/new\n"))
-        runBlocking { repo.load(source) }
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Updated 4").fetchSemanticsNodes().isNotEmpty() }
-        compose.waitForIdle()
-        compose.waitUntil(5_000) { compose.onAllNodes(hasText("Updated 4") and isFocused()).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Updated 4")).assertIsFocused()
+        var title = "Channel 4"
+        repeat(5) { refresh ->
+            val updated = "Updated 4 - $refresh"
+            playlist.writeText(playlist.readText().replace("$title\n", "$updated\n")
+                .replace("#EXTM3U\n", "#EXTM3U\n#EXTINF:-1 group-title=\"News\",Inserted $refresh\nhttps://example.invalid/new/$refresh\n"))
+            runBlocking { repo.load(source) }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText(updated).fetchSemanticsNodes().isNotEmpty() }
+            compose.waitForIdle()
+            compose.waitUntil(5_000) { compose.onAllNodes(hasText(updated) and isFocused()).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText(updated)).assertIsFocused()
+            title = updated
+        }
     }
 
     @Test fun refreshDoesNotTakeFocusFromSearch() {
