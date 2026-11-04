@@ -329,6 +329,9 @@ fun ContinueCard(
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val scale by animateFloatAsState(if (focused && tv) 1.05f else 1f, tween(100), label = "cardScale")
+    val keepScreenOn = if (previewing && player != null) {
+        player.state.collectAsState().value.let { !it.paused && it.error == null }
+    } else false
     val title: String
     val subtitle: String
     var share: Float? = null
@@ -362,8 +365,9 @@ fun ContinueCard(
         ) {
             if (previewing && player != null) {
                 AndroidView(
-                    factory = { SurfaceView(it).apply { keepScreenOn = true; isFocusable = false; player.setVideoView(this) } },
+                    factory = { SurfaceView(it).apply { this.keepScreenOn = keepScreenOn; isFocusable = false; player.setVideoView(this) } },
                     modifier = Modifier.matchParentSize(),
+                    update = { it.keepScreenOn = keepScreenOn },
                     onRelease = { player.releaseVideoView(it) },
                 )
             } else when (item) {

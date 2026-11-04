@@ -112,6 +112,16 @@ internal fun shouldOfferContinueInBackground(source: Source, state: LibraryState
 class MainActivity : ComponentActivity() {
     private var currentPlayer: PlayerSession? = null
 
+    override fun onStart() {
+        super.onStart()
+        currentPlayer?.foreground()
+    }
+
+    override fun onStop() {
+        currentPlayer?.background()
+        super.onStop()
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (Build.VERSION.SDK_INT >= 26 && currentPlayer?.current != null) {

@@ -85,6 +85,21 @@ class PlayerSessionTest {
     }
 
     @Test
+    fun repeatedLiveBackgroundForegroundKeepsTheSameStream() {
+        session.open(PlayItem("http://a/1.ts"))
+        repeat(2) {
+            session.background()
+            session.foreground()
+        }
+
+        assertEquals(
+            listOf("play http://a/1.ts", "stop", "play http://a/1.ts", "stop", "play http://a/1.ts"),
+            engine.calls,
+        )
+        assertEquals("http://a/1.ts", session.current?.url)
+    }
+
+    @Test
     fun nonLivePausesAndContinues() {
         session.open(PlayItem("http://a/film.mp4", live = false))
         session.background()
@@ -93,10 +108,32 @@ class PlayerSessionTest {
     }
 
     @Test
-    fun foregroundWithoutBackgroundJustContinues() {
+    fun explicitVodPauseRemainsPausedThroughBackgroundForegroundSequence() {
+        session.open(PlayItem("http://a/film.mp4", live = false))
+        session.setPaused(true)
+        session.background()
+        session.foreground()
+
+        assertEquals(listOf("play http://a/film.mp4", "pause", "pause"), engine.calls)
+        assertEquals("http://a/film.mp4", session.current?.url)
+    }
+
+    @Test
+    fun closingWhileBackgroundedPreventsAStaleForegroundResume() {
+        session.open(PlayItem("http://a/1.ts"))
+        session.background()
+        session.close()
+        session.foreground()
+
+        assertEquals(listOf("play http://a/1.ts", "stop", "stop"), engine.calls)
+        assertEquals(null, session.current)
+    }
+
+    @Test
+    fun foregroundWithoutBackgroundIsANoOp() {
         session.open(PlayItem("http://a/1.ts"))
         session.foreground() // the screen's first ON_START
-        assertEquals(listOf("play http://a/1.ts", "resume"), engine.calls)
+        assertEquals(listOf("play http://a/1.ts"), engine.calls)
     }
 
     @Test

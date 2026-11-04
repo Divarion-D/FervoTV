@@ -152,10 +152,8 @@ fun VodPlayer(
         }
     }
     LifecycleStartEffect(player) {
-        player.foreground()
         onStopOrDispose {
             save()
-            player.background()
         }
     }
     LaunchedEffect(panel, panelTick, state.paused, state.error, toolsOpen) {
@@ -251,7 +249,7 @@ fun VodPlayer(
         AndroidView(
             factory = {
                 SurfaceView(it).apply {
-                    keepScreenOn = true
+                    keepScreenOn = !state.paused && state.error == null
                     isFocusable = false
                     player.setVideoView(this)
                 }
@@ -271,6 +269,7 @@ fun VodPlayer(
                 app.iptvplayer.core.player.VideoScale.FILL,
                 app.iptvplayer.core.player.VideoScale.STRETCH -> Modifier.fillMaxSize()
             }.align(Alignment.Center),
+            update = { it.keepScreenOn = !state.paused && state.error == null },
             onRelease = { player.releaseVideoView(it) },
         )
         Box(Modifier.matchParentSize().pointerInput(Unit) { detectTapGestures { panel = !panel; panelTick++ } })

@@ -189,7 +189,7 @@ fun PlayerScreen(
         AndroidView(
             factory = {
                 SurfaceView(it).apply {
-                    keepScreenOn = true // the screen doesn't dim while the player is open
+                    keepScreenOn = !state.paused && state.error == null
                     isFocusable = false
                     player.setVideoView(this)
                 }
@@ -210,6 +210,7 @@ fun PlayerScreen(
                 app.iptvplayer.core.player.VideoScale.STRETCH -> Modifier.fillMaxSize()
             }
                 .align(Alignment.Center),
+            update = { it.keepScreenOn = !state.paused && state.error == null },
             onRelease = { player.releaseVideoView(it) },
         )
         Box(Modifier.matchParentSize().touchActions(handle))

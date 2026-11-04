@@ -291,14 +291,12 @@ fun LiveScreen(
         }
     }
 
-    // Background: live is released, back in front it starts again at the current moment (PLR-002).
+    // The activity owns playback lifecycle; this screen only tracks whether viewing counts as watch time.
     var inFront by remember { mutableStateOf(true) }
     LifecycleStartEffect(player) {
-        player.foreground()
         inFront = true
         onStopOrDispose {
             inFront = false
-            player.background()
         }
     }
 

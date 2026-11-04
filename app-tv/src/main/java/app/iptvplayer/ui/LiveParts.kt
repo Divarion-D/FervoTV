@@ -564,12 +564,13 @@ fun VideoWindow(item: ChannelItem?, playing: Boolean, player: PlayerSession, off
             AndroidView(
                 factory = {
                     TextureView(it).apply {
-                        keepScreenOn = true
+                        keepScreenOn = !state.paused && state.error == null
                         isFocusable = false
                         player.setVideoView(this)
                     }
                 },
                 modifier = Modifier.fillMaxSize(),
+                update = { it.keepScreenOn = !state.paused && state.error == null },
                 onRelease = { player.releaseVideoView(it) },
             )
         } else if (item != null) {

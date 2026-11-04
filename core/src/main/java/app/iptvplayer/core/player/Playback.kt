@@ -163,6 +163,8 @@ class PlayerSession(newEngine: () -> PlaybackEngine) {
     private val engine by lazyEngine
     private var item: PlayItem? = null
     private var dropped = false // a live stream released in the background
+    private var backgrounded = false
+    private var resumeOnForeground = false
     private var view: View? = null
     private var videoEnabled = true
     private val _sleepRemainingMs = MutableStateFlow<Long?>(null)
@@ -198,16 +200,24 @@ class PlayerSession(newEngine: () -> PlaybackEngine) {
     /** The app went to the background: live is released (nothing to catch up on, no traffic), anything else pauses. */
     fun background() {
         val it = item ?: return
+        if (backgrounded) return
+        backgrounded = true
         if (it.live) {
             engine.stop()
             dropped = true
-        } else engine.pause()
+        } else {
+            resumeOnForeground = !engine.state.value.paused
+            engine.pause()
+        }
     }
 
     /** Back from the background: live starts again at the current moment, anything else continues. */
     fun foreground() {
         val it = item ?: return
-        if (dropped) open(it) else engine.resume()
+        if (!backgrounded) return
+        backgrounded = false
+        if (dropped) open(it) else if (resumeOnForeground) engine.resume()
+        resumeOnForeground = false
     }
 
     fun retry() {
@@ -279,6 +289,8 @@ class PlayerSession(newEngine: () -> PlaybackEngine) {
     fun close() {
         item = null
         dropped = false
+        backgrounded = false
+        resumeOnForeground = false
         if (lazyEngine.isInitialized()) engine.stop()
         sleepHandler.removeCallbacks(sleepTick)
         _sleepRemainingMs.value = null
@@ -286,6 +298,8 @@ class PlayerSession(newEngine: () -> PlaybackEngine) {
 
     fun release() {
         item = null
+        backgrounded = false
+        resumeOnForeground = false
         if (lazyEngine.isInitialized()) engine.release()
         sleepHandler.removeCallbacks(sleepTick)
         _sleepRemainingMs.value = null
