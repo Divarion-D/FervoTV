@@ -394,6 +394,39 @@ http://h/s/x2.ts
         assertEquals(listOf("m"), runBlocking { repo.unfinished(20, first).first() }.map { it.vkey })
     }
 
+    @Test
+    fun categoryAndPagingCountsRespectHiddenDuplicatesAndSections() {
+        val source = Source.M3u("counts")
+        val key = source.cacheKey()
+        importDirect(key, listOf(
+            VodEntry(MOVIE, "shared", "Shared", "A"),
+            VodEntry(MOVIE, "shared", "Shared", "B"),
+            VodEntry(MOVIE, "visible", "Visible", "A"),
+            VodEntry(MOVIE, "hidden", "Hidden", "C"),
+            VodEntry(SERIES, "series", "Series", "A"),
+        ))
+        val store = LibraryStore(db)
+        val user = LibraryUser(db)
+        user.setHidden(listOf("shared", "hidden"), true)
+        user.setCategoriesHidden(key, MOVIE, listOf("B"), true)
+        fun categories(kind: VodKind, hidden: Boolean = false) =
+            runBlocking { store.categories(key, kind, hidden).first() }.associate { it.name to it.count }
+        assertEquals(mapOf("A" to 1), categories(MOVIE))
+        assertEquals(mapOf("A" to 1, "B" to 0, "C" to 0), categories(MOVIE, true))
+        assertEquals(mapOf("A" to 1), categories(SERIES))
+        for ((visibility, expected) in listOf(Visibility.VISIBLE to 1, Visibility.HIDDEN to 3, Visibility.ALL to 4)) {
+            val filter = VodFilter(key, MOVIE, visibility = visibility)
+            assertEquals(expected, store.count(filter))
+            assertEquals(expected, runBlocking { loadPage(60) { store.source(filter) } }.data.size)
+        }
+        assertEquals(2, store.count(VodFilter(key, MOVIE, search = "shared", visibility = Visibility.HIDDEN)))
+        assertEquals(0, store.count(VodFilter("missing", MOVIE)))
+        user.setHidden(listOf("shared"), false)
+        assertEquals(mapOf("A" to 2), categories(MOVIE))
+        assertEquals(mapOf("A" to 2, "B" to 1, "C" to 0), categories(MOVIE, true))
+        assertEquals(2, store.count(VodFilter(key, MOVIE)))
+    }
+
     /**
      * P2 acceptance: 150 000 films (generated while being read, through the M3U parser and the section rules) go into
      * the library with the 256 MB test heap without heap growth; the catalogue pages and searches in < 200 ms.
