@@ -1,6 +1,7 @@
 package app.iptvplayer.ui
 
 import android.content.Intent
+import android.content.Context
 import android.content.res.Configuration
 import android.net.Uri
 import android.widget.Toast
@@ -51,6 +52,7 @@ import androidx.compose.ui.window.DialogProperties
 import app.iptvplayer.R
 import app.iptvplayer.core.Defaults
 import app.iptvplayer.core.player.PlayerSession
+import app.iptvplayer.core.player.PlayItem
 import app.iptvplayer.core.player.VideoScale
 import app.iptvplayer.core.player.redactStreamUrl
 import app.iptvplayer.initialFocus
@@ -66,17 +68,22 @@ fun PlayerTools(
     onPause: () -> Unit = player::togglePause,
     onPrevious: (() -> Unit)? = null,
     onNext: (() -> Unit)? = null,
+    favorite: Boolean? = null,
+    onFavorite: (() -> Unit)? = null,
+    seekStepMs: Long = Defaults.SEEK_STEP_MS,
     primaryModifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val horizontal = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val state by player.state.collectAsState()
     val remaining by player.sleepRemainingMs.collectAsState()
+    val sleepAtEnd by player.sleepAtEnd.collectAsState()
     var timer by remember { mutableStateOf(false) }
     var details by remember { mutableStateOf(false) }
     var more by remember { mutableStateOf(false) }
     var audio by remember { mutableStateOf(false) }
     var subtitles by remember { mutableStateOf(false) }
+    var quality by remember { mutableStateOf(false) }
     val subtitlePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
             val name = displayName(context, uri)
@@ -90,20 +97,20 @@ fun PlayerTools(
             player.addSubtitle(uri.toString(), mime)
         }.onFailure { Toast.makeText(context, R.string.player_subtitle_file_error, Toast.LENGTH_LONG).show() }
     }
-    DisposableEffect(timer, details, more, audio, subtitles) {
-        onDialogOpen(timer || details || more || audio || subtitles)
+    DisposableEffect(timer, details, more, audio, subtitles, quality) {
+        onDialogOpen(timer || details || more || audio || subtitles || quality)
         onDispose { onDialogOpen(false) }
     }
     val transport: @Composable () -> Unit = {
             if (onPrevious != null) PlayerControlButton(R.drawable.ic_skip_previous, stringResource(R.string.episode_previous), onClick = onPrevious)
-            PlayerControlButton(R.drawable.ic_replay_10, stringResource(R.string.seek_back), onClick = { onSeek(-Defaults.SEEK_STEP_MS) })
+            PlayerControlButton(R.drawable.ic_replay_10, stringResource(R.string.seek_back), onClick = { onSeek(-seekStepMs) })
             PlayerControlButton(
                 if (state.error != null) R.drawable.ic_replay else if (state.paused) R.drawable.ic_play_arrow else R.drawable.ic_pause,
                 stringResource(if (state.error != null) R.string.retry else if (state.paused) R.string.player_play else R.string.player_pause),
                 primary = true, modifier = primaryModifier.initialFocus(),
                 onClick = { if (state.error != null) player.retry() else onPause() },
             )
-            PlayerControlButton(R.drawable.ic_forward_10, stringResource(R.string.seek_forward), onClick = { onSeek(Defaults.SEEK_STEP_MS) })
+            PlayerControlButton(R.drawable.ic_forward_10, stringResource(R.string.seek_forward), onClick = { onSeek(seekStepMs) })
             if (onNext != null) PlayerControlButton(R.drawable.ic_skip_next, stringResource(R.string.episode_next), onClick = onNext)
     }
     val options: @Composable () -> Unit = {
@@ -125,22 +132,37 @@ fun PlayerTools(
             style = TvType.badge, color = Ext.now,
             modifier = Modifier.background(Color.White.copy(alpha = 0.1f), CircleShape).clickable { timer = true }.padding(horizontal = 12.dp, vertical = 6.dp),
         )
+        else if (sleepAtEnd) Text(
+            stringResource(R.string.player_sleep_end_item),
+            style = TvType.badge, color = Ext.now,
+            modifier = Modifier.background(Color.White.copy(alpha = 0.1f), CircleShape).clickable { timer = true }.padding(horizontal = 12.dp, vertical = 6.dp),
+        )
     }
     if (more) {
         val sheet: @Composable () -> Unit = { ActionSheet(
         stringResource(R.string.player_controls), null,
-        listOf(null to listOf(
+        listOf(null to listOfNotNull(
             SheetItem(null, context.getString(R.string.player_speed, state.speed)) { player.setSpeed(if (state.speed >= 2f) 0.5f else state.speed + 0.5f) },
             SheetItem(null, context.getString(R.string.player_volume, state.volume)) { player.setVolume(if (state.volume >= 150) 50 else state.volume + 25) },
+            SheetItem(null, context.getString(R.string.player_audio_delay, state.audioOffsetMs)) {
+                player.setAudioOffset(if (state.audioOffsetMs >= 500) -500 else state.audioOffsetMs + 25)
+            },
             SheetItem(null, context.getString(R.string.player_scale, state.scale.name)) { player.setScale(VideoScale.entries[(VideoScale.entries.indexOf(state.scale) + 1) % VideoScale.entries.size]) },
             SheetItem(R.drawable.ic_image, context.getString(if (state.videoEnabled) R.string.player_audio_only else R.string.player_video_on)) { player.setVideoEnabled(!state.videoEnabled) },
             SheetItem(R.drawable.ic_schedule, context.getString(R.string.player_sleep)) { timer = true },
             SheetItem(R.drawable.ic_info, context.getString(R.string.player_stream_info)) { details = true },
+            onFavorite?.let {
+                SheetItem(
+                    if (favorite == true) R.drawable.ic_favorite_fill else R.drawable.ic_favorite,
+                    context.getString(if (favorite == true) R.string.favorite_remove else if (favorite == false) R.string.favorite_add else R.string.favorite_toggle),
+                    onClick = it,
+                )
+            },
+            SheetItem(R.drawable.ic_image, context.getString(R.string.player_quality)) { more = false; quality = true },
             SheetItem(R.drawable.ic_folder_open, context.getString(R.string.player_subtitle_file)) { subtitlePicker.launch(arrayOf("text/vtt", "application/x-subrip", "text/plain")) },
-            SheetItem(R.drawable.ic_link, context.getString(R.string.player_external)) {
-                player.current?.let { item ->
-                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(item.url), "video/*")) }
-                        .onFailure { Toast.makeText(context, R.string.player_external_unavailable, Toast.LENGTH_SHORT).show() }
+            player.current?.takeUnless { it.drmLicenseUrl != null }?.let { item ->
+                SheetItem(R.drawable.ic_link, context.getString(R.string.player_external)) {
+                    openExternalPlayer(context, item, player.position)
                 }
             },
         )), context.isTv(), { more = false },
@@ -165,18 +187,45 @@ fun PlayerTools(
         onSelect = { if (it < 0) player.disableSubtitles() else player.selectSubtitleTrack(it); subtitles = false },
         onDismiss = { subtitles = false },
     )
+    if (quality) ChoiceDialog(
+        stringResource(R.string.player_quality), listOf(-1) + state.videoTracks.indices,
+        state.videoTracks.indexOfFirst { it.selected },
+        label = { index ->
+            if (index < 0) context.getString(R.string.player_quality_auto)
+            else state.videoTracks[index].let { track ->
+                listOfNotNull(
+                    track.height.takeIf { it > 0 }?.let { "${it}p" },
+                    track.bitrate.takeIf { it > 0 }?.let { "${it / 1_000} kbps" },
+                    track.codec,
+                ).joinToString(" · ").ifBlank { unknown }
+            }
+        },
+        onSelect = { if (it < 0) player.clearVideoTrackOverride() else player.selectVideoTrack(it); quality = false },
+        onDismiss = { quality = false },
+    )
     if (timer) {
-        val options = listOf(0, 15, 30, 45, 60, 90)
+        val options = listOf(0, 15, 30, 45, 60, 90, -1)
         ChoiceDialog(
             title = stringResource(R.string.player_sleep), options = options,
-            selected = if (remaining == null) 0 else options.firstOrNull { it * 60_000L >= remaining!! } ?: 90,
-            label = { if (it == 0) context.getString(R.string.player_sleep_off) else context.getString(R.string.player_sleep_minutes, it) },
-            onSelect = { player.setSleepTimer(if (it == 0) null else it * 60_000L); timer = false },
+            selected = if (sleepAtEnd) -1 else if (remaining == null) 0 else options.firstOrNull { it > 0 && it * 60_000L >= remaining!! } ?: 90,
+            label = { if (it < 0) context.getString(R.string.player_sleep_end_item) else if (it == 0) context.getString(R.string.player_sleep_off) else context.getString(R.string.player_sleep_minutes, it) },
+            onSelect = { if (it < 0) player.setSleepAtEnd(true) else player.setSleepTimer(if (it == 0) null else it * 60_000L); timer = false },
             onDismiss = { timer = false },
         )
     }
     if (details) StreamDetails(player) { details = false }
 }
+
+internal fun externalPlayerIntent(item: PlayItem, positionMs: Long = 0, title: String? = null): Intent =
+    Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(item.url), "video/*").apply {
+        if (positionMs > 0) putExtra("position", positionMs)
+        title?.let { putExtra(Intent.EXTRA_TITLE, it) }
+    }
+
+internal fun openExternalPlayer(context: Context, item: PlayItem, positionMs: Long = 0, title: String? = null): Boolean =
+    runCatching { context.startActivity(externalPlayerIntent(item, positionMs, title)) }.isSuccess.also { opened ->
+        if (!opened) Toast.makeText(context, R.string.player_external_unavailable, Toast.LENGTH_SHORT).show()
+    }
 
 @Composable
 private fun PlayerControlButton(
@@ -195,7 +244,7 @@ private fun PlayerControlButton(
         ) {
             Icon(painterResource(icon), label, tint = if (accent) Ext.onFocus else Color.White, modifier = Modifier.size(if (primary) 32.dp else 24.dp))
         }
-        if (caption) Text(label, style = TvType.badge, color = Color.White)
+        if (caption || focused) Text(label, style = TvType.badge, color = Color.White)
     }
 }
 
@@ -220,6 +269,8 @@ private fun StreamDetails(player: PlayerSession, onDismiss: () -> Unit) {
                     info?.takeIf { it.width > 0 && it.height > 0 }?.let { "${it.width}×${it.height}" } ?: unknown))
                 Text(stringResource(R.string.player_info_fps, info?.fps?.takeIf { it > 0 }?.toString() ?: unknown))
                 Text(stringResource(R.string.player_info_bitrate, info?.bitrate?.takeIf { it > 0 }?.let { "${it / 1_000}" } ?: unknown))
+                Text(stringResource(R.string.player_info_actual_bitrate, info?.measuredBitrate?.takeIf { it > 0 }?.let { "${it / 1_000}" } ?: unknown))
+                Text(stringResource(R.string.player_info_dropped_frames, info?.droppedFrames?.takeIf { it >= 0 }?.toString() ?: unknown))
                 Text(stringResource(R.string.player_info_audio, info?.audioCodec.known(), info?.audioChannels?.takeIf { it > 0 }?.toString() ?: unknown))
                 Text(stringResource(R.string.player_info_transfer, info?.hdr.known()))
                 Text(stringResource(R.string.player_info_depth, depth))

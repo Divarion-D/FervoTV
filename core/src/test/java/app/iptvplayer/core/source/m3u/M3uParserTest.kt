@@ -2,6 +2,7 @@ package app.iptvplayer.core.source.m3u
 
 import app.iptvplayer.core.model.Channel
 import app.iptvplayer.core.model.NO_GROUP
+import app.iptvplayer.core.player.localClearKeyResponse
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -107,5 +108,16 @@ class M3uParserTest {
         val types = ArrayList<Pair<String, String?>>()
         parseM3uEntries(java.io.StringReader(text)) { types += it.channel.name to it.type }
         assertEquals(listOf("A" to "movie", "B" to "series", "C" to null), types)
+    }
+
+    @Test fun inlineClearKeyBecomesAJwkDataUri() {
+        val license = clearKeyLicense(
+            "org.w3.clearkey",
+            "000102030405060708090a0b0c0d0e0f:101112131415161718191a1b1c1d1e1f",
+        )
+        val json = java.net.URLDecoder.decode(license.substringAfter(','), "UTF-8")
+        assertEquals(true, json.contains("\"kid\":\"AAECAwQFBgcICQoLDA0ODw\",\"k\":\"EBESExQVFhcYGRobHB0eHw\""))
+        assertEquals(json, localClearKeyResponse(license)?.toString(Charsets.UTF_8))
+        assertEquals("bad:key", clearKeyLicense("clearkey", "bad:key"))
     }
 }

@@ -67,6 +67,8 @@ fun SetupScreen(
     var user by remember { mutableStateOf(x?.user.orEmpty()) }
     var pass by remember { mutableStateOf(x?.pass.orEmpty()) }
     var hls by remember { mutableStateOf(x?.hls ?: false) }
+    var userAgent by remember { mutableStateOf(when (initial) { is Source.M3u -> initial.userAgent; is Source.Xtream -> initial.userAgent; null -> null }.orEmpty()) }
+    var referer by remember { mutableStateOf(when (initial) { is Source.M3u -> initial.referer; is Source.Xtream -> initial.referer; null -> null }.orEmpty()) }
 
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -80,9 +82,9 @@ fun SetupScreen(
 
     val source: Source? = if (xtream) {
         if (server.isBlank() || user.isBlank()) null
-        else Source.Xtream(withScheme(server.trim()), user.trim(), pass, hls)
+        else Source.Xtream(withScheme(server.trim()), user.trim(), pass, hls, userAgent.trim().ifBlank { null }, referer.trim().ifBlank { null })
     } else {
-        url.trim().takeIf { it.isNotEmpty() }?.let { Source.M3u(withScheme(it)) }
+        url.trim().takeIf { it.isNotEmpty() }?.let { Source.M3u(withScheme(it), userAgent.trim().ifBlank { null }, referer.trim().ifBlank { null }) }
     }
 
     Column(Modifier.fillMaxSize().safeDrawingPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -159,6 +161,8 @@ fun SetupScreen(
                     modifier = Modifier.focusRing(CircleShape),
                 ) { IconLabel(R.drawable.ic_folder_open, stringResource(R.string.choose_file)) }
             }
+            Field(userAgent, { userAgent = it }, stringResource(R.string.field_user_agent), R.drawable.ic_link)
+            Field(referer, { referer = it }, stringResource(R.string.field_referer), R.drawable.ic_link, placeholder = "https://…/")
 
             Button(
                 onClick = { source?.let(onDone) },

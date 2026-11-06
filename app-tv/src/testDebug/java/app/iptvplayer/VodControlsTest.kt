@@ -52,7 +52,7 @@ class VodControlsTest {
         )
         compose.setContent {
             AppTheme {
-                VodPlayer(session, VodPlay(film), "Film", null, false, false, null, null,
+                VodPlayer(session, VodPlay(film), emptyMap(), "Film", null, false, false, null, null,
                     onSave = { _, _, _ -> }, onEpisode = {}, onClose = { closed++ })
             }
         }

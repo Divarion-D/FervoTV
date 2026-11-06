@@ -115,7 +115,6 @@ Fervo TV развивается по фазам. Сейчас в работе P3
 make check        # то же, что CI на каждый коммит: тесты + lint + debug-сборка
 make test         # unit-тесты и debug UI-регрессии; make test-fast — только ядро
 make release      # один подписанный универсальный APK для TV, телефона и планшета → dist/
-make release-mobile  # отдельный APK устаревшего мобильного интерфейса → dist/
 make install run  # собрать release, поставить по adb и запустить (данные сохраняются)
 make install-debug run-debug  # debug — отдельным приложением «Fervo TV debug» рядом с release
 make dist         # подписанные dist/FervoTV-<версия>.apk и .aab + проверка подписи
@@ -200,7 +199,6 @@ Debug ставится отдельным приложением со своим
 - `core` — всё, что не интерфейс: модели, разбор M3U и XMLTV, Xtream, база данных, логотипы, плеер, команды ввода.
   Все значения по умолчанию собраны в одном файле — [`Defaults.kt`](core/src/main/java/app/iptvplayer/core/Defaults.kt).
 - `app-tv` — приложение, которое выпускается: одно и то же для TV, телефонов и планшетов, раскладка подстраивается под экран.
-- `app-mobile` — прежний интерфейс; не выпускается.
 
 Подробнее — в [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), облик и компоненты — в
 [дизайн-системе](docs/spec/33-design.md) и [макете](docs/design/mockup.html) (открыть в браузере).

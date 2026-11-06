@@ -94,6 +94,7 @@ fun PlayerScreen(
     find: suspend (Zap) -> Int?,
     panelOpen: Boolean = false,
     onSide: (Action) -> Unit = {},
+    onFavorite: ((Channel) -> Unit)? = null,
     overlay: @Composable BoxScope.(jump: (Zap) -> Unit) -> Unit = {},
 ) {
     var index by remember { mutableIntStateOf(startIndex) }
@@ -213,12 +214,23 @@ fun PlayerScreen(
             update = { it.keepScreenOn = !state.paused && state.error == null },
             onRelease = { player.releaseVideoView(it) },
         )
+        SubtitleOverlay(player, Modifier.matchParentSize())
         Box(Modifier.matchParentSize().touchActions(handle))
-        if (state.buffering && error == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
+        if (state.buffering && error == null) Column(
+            Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(12.dp)).padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            CircularProgressIndicator()
+            if (state.reconnecting) Text(
+                if (state.reconnectInSeconds > 0) stringResource(R.string.player_provider_retry, state.reconnectInSeconds)
+                else stringResource(R.string.player_reconnecting, state.reconnectAttempt),
+                modifier = Modifier.padding(top = 8.dp), color = Color.White,
+            )
+        }
         if (shown != null && (showInfo || error != null)) {
             InfoBar(shown, index + 1, total, error, Modifier.align(if (controls) Alignment.TopStart else Alignment.BottomStart))
         }
-        if (controls) PlayerControls(player, Modifier.align(Alignment.BottomCenter))
+        if (controls) PlayerControls(player, shown?.let { onFavorite?.let { action -> { action(it) } } }, Modifier.align(Alignment.BottomCenter))
         // The dialed number at the top right (LIVE-009); no clock in the player (UI-009, owner's decision).
         if (dial.text.isNotEmpty()) Text(
             dial.text, style = TvType.display,
@@ -275,11 +287,11 @@ private fun InfoBar(ch: Channel, number: Int, total: Int, error: String?, modifi
 
 /** Compact live D-pad/touch panel; timer and details are shared with VOD through PlayerTools. */
 @Composable
-private fun PlayerControls(player: PlayerSession, modifier: Modifier) {
+private fun PlayerControls(player: PlayerSession, onFavorite: (() -> Unit)?, modifier: Modifier) {
     Column(
         modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.88f), RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
             .padding(horizontal = 18.dp, vertical = 16.dp),
     ) {
-        PlayerTools(player)
+        PlayerTools(player, onFavorite = onFavorite)
     }
 }

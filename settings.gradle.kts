@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "FervoTV"
-include(":core", ":app-tv", ":app-mobile")
+include(":core", ":app-tv")

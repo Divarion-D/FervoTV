@@ -51,6 +51,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,6 +76,10 @@ import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import app.iptvplayer.isTv
@@ -258,10 +263,10 @@ fun rememberTimeFormat(): (Long) -> String {
  * OK/tap. Otherwise on TV just moving focus over it pops the keyboard and traps the remote.
  */
 @Composable
-fun SearchField(query: String, onQuery: (String) -> Unit, hint: String, pillFocus: FocusRequester, modifier: Modifier, height: Dp = 56.dp, edit: Boolean = false) {
+fun SearchField(query: String, onQuery: (String) -> Unit, hint: String, pillFocus: FocusRequester, modifier: Modifier, height: Dp = 56.dp, edit: Boolean = false, onEdit: () -> Unit = {}) {
     val c = MaterialTheme.colorScheme
-    var editing by remember { mutableStateOf(edit) } // [edit]: opens with the keyboard (a phone's search screen)
-    var wasEditing by remember { mutableStateOf(false) }
+    var editing by rememberSaveable { mutableStateOf(edit) } // survives a paging refresh replacing this subtree
+    var wasEditing by rememberSaveable { mutableStateOf(false) }
     BackHandler(editing) { editing = false }
 
     if (editing) {
@@ -304,7 +309,14 @@ fun SearchField(query: String, onQuery: (String) -> Unit, hint: String, pillFocu
                 .background(if (focused) Ext.focus else c.surfaceContainerHigh, CircleShape)
                 .focusRequester(pillFocus)
                 .clip(CircleShape)
-                .clickable(interaction, ripple()) { editing = true }
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                        onEdit()
+                        editing = true
+                    }
+                }
+                .clickable(interaction, ripple()) { onEdit(); editing = true }
                 .padding(start = 16.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -573,6 +585,7 @@ fun VideoWindow(item: ChannelItem?, playing: Boolean, player: PlayerSession, off
                 update = { it.keepScreenOn = !state.paused && state.error == null },
                 onRelease = { player.releaseVideoView(it) },
             )
+            SubtitleOverlay(player, Modifier.matchParentSize())
         } else if (item != null) {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                 ChannelLogo(item.channel, Modifier.size(112.dp, 70.dp))

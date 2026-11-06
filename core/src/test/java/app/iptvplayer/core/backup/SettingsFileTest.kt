@@ -22,6 +22,10 @@ import app.iptvplayer.core.model.ResumeMode
 import app.iptvplayer.core.model.StartScreen
 import app.iptvplayer.core.model.VodSort
 import app.iptvplayer.core.model.Source
+import app.iptvplayer.core.model.SubtitleBackground
+import app.iptvplayer.core.model.SubtitleColor
+import app.iptvplayer.core.model.SubtitleFont
+import app.iptvplayer.core.model.SubtitlePosition
 import app.iptvplayer.core.source.cacheKey
 import app.iptvplayer.core.source.userKey
 import kotlinx.coroutines.runBlocking
@@ -53,7 +57,10 @@ class SettingsFileTest {
     private val dbs = ArrayList<AppDb>()
 
     // Synthetic account: no real server or credentials.
-    private val account = Source.Xtream("http://iptv.example", "demo", "secret", hls = true)
+    private val account = Source.Xtream(
+        "http://iptv.example", "demo", "secret", hls = true,
+        userAgent = "Fervo fixture", referer = "https://portal.example/",
+    )
 
     @Before
     fun clean() = wipePrefs()
@@ -86,6 +93,12 @@ class SettingsFileTest {
                 logoSource = "https://logos.example/api", liveTiles = true, epgShift = 60, language = "en",
                 resume = ResumeMode.CONTINUE, autoNext = false, movieSort = VodSort.RATING, seriesList = true,
                 startScreen = StartScreen.LIVE, homeRows = "FAVORITE_MOVIES,-CONTINUE", homeChannels = false, homeGuide = true, homeVisible = false, homePreview = false,
+                playerSubtitleEmbeddedStyles = false, playerSubtitleFont = SubtitleFont.SERIF, playerSubtitleSize = 125,
+                playerSubtitleColor = SubtitleColor.YELLOW, playerSubtitleBackground = SubtitleBackground.BLACK,
+                playerSubtitlePosition = SubtitlePosition.CENTER,
+                playerNightMode = true, playerNormalizeVolume = true, playerVerboseLogging = true,
+                playerExternalLive = true, playerExternalMovies = true, playerExternalSeries = true,
+                playerSeekSeconds = 30,
             )
             addEpgSource("https://guide.example/a.xml.gz")
             updateEpgSource(addEpgSource("https://guide.example/b.xml").copy(userAgent = "UA", shift = -30, refresh = PlaylistRefresh.WEEKLY))

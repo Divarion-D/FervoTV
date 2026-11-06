@@ -12,13 +12,10 @@
 | Модуль | Что | Зависит от |
 |---|---|---|
 | `core` | Android-библиотека **без Compose**: модели, источники и потоковые парсеры, база данных (Room, FTS, Paging), логотипы, HTTP, движок воспроизведения (интерфейс + Media3 ExoPlayer), команды ввода, QR-коды, `Defaults`, `Repository` | — |
-| `app-tv` | приложение (Compose): экраны, `MainActivity`, ресурсы. Media3 напрямую не видит — только интерфейс движка из `core`. Manifest с `LEANBACK_LAUNCHER` и обычным `LAUNCHER` | `core` |
-| `app-mobile` | то же приложение для телефонов: UI на уровне P1.1 (сетка карточек), manifest только с обычным `LAUNCHER`, без баннера; только собирается — телефонный UI P1.3 сделан в `app-tv`, который и ставится на телефоны | `core` |
+| `app-tv` | универсальное приложение (Compose): адаптивные экраны для TV, телефонов и планшетов, `MainActivity`, ресурсы. Media3 напрямую не видит — только интерфейс движка из `core`. Manifest с `LEANBACK_LAUNCHER` и обычным `LAUNCHER` | `core` |
 
-До конца P0 выпускается **один APK — `app-tv`** (он, как и раньше, ставится и на TV, и на телефоны);
-`app-mobile` собирается и проверяется lint, но в релиз пока не идёт. UI двух приложений разойдётся в P1.
-Оба приложения имеют один `applicationId` (`io.github.divarion_d.fervotv`) и одну подпись: установка одного
-заменяет другое с сохранением данных. Отдельные пакеты — решение владельца при выпуске.
+Выпускается **один APK — `app-tv`** для TV, телефонов и планшетов. Он имеет один `applicationId`
+(`io.github.divarion_d.fervotv`) и одну подпись, поэтому обновления сохраняют пользовательские данные.
 
 Версия (`versionCode` / `versionName`) и подпись release — общие, в корневом `build.gradle.kts`
 (`subprojects { plugins.withId("com.android.application") … }`), чтобы их нельзя было рассинхронизировать.
@@ -31,7 +28,7 @@
 ## Файлы
 
 ```
-build.gradle.kts           версии плагинов; общие для app-tv/app-mobile версия, подпись release (secret()), R8
+build.gradle.kts           версии плагинов; общие версия, подпись release (secret()), R8
 core/src/main/java/app/iptvplayer/core/
   Defaults.kt              ВСЕ значения по умолчанию и настраиваемые константы (для обоих приложений)
   Repository.kt            единственный вход для приложений: Source и Settings (prefs), lastGroup, zapped (последний и
@@ -104,7 +101,7 @@ core/src/test/java/app/iptvplayer/core/
   model/WatchingTest.kt;
   TestUtil.kt (SyntheticM3u, SyntheticVodM3u, SyntheticXmltv, gzipped, usedHeap, loadPage, FakeServer — локальный HTTP), source/LegacyCache.kt (playlist.tsv для фикстур)
 
-app-tv/src/main/java/app/iptvplayer/       (app-mobile/… — такая же копия)
+app-tv/src/main/java/app/iptvplayer/
   MainActivity.kt     App(): выбор экрана — Что нового / Setup / Настройки / загрузка / ошибка / «Эфир» / «Фильмы» / «Сериалы»
                       (разделы видеотеки — только когда они есть у источника, libraryKinds); go(Section); плашка загрузки
                       видеотеки Xtream и итог «добавлено / обновлено / удалено» (SRC-016); расписание обновления
@@ -157,10 +154,9 @@ app-tv/src/main/res/drawable/ic_*.xml   иконки Material Symbols Rounded (b
 .github/workflows/release.yml  тег v<versionName>: тесты и lint всех модулей, подписанный APK app-tv, GitHub Release с текстом из CHANGELOG.md; AAB в релиз не публикуется
 ```
 
-Пакеты Kotlin: `app.iptvplayer.core.*` в `core`; в приложениях — прежние `app.iptvplayer` и `app.iptvplayer.ui`
-(namespace обоих приложений — `app.iptvplayer`, у `core` — `app.iptvplayer.core`). С P1.2 UI приложений расходится:
-«Эфир» P1.2 — только в `app-tv` (он же пока выпускается и для телефонов), `app-mobile` остаётся на UI P1.1 до своего
-шага P1.3 и лишь должен собираться с текущим `core`.
+Пакеты Kotlin: `app.iptvplayer.core.*` в `core`; в приложении — `app.iptvplayer` и `app.iptvplayer.ui`
+(namespace `app-tv` — `app.iptvplayer`, у `core` — `app.iptvplayer.core`). Адаптивный UI `app-tv`
+используется и на TV, и на телефонах.
 
 ## Дизайн (Material 3)
 
@@ -786,7 +782,7 @@ Back (пульт, кнопка, жест) ──▶ BackHandler
 ## Языки интерфейса (UI-022)
 
 - Все строки `app-tv` — в `res/values` (английский, он же запасной) и `res/values-ru`; множественные формы — `<plurals>`.
-  `NoUiTextInCodeTest` не даёт вернуть кириллицу в литералы Kotlin. `app-mobile` (не выпускается) остаётся на русских литералах.
+  `NoUiTextInCodeTest` не даёт вернуть кириллицу в литералы Kotlin.
 - `core` текста не производит: ошибки — `CoreException(ErrorCode)`, воспроизведение — `PlaybackError.Kind`, итог телегида —
   `EpgStatus` (в базе — `ok …` / `error КОД …`), служебные списки — с пустым `title`, `Edits.categoryOrder` — флаг,
   `ChannelSort` и `PlaylistRefresh` — без подписей. Слова для них — `ui/Texts.kt`. `NO_GROUP` остаётся русским значением в
@@ -825,9 +821,7 @@ Back (пульт, кнопка, жест) ──▶ BackHandler
 - `LEANBACK_LAUNCHER` + `android:banner` — приложение появляется в лаунчере Android TV; обычный `LAUNCHER` — и в лаунчере телефона.
 - `android.software.leanback` и `android.hardware.touchscreen` с `required="false"` — один APK ставится и на TV, и на телефоны.
 
-`app-mobile`: только обычный `LAUNCHER`, без баннера и `uses-feature`.
-
-Оба: `usesCleartextTraffic="true"` — IPTV почти всегда работает по http.
+`usesCleartextTraffic="true"` — IPTV почти всегда работает по http.
 
 `app-tv` ещё: `supportsRtl="true"`, `localeConfig` (языки в системных настройках Android 13+), в `configChanges` —
 `locale|layoutDirection` (смена языка не пересоздаёт activity и не перезапускает поток), `WRITE_EXTERNAL_STORAGE`

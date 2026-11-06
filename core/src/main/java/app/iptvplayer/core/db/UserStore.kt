@@ -344,6 +344,15 @@ class UserStore(private val db: AppDb) {
         if (!on) dao.removeFavorite(sourceKey, key) else if (!dao.isFavorite(sourceKey, key)) dao.addFavorite(sourceKey, key)
     }
 
+    fun toggleFavorite(sourceKey: String, key: String): Boolean {
+        var enabled = false
+        channels(listOf(key)) {
+            enabled = !dao.isFavorite(sourceKey, key)
+            if (enabled) dao.addFavorite(sourceKey, key) else dao.removeFavorite(sourceKey, key)
+        }
+        return enabled
+    }
+
     /** LIVE-012, also for a range of rows at once. */
     fun setHidden(keys: List<String>, hidden: Boolean) = channels(keys) { dao.setHidden(keys, hidden) }
 

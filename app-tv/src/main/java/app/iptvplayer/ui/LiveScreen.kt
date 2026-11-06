@@ -244,7 +244,7 @@ fun LiveScreen(
     val scheduleState = rememberLazyListState()
     var area by remember { mutableStateOf(Area.List) }
     var beforeRail by remember { mutableStateOf(Area.List) }
-    var inputGeneration by remember { mutableIntStateOf(0) }
+    val inputGeneration = remember { intArrayOf(0) } // read in handlers only; input must not recompose the search field
     var focusGeneration by remember { mutableIntStateOf(0) }
     val focusedRow = remember { intArrayOf(0) } // read in handlers only: moving the focus recomposes nothing
     val focusedCat = remember { intArrayOf(0) }
@@ -317,8 +317,7 @@ fun LiveScreen(
             delay(1_000)
         }
     }
-    // Leaving the section (Настройки, another source) stops what it played.
-    DisposableEffect(player) { onDispose { player.close() } }
+    // The activity owns the shared session; leaving this section moves its surface to the corner player.
 
     fun showPreview(item: ChannelItem) {
         preview = item
@@ -333,6 +332,11 @@ fun LiveScreen(
     }
 
     fun watch(index: Int, item: ChannelItem) {
+        if (settings.playerExternalLive && openExternalPlayer(ctx, item.channel.playItem(), title = item.channel.name)) {
+            player.close()
+            playingKey = null
+            return
+        }
         returnKey = item.channel.key
         playIndex = index
         listTarget = index
@@ -399,12 +403,12 @@ fun LiveScreen(
 
     // --- Moving the focus from code ---
     suspend fun focusRow(index: Int, wanted: () -> Boolean = { true }) {
-        val generation = inputGeneration
+        val generation = inputGeneration[0]
         val request = ++focusGeneration
         val i = index.coerceIn(0, (items.itemCount - 1).coerceAtLeast(0))
         val rowId = items.itemSnapshotList.getOrNull(i)?.channel?.id
         val stillWanted = {
-            wanted() && generation == inputGeneration && request == focusGeneration && i < items.itemCount &&
+            wanted() && generation == inputGeneration[0] && request == focusGeneration && i < items.itemCount &&
                 (rowId == null || items.itemSnapshotList.getOrNull(i)?.channel?.id == rowId)
         }
         if (!stillWanted()) return
@@ -445,7 +449,7 @@ fun LiveScreen(
     // Replacing database rows can move focus to the rail before the refreshed page is composed.
     LaunchedEffect(items) {
         var target: ChannelItem? = null
-        var generation = inputGeneration
+        var generation = inputGeneration[0]
         snapshotFlow {
             val state = items.loadState.refresh
             state to if (state is LoadState.Loading) selected else null
@@ -453,12 +457,12 @@ fun LiveScreen(
             when (state) {
                 is LoadState.Loading -> {
                     target = selection.takeIf { tv && !fullscreen && area == Area.List }
-                    generation = inputGeneration
+                    generation = inputGeneration[0]
                 }
                 is LoadState.NotLoading -> {
                     val item = target ?: return@collectLatest
                     target = null
-                    val wanted = { generation == inputGeneration && !fullscreen }
+                    val wanted = { generation == inputGeneration[0] && !fullscreen }
                     withFrameNanos {}
                     if (!wanted() || area == Area.List) return@collectLatest
                     val at = repo.indexOf(currentFilter, item.channel.key, item.occurrence) ?: focusedRow[0]
@@ -1090,7 +1094,7 @@ fun LiveScreen(
     }
 
     val groupSearch: (@Composable (Modifier) -> Unit)? = if (searchGroups) {
-        { m -> SearchField(groupQuery, { groupQuery = it }, stringResource(R.string.search_categories), groupSearchFocus, m, height = if (wide) 40.dp else 48.dp) }
+        { m -> SearchField(groupQuery, { groupQuery = it }, stringResource(R.string.search_categories), groupSearchFocus, m, height = if (wide) 40.dp else 48.dp, onEdit = { inputGeneration[0]++ }) }
     } else null
     val viewIcon = if (useTiles) R.drawable.ic_view_list else R.drawable.ic_grid_view
     val viewLabel = stringResource(if (useTiles) R.string.view_list else R.string.view_tiles)
@@ -1154,7 +1158,7 @@ fun LiveScreen(
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                            SearchField(query, { query = it }, searchHint, searchFocus, Modifier.width(240.dp), height = 40.dp)
+                            SearchField(query, { query = it }, searchHint, searchFocus, Modifier.width(240.dp), height = 40.dp, onEdit = { inputGeneration[0]++ })
                             ToolButton(viewIcon, viewLabel, onClick = toggleView)
                             ToolButton(R.drawable.ic_sort, orderLabel, onClick = ::sortMenu)
                             ToolButton(R.drawable.ic_guide, stringResource(R.string.view_guide)) { onGuide(true) } // LIVE-022
@@ -1279,7 +1283,7 @@ fun LiveScreen(
                     if (Section.Guide !in phoneSections(library, settings.homeVisible)) ToolButton(R.drawable.ic_view_list, listLabel, size = 48.dp) { onGuide(false) }
                 } else Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (!online) OfflineMark()
-                    SearchField(query, { query = it }, searchHint, searchFocus, Modifier.weight(1f), height = 48.dp)
+                    SearchField(query, { query = it }, searchHint, searchFocus, Modifier.weight(1f), height = 48.dp, onEdit = { inputGeneration[0]++ })
                     ToolButton(viewIcon, viewLabel, size = 48.dp, onClick = toggleView)
                     ToolButton(R.drawable.ic_sort, orderLabel, size = 48.dp, onClick = ::sortMenu)
                     if (Section.Guide !in phoneSections(library, settings.homeVisible)) ToolButton(R.drawable.ic_guide, stringResource(R.string.view_guide), size = 48.dp) { onGuide(true) }
@@ -1325,13 +1329,13 @@ fun LiveScreen(
 
     Box(Modifier.fillMaxSize()
         .onPreviewKeyEvent { event ->
-            if (event.type == KeyEventType.KeyDown) inputGeneration++
+            if (event.type == KeyEventType.KeyDown) inputGeneration[0]++
             false
         }
         .pointerInput(Unit) {
             awaitEachGesture {
                 awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                inputGeneration++
+                inputGeneration[0]++
             }
         }
     ) {
@@ -1349,6 +1353,7 @@ fun LiveScreen(
                 find = { find(it) },
                 panelOpen = panel != VideoPanel.None,
                 onSide = { a -> openPanel(panel.next(a)) },
+                onFavorite = { ch -> scope.launch { repo.toggleFavorite(source, ch.key) } },
             ) { jump ->
                 val pick = { item: ChannelItem, g: ChannelGroup? ->
                     panel = VideoPanel.None

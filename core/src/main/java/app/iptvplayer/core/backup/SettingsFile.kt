@@ -195,13 +195,18 @@ private fun nonBlank(s: String): String = s.ifBlank { throw JSONException("blank
 
 private fun sourceJson(s: Source, withPassword: Boolean): JSONObject = when (s) {
     is Source.M3u -> JSONObject().put("type", "m3u").put("url", s.url)
+        .putOpt("userAgent", s.userAgent).putOpt("referer", s.referer)
     is Source.Xtream -> JSONObject().put("type", "xtream").put("server", s.server).put("user", s.user).put("hls", s.hls)
+        .putOpt("userAgent", s.userAgent).putOpt("referer", s.referer)
         .apply { if (withPassword) put("password", s.pass) }
 }
 
 private fun readSource(j: JSONObject): Source = when (j.getString("type")) {
-    "m3u" -> Source.M3u(nonBlank(j.getString("url")))
-    "xtream" -> Source.Xtream(nonBlank(j.getString("server")), nonBlank(j.getString("user")), j.optString("password", ""), j.optBoolean("hls"))
+    "m3u" -> Source.M3u(nonBlank(j.getString("url")), j.optStringOrNull("userAgent"), j.optStringOrNull("referer"))
+    "xtream" -> Source.Xtream(
+        nonBlank(j.getString("server")), nonBlank(j.getString("user")), j.optString("password", ""), j.optBoolean("hls"),
+        j.optStringOrNull("userAgent"), j.optStringOrNull("referer"),
+    )
     else -> throw JSONException("source type") // ponytail: a newer source type (Stalker, P5) reads as damaged, not as "newer"
 }
 
@@ -244,6 +249,22 @@ private fun settingsJson(s: Settings): JSONObject = JSONObject()
     .put("playerMinBufferSeconds", s.playerMinBufferSeconds)
     .put("playerMaxBufferSeconds", s.playerMaxBufferSeconds)
     .put("playerPrebufferSeconds", s.playerPrebufferSeconds)
+    .put("playerMaxVideoHeight", s.playerMaxVideoHeight)
+    .put("playerAudioDelayMs", s.playerAudioDelayMs)
+    .put("playerSubtitleEmbeddedStyles", s.playerSubtitleEmbeddedStyles)
+    .put("playerSubtitleFont", s.playerSubtitleFont.name)
+    .put("playerSubtitleSize", s.playerSubtitleSize)
+    .put("playerSubtitleColor", s.playerSubtitleColor.name)
+    .put("playerSubtitleBackground", s.playerSubtitleBackground.name)
+    .put("playerSubtitlePosition", s.playerSubtitlePosition.name)
+    .put("playerNightMode", s.playerNightMode)
+    .put("playerNormalizeVolume", s.playerNormalizeVolume)
+    .put("playerVerboseLogging", s.playerVerboseLogging)
+    .put("playerMeasuredMetrics", s.playerMeasuredMetrics)
+    .put("playerExternalLive", s.playerExternalLive)
+    .put("playerExternalMovies", s.playerExternalMovies)
+    .put("playerExternalSeries", s.playerExternalSeries)
+    .put("playerSeekSeconds", s.playerSeekSeconds)
 
 private fun readSettings(j: JSONObject): Settings {
     val d = Settings()
@@ -284,6 +305,22 @@ private fun readSettings(j: JSONObject): Settings {
         playerMinBufferSeconds = j.optInt("playerMinBufferSeconds", d.playerMinBufferSeconds).coerceIn(1, 60),
         playerMaxBufferSeconds = j.optInt("playerMaxBufferSeconds", d.playerMaxBufferSeconds).coerceIn(2, 120),
         playerPrebufferSeconds = j.optInt("playerPrebufferSeconds", d.playerPrebufferSeconds).coerceIn(0, 30),
+        playerMaxVideoHeight = j.optInt("playerMaxVideoHeight", d.playerMaxVideoHeight).takeIf { it in setOf(0, 720, 1080, 2160) } ?: 0,
+        playerAudioDelayMs = j.optInt("playerAudioDelayMs", d.playerAudioDelayMs).coerceIn(-500, 500),
+        playerSubtitleEmbeddedStyles = j.optBoolean("playerSubtitleEmbeddedStyles", d.playerSubtitleEmbeddedStyles),
+        playerSubtitleFont = j.enum("playerSubtitleFont", d.playerSubtitleFont),
+        playerSubtitleSize = j.optInt("playerSubtitleSize", d.playerSubtitleSize).coerceIn(50, 200),
+        playerSubtitleColor = j.enum("playerSubtitleColor", d.playerSubtitleColor),
+        playerSubtitleBackground = j.enum("playerSubtitleBackground", d.playerSubtitleBackground),
+        playerSubtitlePosition = j.enum("playerSubtitlePosition", d.playerSubtitlePosition),
+        playerNightMode = j.optBoolean("playerNightMode", d.playerNightMode),
+        playerNormalizeVolume = j.optBoolean("playerNormalizeVolume", d.playerNormalizeVolume),
+        playerVerboseLogging = j.optBoolean("playerVerboseLogging", d.playerVerboseLogging),
+        playerMeasuredMetrics = j.optBoolean("playerMeasuredMetrics", d.playerMeasuredMetrics),
+        playerExternalLive = j.optBoolean("playerExternalLive", d.playerExternalLive),
+        playerExternalMovies = j.optBoolean("playerExternalMovies", d.playerExternalMovies),
+        playerExternalSeries = j.optBoolean("playerExternalSeries", d.playerExternalSeries),
+        playerSeekSeconds = j.optInt("playerSeekSeconds", d.playerSeekSeconds).takeIf { it in setOf(5, 10, 15, 30, 60) } ?: d.playerSeekSeconds,
     )
 }
 

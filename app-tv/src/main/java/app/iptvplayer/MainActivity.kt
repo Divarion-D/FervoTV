@@ -14,6 +14,7 @@ import app.iptvplayer.core.model.Source
 import app.iptvplayer.core.player.ExoEngine
 import app.iptvplayer.core.player.PlayerSession
 import app.iptvplayer.core.player.PlaybackConfig
+import app.iptvplayer.core.player.CrashLogger
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.DisposableEffect
@@ -77,6 +78,8 @@ import app.iptvplayer.core.db.LibraryState
 import app.iptvplayer.core.model.VodKind
 import kotlinx.coroutines.flow.flowOf
 import app.iptvplayer.ui.PhoneNav
+import app.iptvplayer.ui.NowPlaying
+import app.iptvplayer.core.player.PlaybackContent
 import app.iptvplayer.ui.Section
 import app.iptvplayer.ui.isWideLayout
 import androidx.compose.foundation.layout.Box
@@ -137,6 +140,7 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
         super.onCreate(savedInstanceState)
+        CrashLogger.install(applicationContext)
         val repo = Repository(applicationContext)
         // Android 13+: the language may have been changed in the system's app settings (UI-022).
         platformLanguage(this)?.let { if (it != repo.settings.language) repo.settings = repo.settings.copy(language = it) }
@@ -220,7 +224,7 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit, onPlayer: (Playe
 
     // One playback session above the screens (spec 01 §6.3); released with the activity.
     val player = remember {
-        PlayerSession {
+        PlayerSession(repo.playerMemory) {
             ExoEngine(
                 ctx.applicationContext,
                 PlaybackConfig(
@@ -234,10 +238,24 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit, onPlayer: (Playe
                     maxBufferMs = maxOf(settings.playerMaxBufferSeconds, settings.playerMinBufferSeconds + 1) * 1_000,
                     bufferForPlaybackMs = settings.playerPrebufferSeconds * 1_000,
                     matchFrameRate = settings.playerMatchFrameRate,
+                    maxVideoHeight = settings.playerMaxVideoHeight,
+                    defaultAudioDelayMs = settings.playerAudioDelayMs,
+                    subtitleEmbeddedStyles = settings.playerSubtitleEmbeddedStyles,
+                    subtitleFont = settings.playerSubtitleFont,
+                    subtitleSize = settings.playerSubtitleSize,
+                    subtitleColor = settings.playerSubtitleColor,
+                    subtitleBackground = settings.playerSubtitleBackground,
+                    subtitlePosition = settings.playerSubtitlePosition,
+                    nightMode = settings.playerNightMode,
+                    normalizeVolume = settings.playerNormalizeVolume,
+                    verboseLogging = settings.playerVerboseLogging,
+                    measuredMetrics = settings.playerMeasuredMetrics,
                 ),
             )
         }
     }
+    val playingItem by player.currentItem.collectAsState()
+    LaunchedEffect(source) { player.close() }
     DisposableEffect(player) {
         onPlayer(player)
         onDispose {
@@ -549,6 +567,7 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit, onPlayer: (Playe
                     onDismissUpdate = { availableUpdate = null },
                     onSaveFile = file.save,
                     onLoadFile = file.load,
+                    playerMemory = repo.playerMemory,
                     onClose = close,
                 )
             }
@@ -640,6 +659,14 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit, onPlayer: (Playe
             )
         }
     }
+
+    val playingElsewhere = when (playingItem?.content) {
+        PlaybackContent.LIVE -> section != Section.Live
+        PlaybackContent.MOVIE -> section != Section.Movies
+        PlaybackContent.SERIES -> section != Section.Series
+        null -> false
+    }
+    NowPlaying(player, playingElsewhere || settingsOpen)
 
     if (changelogOffer && availableUpdate == null) {
         val shape = RoundedCornerShape(50)

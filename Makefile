@@ -6,7 +6,8 @@ ANDROID_HOME ?= $(HOME)/Android/Sdk
 export JAVA_HOME ANDROID_HOME
 export PATH := $(JAVA_HOME)/bin:$(PATH)
 
-GRADLE    := ./gradlew --console=plain
+GRADLE    := ./gradlew --no-daemon --max-workers=2 --console=plain
+TEST_ARGS ?=
 ADB       := $(ANDROID_HOME)/platform-tools/adb
 APKSIGNER  = $(lastword $(sort $(wildcard $(ANDROID_HOME)/build-tools/*/apksigner)))
 PKG       := io.github.divarion_d.fervotv
@@ -15,17 +16,15 @@ ACTIVITY  := app.iptvplayer.MainActivity
 VERSION   := $(shell sed -n 's/.*versionName = "\(.*\)".*/\1/p' build.gradle.kts)
 DIST      := dist
 
-# Какое приложение ставить/выпускать: tv (выпускается сейчас, работает и на телефонах) или mobile.
-APP ?= tv
-APK_RELEASE := app-$(APP)/build/outputs/apk/release/app-$(APP)-release.apk
-APK_DEBUG   := app-$(APP)/build/outputs/apk/debug/app-$(APP)-debug.apk
+APK_RELEASE := app-tv/build/outputs/apk/release/app-tv-release.apk
+APK_DEBUG   := app-tv/build/outputs/apk/debug/app-tv-debug.apk
 
 .DEFAULT_GOAL := help
-.PHONY: help version test test-fast test-fixtures lint check p3-fixtures debug release release-mobile bundle dist ci-release \
+.PHONY: help version test test-fast test-ui test-fixtures lint check p3-fixtures debug release bundle dist ci-release \
         verify install install-debug uninstall uninstall-debug run run-debug devices clean
 
 help: ## Список целей
-	@echo "Fervo TV $(VERSION). Использование: make <цель> [APP=tv|mobile]"
+	@echo "Fervo TV $(VERSION). Использование: make <цель>"
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-15s %s\n",$$1,$$2}'
 
 version: ## Текущая версия (versionName из build.gradle.kts)
@@ -40,7 +39,10 @@ test: local.properties ## Все unit-тесты (debug и release, все мо�
 	$(GRADLE) test
 
 test-fast: local.properties ## Unit-тесты только ядра, debug — быстрый прогон
-	$(GRADLE) :core:testDebugUnitTest
+	$(GRADLE) :core:testDebugUnitTest $(TEST_ARGS)
+
+test-ui: local.properties ## Host UI-тесты универсального app-tv, debug
+	$(GRADLE) :app-tv:testDebugUnitTest $(TEST_ARGS)
 
 lint: local.properties ## Lint всех модулей
 	$(GRADLE) lint
@@ -56,19 +58,16 @@ p3-fixtures: ## Синтетические потоки, субтитры и M3U
 
 # --- Сборки ---
 
-debug: local.properties ## Debug APK обоих приложений
-	$(GRADLE) assembleDebug
-	@ls -lh app-*/build/outputs/apk/debug/*.apk
+debug: local.properties ## Универсальный debug APK для TV и телефонов
+	$(GRADLE) :app-tv:assembleDebug
+	@ls -lh $(APK_DEBUG)
 
-release: local.properties ## Подписанный release APK (APP=tv|mobile) → dist/
-	$(GRADLE) :app-$(APP):assembleRelease
+release: local.properties ## Подписанный универсальный release APK → dist/
+	$(GRADLE) :app-tv:assembleRelease
 	@test -f $(APK_RELEASE) || { echo "Нет подписанного APK: настройте ключ (README → «Ключ подписи»)"; exit 1; }
 	@mkdir -p $(DIST)
-	cp $(APK_RELEASE) $(DIST)/FervoTV-$(if $(filter mobile,$(APP)),mobile-)$(VERSION).apk
+	cp $(APK_RELEASE) $(DIST)/FervoTV-$(VERSION).apk
 	@ls -lh $(DIST)/*.apk
-
-release-mobile: ## Подписанный release APK мобильного приложения → dist/
-	$(MAKE) release APP=mobile
 
 bundle: local.properties ## AAB для Google Play (app-tv) → dist/
 	$(GRADLE) :app-tv:bundleRelease
@@ -96,7 +95,7 @@ install: release ## Собрать и поставить release на устро
 	$(ADB) install -r $(APK_RELEASE)
 
 install-debug: local.properties ## Собрать и поставить debug — отдельное приложение «Fervo TV debug» рядом с release
-	$(GRADLE) :app-$(APP):assembleDebug
+	$(GRADLE) :app-tv:assembleDebug
 	$(ADB) install -r $(APK_DEBUG)
 
 uninstall: ## Удалить приложение с устройства (вместе с данными!)

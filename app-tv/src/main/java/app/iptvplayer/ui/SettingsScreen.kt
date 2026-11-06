@@ -7,9 +7,12 @@ import android.content.pm.ApplicationInfo
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.background
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -40,6 +43,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
 import app.iptvplayer.R
@@ -47,6 +52,7 @@ import app.iptvplayer.core.Defaults
 import app.iptvplayer.core.model.PlaylistRefresh
 import app.iptvplayer.core.model.Settings
 import app.iptvplayer.core.player.PlaybackLog
+import app.iptvplayer.core.player.PlayerMemory
 import android.widget.Toast
 import app.iptvplayer.core.model.ResumeMode
 import app.iptvplayer.initialFocus
@@ -67,6 +73,10 @@ import app.iptvplayer.core.home.encodeHomeRows
 import app.iptvplayer.core.home.homeRows
 import app.iptvplayer.core.home.moved
 import app.iptvplayer.core.model.StartScreen
+import app.iptvplayer.core.model.SubtitleBackground
+import app.iptvplayer.core.model.SubtitleColor
+import app.iptvplayer.core.model.SubtitleFont
+import app.iptvplayer.core.model.SubtitlePosition
 import app.iptvplayer.core.update.AppRelease
 
 @androidx.annotation.StringRes
@@ -82,6 +92,27 @@ fun HomeRow.title(): Int = when (this) {
     HomeRow.FAVORITE_MOVIES -> R.string.home_favorite_movies
     HomeRow.FAVORITE_SERIES -> R.string.home_favorite_series
     HomeRow.RECENT_CHANNELS -> R.string.home_recent_channels
+}
+
+@androidx.annotation.StringRes private fun SubtitleFont.title() = when (this) {
+    SubtitleFont.SANS -> R.string.settings_subtitle_font_sans
+    SubtitleFont.SERIF -> R.string.settings_subtitle_font_serif
+    SubtitleFont.MONO -> R.string.settings_subtitle_font_mono
+}
+@androidx.annotation.StringRes private fun SubtitleColor.title() = when (this) {
+    SubtitleColor.WHITE -> R.string.settings_subtitle_color_white
+    SubtitleColor.YELLOW -> R.string.settings_subtitle_color_yellow
+    SubtitleColor.CYAN -> R.string.settings_subtitle_color_cyan
+}
+@androidx.annotation.StringRes private fun SubtitleBackground.title() = when (this) {
+    SubtitleBackground.NONE -> R.string.settings_subtitle_background_none
+    SubtitleBackground.BLACK -> R.string.settings_subtitle_background_black
+    SubtitleBackground.TRANSLUCENT -> R.string.settings_subtitle_background_translucent
+}
+@androidx.annotation.StringRes private fun SubtitlePosition.title() = when (this) {
+    SubtitlePosition.TOP -> R.string.settings_subtitle_position_top
+    SubtitlePosition.CENTER -> R.string.settings_subtitle_position_center
+    SubtitlePosition.BOTTOM -> R.string.settings_subtitle_position_bottom
 }
 
 internal enum class SettingsGroup(
@@ -120,6 +151,7 @@ fun SettingsScreen(
     onDismissUpdate: () -> Unit,
     onSaveFile: () -> Unit,
     onLoadFile: () -> Unit,
+    playerMemory: PlayerMemory,
     onClose: () -> Unit,
 ) {
     // Row to put the focus back on after a subpage, a dialog or the source editor (UI-005); saved across the editor.
@@ -134,6 +166,8 @@ fun SettingsScreen(
     var languageDialog by remember { mutableStateOf(false) }
     var resumeDialog by remember { mutableStateOf(false) }
     var playerGiveUpDialog by remember { mutableStateOf(false) }
+    var playerReset by remember { mutableStateOf<Pair<List<PlayerMemory.Kind>, Boolean>?>(null) }
+    var playerCounts by remember(playerMemory) { mutableStateOf(playerMemory.counts()) }
     var startDialog by remember { mutableStateOf(false) }
     var groupName by rememberSaveable { mutableStateOf<String?>(null) }
     val group = groupName?.let(SettingsGroup::valueOf)
@@ -349,6 +383,33 @@ fun SettingsScreen(
                 R.drawable.ic_play_arrow, stringResource(R.string.settings_player_volume), stringResource(R.string.settings_player_volume_summary, settings.playerVolume), Modifier.row("playerVolume"),
             ) { onChange(settings.copy(playerVolume = if (settings.playerVolume >= 150) 50 else settings.playerVolume + 25)) }
             SettingItem(
+                R.drawable.ic_play_arrow, stringResource(R.string.settings_player_night_mode), stringResource(R.string.settings_player_night_mode_summary), Modifier.row("playerNightMode"), trailing = { Switch(settings.playerNightMode, onCheckedChange = null) },
+            ) { onChange(settings.copy(playerNightMode = !settings.playerNightMode)) }
+            SettingItem(
+                R.drawable.ic_play_arrow, stringResource(R.string.settings_player_normalize), stringResource(R.string.settings_player_normalize_summary), Modifier.row("playerNormalizeVolume"), trailing = { Switch(settings.playerNormalizeVolume, onCheckedChange = null) },
+            ) { onChange(settings.copy(playerNormalizeVolume = !settings.playerNormalizeVolume)) }
+            SettingItem(
+                R.drawable.ic_info, stringResource(R.string.settings_player_verbose_log), stringResource(R.string.settings_player_verbose_log_summary), Modifier.row("playerVerboseLogging"), trailing = { Switch(settings.playerVerboseLogging, onCheckedChange = null) },
+            ) { onChange(settings.copy(playerVerboseLogging = !settings.playerVerboseLogging)) }
+            SettingItem(
+                R.drawable.ic_info, stringResource(R.string.settings_player_measured_metrics), stringResource(R.string.settings_player_measured_metrics_summary), Modifier.row("playerMeasuredMetrics"), trailing = { Switch(settings.playerMeasuredMetrics, onCheckedChange = null) },
+            ) { onChange(settings.copy(playerMeasuredMetrics = !settings.playerMeasuredMetrics)) }
+            SettingItem(
+                R.drawable.ic_link, stringResource(R.string.settings_player_external_live), stringResource(R.string.settings_player_external_summary), Modifier.row("playerExternalLive"), trailing = { Switch(settings.playerExternalLive, onCheckedChange = null) },
+            ) { onChange(settings.copy(playerExternalLive = !settings.playerExternalLive)) }
+            SettingItem(
+                R.drawable.ic_link, stringResource(R.string.settings_player_external_movies), stringResource(R.string.settings_player_external_summary), Modifier.row("playerExternalMovies"), trailing = { Switch(settings.playerExternalMovies, onCheckedChange = null) },
+            ) { onChange(settings.copy(playerExternalMovies = !settings.playerExternalMovies)) }
+            SettingItem(
+                R.drawable.ic_link, stringResource(R.string.settings_player_external_series), stringResource(R.string.settings_player_external_summary), Modifier.row("playerExternalSeries"), trailing = { Switch(settings.playerExternalSeries, onCheckedChange = null) },
+            ) { onChange(settings.copy(playerExternalSeries = !settings.playerExternalSeries)) }
+            SettingItem(
+                R.drawable.ic_forward_10, stringResource(R.string.settings_player_seek_step), stringResource(R.string.settings_player_seek_step_summary, settings.playerSeekSeconds), Modifier.row("playerSeekSeconds"),
+            ) {
+                val values = listOf(5, 10, 15, 30, 60)
+                onChange(settings.copy(playerSeekSeconds = values[(values.indexOf(settings.playerSeekSeconds) + 1).mod(values.size)]))
+            }
+            SettingItem(
                 R.drawable.ic_refresh, stringResource(R.string.settings_player_min_buffer), stringResource(R.string.settings_player_buffer_summary, settings.playerMinBufferSeconds), Modifier.row("playerMinBuffer"),
             ) { onChange(settings.copy(playerMinBufferSeconds = if (settings.playerMinBufferSeconds >= 30) 5 else settings.playerMinBufferSeconds + 5)) }
             SettingItem(
@@ -357,6 +418,73 @@ fun SettingsScreen(
             SettingItem(
                 R.drawable.ic_refresh, stringResource(R.string.settings_player_prebuffer), stringResource(R.string.settings_player_buffer_summary, settings.playerPrebufferSeconds), Modifier.row("playerPrebuffer"),
             ) { onChange(settings.copy(playerPrebufferSeconds = if (settings.playerPrebufferSeconds >= 10) 0 else settings.playerPrebufferSeconds + 2)) }
+            SettingItem(
+                R.drawable.ic_image, stringResource(R.string.settings_player_max_quality),
+                if (settings.playerMaxVideoHeight == 0) stringResource(R.string.settings_player_quality_auto) else "${settings.playerMaxVideoHeight}p",
+                Modifier.row("playerMaxVideoHeight"),
+            ) {
+                val values = listOf(0, 720, 1080, 2160)
+                onChange(settings.copy(playerMaxVideoHeight = values[(values.indexOf(settings.playerMaxVideoHeight) + 1).mod(values.size)]))
+            }
+            SettingItem(
+                R.drawable.ic_refresh, stringResource(R.string.settings_player_audio_delay),
+                stringResource(R.string.settings_player_audio_delay_summary, settings.playerAudioDelayMs),
+                Modifier.row("playerAudioDelay"),
+            ) { onChange(settings.copy(playerAudioDelayMs = if (settings.playerAudioDelayMs >= 500) -500 else settings.playerAudioDelayMs + 25)) }
+            SettingItem(
+                R.drawable.ic_subtitles, stringResource(R.string.settings_subtitle_file_style), null,
+                Modifier.row("playerSubtitleEmbeddedStyles"), trailing = { Switch(settings.playerSubtitleEmbeddedStyles, onCheckedChange = null) },
+            ) { onChange(settings.copy(playerSubtitleEmbeddedStyles = !settings.playerSubtitleEmbeddedStyles)) }
+            SettingItem(R.drawable.ic_subtitles, stringResource(R.string.settings_subtitle_font), stringResource(settings.playerSubtitleFont.title()), Modifier.row("playerSubtitleFont")) {
+                val values = SubtitleFont.entries
+                onChange(settings.copy(playerSubtitleFont = values[(settings.playerSubtitleFont.ordinal + 1).mod(values.size)]))
+            }
+            SettingItem(R.drawable.ic_subtitles, stringResource(R.string.settings_subtitle_size), "${settings.playerSubtitleSize}%", Modifier.row("playerSubtitleSize")) {
+                onChange(settings.copy(playerSubtitleSize = if (settings.playerSubtitleSize >= 200) 50 else settings.playerSubtitleSize + 25))
+            }
+            SettingItem(R.drawable.ic_subtitles, stringResource(R.string.settings_subtitle_color), stringResource(settings.playerSubtitleColor.title()), Modifier.row("playerSubtitleColor")) {
+                val values = SubtitleColor.entries
+                onChange(settings.copy(playerSubtitleColor = values[(settings.playerSubtitleColor.ordinal + 1).mod(values.size)]))
+            }
+            SettingItem(R.drawable.ic_subtitles, stringResource(R.string.settings_subtitle_background), stringResource(settings.playerSubtitleBackground.title()), Modifier.row("playerSubtitleBackground")) {
+                val values = SubtitleBackground.entries
+                onChange(settings.copy(playerSubtitleBackground = values[(settings.playerSubtitleBackground.ordinal + 1).mod(values.size)]))
+            }
+            SettingItem(R.drawable.ic_subtitles, stringResource(R.string.settings_subtitle_position), stringResource(settings.playerSubtitlePosition.title()), Modifier.row("playerSubtitlePosition")) {
+                val values = SubtitlePosition.entries
+                onChange(settings.copy(playerSubtitlePosition = values[(settings.playerSubtitlePosition.ordinal + 1).mod(values.size)]))
+            }
+            Box(
+                Modifier.fillMaxWidth().height(120.dp).background(Color.Black).padding(8.dp),
+                contentAlignment = when (settings.playerSubtitlePosition) {
+                    SubtitlePosition.TOP -> Alignment.TopCenter
+                    SubtitlePosition.CENTER -> Alignment.Center
+                    SubtitlePosition.BOTTOM -> Alignment.BottomCenter
+                },
+            ) {
+                Text(
+                    stringResource(R.string.settings_subtitle_example),
+                    color = when (settings.playerSubtitleColor) { SubtitleColor.WHITE -> Color.White; SubtitleColor.YELLOW -> Color.Yellow; SubtitleColor.CYAN -> Color.Cyan },
+                    fontFamily = when (settings.playerSubtitleFont) { SubtitleFont.SANS -> FontFamily.SansSerif; SubtitleFont.SERIF -> FontFamily.Serif; SubtitleFont.MONO -> FontFamily.Monospace },
+                    fontSize = (20 * settings.playerSubtitleSize / 100f).sp,
+                    modifier = Modifier.background(when (settings.playerSubtitleBackground) { SubtitleBackground.NONE -> Color.Transparent; SubtitleBackground.BLACK -> Color.Black; SubtitleBackground.TRANSLUCENT -> Color.Black.copy(alpha = .6f) }).padding(4.dp),
+                )
+            }
+            listOf(
+                Triple(R.string.settings_player_reset_engine, playerCounts.engine, listOf(PlayerMemory.Kind.ENGINE) to false),
+                Triple(R.string.settings_player_reset_live_engine, playerCounts.liveEngine, listOf(PlayerMemory.Kind.ENGINE) to true),
+                Triple(R.string.settings_player_reset_live_format, playerCounts.format, listOf(PlayerMemory.Kind.FORMAT) to true),
+                Triple(R.string.settings_player_reset_scale, playerCounts.scale, listOf(PlayerMemory.Kind.SCALE) to false),
+                Triple(R.string.settings_player_reset_volume, playerCounts.volume, listOf(PlayerMemory.Kind.VOLUME) to false),
+                Triple(R.string.settings_player_reset_audio_delay, playerCounts.audioDelay, listOf(PlayerMemory.Kind.AUDIO_DELAY) to false),
+                Triple(R.string.settings_player_reset_audio_tracks, playerCounts.audioTrack, listOf(PlayerMemory.Kind.AUDIO_TRACK) to false),
+                Triple(R.string.settings_player_reset_subtitle_tracks, playerCounts.subtitleTrack, listOf(PlayerMemory.Kind.SUBTITLE_TRACK) to false),
+            ).forEach { (title, count, action) ->
+                SettingItem(
+                    R.drawable.ic_refresh, stringResource(title), stringResource(R.string.settings_player_reset_count, count),
+                    Modifier.row("playerReset$title"),
+                ) { playerReset = action }
+            }
             }
 
             if (group == SettingsGroup.LOGOS) {
@@ -444,6 +572,20 @@ fun SettingsScreen(
             }
             }
         }
+    }
+    playerReset?.let { (kinds, liveOnly) ->
+        AlertDialog(
+            onDismissRequest = { playerReset = null },
+            title = { Text(stringResource(R.string.settings_player_reset_confirm)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    kinds.forEach { playerMemory.reset(it, liveOnly) }
+                    playerCounts = playerMemory.counts()
+                    playerReset = null
+                }) { Text(stringResource(R.string.settings_player_reset_confirm_action)) }
+            },
+            dismissButton = { TextButton(onClick = { playerReset = null }) { Text(stringResource(R.string.cancel)) } },
+        )
     }
     availableUpdate?.let { release ->
         AlertDialog(

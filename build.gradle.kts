@@ -20,7 +20,7 @@ fun secret(env: String, prop: String): String? =
         ?: localSigning.getProperty(prop.removePrefix("fervo."))
             ?.let { if (prop == "fervo.keystore") signingDir.resolve(it).path else it }
 
-// app-tv and app-mobile: one version and one release signing for both.
+// One universal app-tv package: the same version and signing on TV, phones and tablets.
 subprojects {
     plugins.withId("com.android.application") {
         extensions.configure<com.android.build.api.dsl.ApplicationExtension> {

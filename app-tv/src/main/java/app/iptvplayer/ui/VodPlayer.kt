@@ -72,6 +72,7 @@ import app.iptvplayer.core.input.Action
 import app.iptvplayer.core.model.Episode
 import app.iptvplayer.core.model.VodItem
 import app.iptvplayer.core.player.PlayItem
+import app.iptvplayer.core.player.PlaybackContent
 import app.iptvplayer.core.player.PlayerSession
 import app.iptvplayer.isTv
 import app.iptvplayer.toAction
@@ -96,6 +97,7 @@ data class VodPlay(val item: VodItem, val episode: Episode? = null, val start: L
 fun VodPlayer(
     player: PlayerSession,
     play: VodPlay,
+    headers: Map<String, String>,
     title: String,
     subtitle: String?,
     offline: Boolean,
@@ -105,6 +107,9 @@ fun VodPlayer(
     onSave: (VodPlay, Long, Long) -> Unit,
     onEpisode: (Episode) -> Unit,
     onClose: () -> Unit,
+    seekStepMs: Long = Defaults.SEEK_STEP_MS,
+    favorite: Boolean? = null,
+    onFavorite: (() -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
     val tv = remember { ctx.isTv() }
@@ -131,7 +136,10 @@ fun VodPlayer(
         position = play.start
         duration = 0
         player.setMuted(false)
-        player.open(PlayItem(play.url, live = false, start = play.start))
+        player.open(PlayItem(
+            play.url, live = false, start = play.start, key = play.episode?.key ?: play.item.key, headers = headers,
+            title = title, content = if (play.item.kind == app.iptvplayer.core.model.VodKind.SERIES) PlaybackContent.SERIES else PlaybackContent.MOVIE,
+        ))
     }
     LaunchedEffect(state.paused, state.error) {
         if (state.paused || state.error != null) panel = true
@@ -179,13 +187,22 @@ fun VodPlayer(
         onClose()
     }
 
+    DisposableEffect(player, previous, next) {
+        player.setMediaNavigationHandlers(
+            previous?.let { { goTo(it) } },
+            next?.let { { goTo(it) } },
+        )
+        onDispose { player.setMediaNavigationHandlers(null, null) }
+    }
+
     // VOD-009: at the end — the next episode, or back to the page.
     LaunchedEffect(state.ended, play) {
         // The engine's own state: the collected one may still be the previous episode's end.
         if (!player.state.value.ended || player.current?.url != play.url) return@LaunchedEffect
         val d = player.duration
         if (d > 0) latestSave(current, d, d) // finished: watched (VOD-008)
-        if (autoNext && next != null && !cancelled) onEpisode(next) else onClose()
+        if (player.consumeSleepAtEnd()) onClose()
+        else if (autoNext && next != null && !cancelled) onEpisode(next) else onClose()
     }
 
     fun seek(by: Long) {
@@ -199,8 +216,8 @@ fun VodPlayer(
 
     val handle: (Action) -> Boolean = { a ->
         when (a) {
-            Action.Left -> seek(-Defaults.SEEK_STEP_MS)
-            Action.Right -> seek(Defaults.SEEK_STEP_MS)
+            Action.Left -> seek(-seekStepMs)
+            Action.Right -> seek(seekStepMs)
             Action.Up, Action.Down, Action.Menu -> panel = true
             Action.Ok -> when {
                 state.error != null -> player.retry()
@@ -272,6 +289,7 @@ fun VodPlayer(
             update = { it.keepScreenOn = !state.paused && state.error == null },
             onRelease = { player.releaseVideoView(it) },
         )
+        SubtitleOverlay(player, Modifier.matchParentSize())
         Box(Modifier.matchParentSize().pointerInput(Unit) { detectTapGestures { panel = !panel; panelTick++ } })
         if (state.buffering && error == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
         if (error != null) Column(
@@ -290,7 +308,7 @@ fun VodPlayer(
             onPause = { player.togglePause(); panelTick++ },
             onPrevious = { previous?.let(::goTo) },
             onNext = { next?.let(::goTo) },
-            onToolsOpen = { toolsOpen = it },
+            onToolsOpen = { toolsOpen = it }, seekStepMs = seekStepMs, favorite = favorite, onFavorite = onFavorite,
         )
         if (!tv && panel) Icon(
             painterResource(R.drawable.ic_arrow_back), stringResource(R.string.back), tint = Color.White,
@@ -325,6 +343,8 @@ private fun VodPanel(
     hasPrevious: Boolean, hasNext: Boolean, modifier: Modifier,
     onSeekTo: (Long) -> Unit, onSeek: (Long) -> Unit, onPause: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit,
     onToolsOpen: (Boolean) -> Unit,
+    seekStepMs: Long,
+    favorite: Boolean?, onFavorite: (() -> Unit)?,
 ) {
     Column(
         modifier.fillMaxWidth()
@@ -360,6 +380,8 @@ private fun VodPanel(
         PlayerTools(
             player, onDialogOpen = onToolsOpen, onSeek = onSeek, onPause = onPause,
             onPrevious = onPrevious.takeIf { hasPrevious }, onNext = onNext.takeIf { hasNext },
+            seekStepMs = seekStepMs,
+            favorite = favorite, onFavorite = onFavorite,
             primaryModifier = Modifier.focusRequester(controlsFocus),
         )
     }

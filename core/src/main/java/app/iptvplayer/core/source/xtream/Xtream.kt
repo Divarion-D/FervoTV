@@ -2,6 +2,7 @@ package app.iptvplayer.core.source.xtream
 
 import android.util.Base64
 import app.iptvplayer.core.CoreException
+import app.iptvplayer.core.Defaults
 import app.iptvplayer.core.ErrorCode
 import android.util.JsonReader
 import android.util.JsonToken
@@ -26,13 +27,13 @@ fun loadXtream(s: Source.Xtream, onCategory: (String) -> Unit, onChannel: (Chann
     val api = api(s)
     checkXtream(s)
 
-    val cats = JSONArray(httpGet("$api&action=get_live_categories")).objects()
+    val cats = JSONArray(get(s, "$api&action=get_live_categories")).objects()
         .associate { it.optString("category_id") to it.optString("category_name") }
     cats.values.forEach { name -> onCategory(name.ifBlank { NO_GROUP }) }
 
     val ext = if (s.hls) "m3u8" else "ts"
     val path = "$base/live/${enc(s.user)}/${enc(s.pass)}"
-    httpStream("$api&action=get_live_streams") { input ->
+    stream(s, "$api&action=get_live_streams") { input ->
         JsonReader(input.reader()).use { readLiveStreams(it, cats, path, ext, s.userKey(), onChannel) }
     }
 }
@@ -44,7 +45,7 @@ fun loadXtream(s: Source.Xtream, onCategory: (String) -> Unit, onChannel: (Chann
 fun checkXtream(s: Source.Xtream) {
     // Some panels answer a wrong login with 401/403 or an HTML page instead of auth = 0.
     val auth = try {
-        httpGet(api(s))
+        get(s, api(s))
     } catch (e: HttpException) {
         if (e.code == 401 || e.code == 403) throw CoreException(ErrorCode.XTREAM_REJECTED) else throw e
     }
@@ -54,6 +55,11 @@ fun checkXtream(s: Source.Xtream) {
 }
 
 internal fun api(s: Source.Xtream) = "${s.server.trimEnd('/')}/player_api.php?username=${enc(s.user)}&password=${enc(s.pass)}"
+
+internal fun get(s: Source.Xtream, url: String): String = httpGet(url, s.userAgent ?: Defaults.USER_AGENT, s.referer)
+
+internal fun <T> stream(s: Source.Xtream, url: String, read: (java.io.InputStream) -> T): T =
+    httpStream(url, s.userAgent ?: Defaults.USER_AGENT, s.referer, read)
 
 /** The account's full guide (EPG-002): connected as an ordinary XMLTV source. */
 fun xtreamXmltvUrl(s: Source.Xtream) = "${s.server.trimEnd('/')}/xmltv.php?username=${enc(s.user)}&password=${enc(s.pass)}"
@@ -66,7 +72,7 @@ internal fun xtreamStreamId(key: String) = key.substringAfterLast('|')
 
 /** get_short_epg: the current and next few programmes of one stream (EPG-002), titles and descriptions in base64. */
 fun loadShortEpg(s: Source.Xtream, streamId: String, limit: Int): List<Programme> =
-    httpStream("${api(s)}&action=get_short_epg&stream_id=${enc(streamId)}&limit=$limit") { input ->
+    stream(s, "${api(s)}&action=get_short_epg&stream_id=${enc(streamId)}&limit=$limit") { input ->
         JsonReader(input.reader()).use(::readShortEpg)
     }
 

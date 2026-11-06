@@ -1,6 +1,7 @@
 package app.iptvplayer.ui
 
 import androidx.activity.compose.BackHandler
+import app.iptvplayer.core.player.PlayItem
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -94,6 +95,7 @@ import app.iptvplayer.core.model.nextEpisode
 import app.iptvplayer.core.model.previousEpisode
 import app.iptvplayer.core.model.resumeChoice
 import app.iptvplayer.core.player.PlayerSession
+import app.iptvplayer.core.player.playbackHeaders
 import app.iptvplayer.core.source.cacheKey
 import app.iptvplayer.findActivity
 import app.iptvplayer.isTv
@@ -220,7 +222,7 @@ fun LibraryScreen(
         }
     }
     // Leaving the section (another section, Настройки) stops what it played.
-    DisposableEffect(player) { onDispose { player.close() } }
+    // The activity owns the shared session; leaving this section moves its surface to the corner player.
 
     // --- Moving the focus from code ---
     suspend fun focusCell(index: Int) {
@@ -284,21 +286,28 @@ fun LibraryScreen(
     }
 
     // --- Playing (VOD-009, VOD-010) ---
+    fun startPlayback(item: VodItem, episode: Episode?, episodes: List<Episode>, at: Long) {
+        val play = VodPlay(item, episode, at, episodes)
+        val external = if (item.kind == VodKind.MOVIE) settings.playerExternalMovies else settings.playerExternalSeries
+        if (external && openExternalPlayer(ctx, PlayItem(play.url, live = false), at, item.title)) return
+        playing = play
+    }
+
     /** [start] null = as the resume setting says: continue, ask or from the start. */
     fun play(item: VodItem, episode: Episode?, episodes: List<Episode>, start: Long?) {
         if (start != null) {
-            playing = VodPlay(item, episode, start, episodes)
+            startPlayback(item, episode, episodes, start)
             return
         }
         val choice = resumeChoice(if (episode != null) episode.progress else item.progress, settings.resume)
         if (!choice.ask) {
-            playing = VodPlay(item, episode, choice.at, episodes)
+            startPlayback(item, episode, episodes, choice.at)
             return
         }
         sheet = (episode?.let { "${episodeCode(ctx, it)} · ${episodeName(ctx, it)}" } ?: item.title) to listOf(
             null to listOf(
-                SheetItem(R.drawable.ic_play_arrow, str(R.string.vod_continue_at, clockText(choice.at)), selected = null) { playing = VodPlay(item, episode, choice.at, episodes) },
-                SheetItem(R.drawable.ic_replay, str(R.string.vod_from_start)) { playing = VodPlay(item, episode, 0, episodes) },
+                SheetItem(R.drawable.ic_play_arrow, str(R.string.vod_continue_at, clockText(choice.at)), selected = null) { startPlayback(item, episode, episodes, choice.at) },
+                SheetItem(R.drawable.ic_replay, str(R.string.vod_from_start)) { startPlayback(item, episode, episodes, 0) },
             ),
         )
     }
@@ -394,7 +403,7 @@ fun LibraryScreen(
                 val item = repo.vodItem(source, kind, j.key) ?: run { say(str(R.string.jump_missing)); return@LaunchedEffect }
                 if (item.kind == VodKind.MOVIE) {
                     jumpReturn = true
-                    playing = VodPlay(item, null, item.progress?.takeIf { !it.watched }?.position ?: 0)
+                    startPlayback(item, null, emptyList(), item.progress?.takeIf { !it.watched }?.position ?: 0)
                 } else {
                     val list = try {
                         repo.episodes(source, item)
@@ -406,7 +415,7 @@ fun LibraryScreen(
                     }
                     val e = list.find { it.key == j.episode } ?: continueEpisode(list) ?: run { say(str(R.string.vod_no_episodes)); return@LaunchedEffect }
                     jumpReturn = true
-                    playing = VodPlay(item, e, e.progress?.takeIf { !it.watched }?.position ?: 0, list)
+                    startPlayback(item, e, list, e.progress?.takeIf { !it.watched }?.position ?: 0)
                 }
             }
         }
@@ -777,6 +786,7 @@ fun LibraryScreen(
                 val previous = remember(now) { now.episode?.let { previousEpisode(now.episodes, it) } }
                 VodPlayer(
                     player, now,
+                    headers = source.playbackHeaders(),
                     title = now.item.title,
                     subtitle = now.episode?.let { "${episodeCode(ctx, it)} · ${episodeName(ctx, it)}" },
                     offline = !online, autoNext = settings.autoNext, next = next, previous = previous,
@@ -784,6 +794,9 @@ fun LibraryScreen(
                     // The next episode goes on where it was left, without asking in the middle of a series.
                     onEpisode = { e -> playing = now.copy(episode = e, start = e.progress?.takeIf { !it.watched }?.position ?: 0) },
                     onClose = ::closePlayer,
+                    seekStepMs = settings.playerSeekSeconds * 1_000L,
+                    favorite = now.item.favorite,
+                    onFavorite = { scope.launch { repo.setVodFavorite(now.item.key, !now.item.favorite); changed() } },
                 )
             }
             p != null && p.kind == VodKind.MOVIE -> FilmPage(
