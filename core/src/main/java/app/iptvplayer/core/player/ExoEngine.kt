@@ -292,7 +292,7 @@ class ExoEngine(ctx: Context, private val config: PlaybackConfig = PlaybackConfi
                     }
                     return
                 }
-                when (recovery(e.errorCode, item?.localConfiguration?.mimeType != null, formatRetries)) {
+                when (recovery(e.errorCode, formatRetries)) {
                     Recovery.ToLiveEdge -> {
                         exo.seekToDefaultPosition()
                         exo.prepare()
@@ -661,16 +661,19 @@ internal class StallWatch(private val timeoutMs: Long) {
 internal enum class Recovery { ToLiveEdge, AsDash, AsHls, AsProgressive }
 
 /**
- * What to do before showing a format error: an untyped manifest gets one explicit DASH/HLS pass, then progressive.
- * [typed] means a retry already set a MIME hint; [formatRetries] keeps the chain finite.
+ * What to do before showing a format error: try each explicit format once and keep the chain finite.
  */
-internal fun recovery(errorCode: Int, typed: Boolean, formatRetries: Int = 0): Recovery? = when {
-    errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> Recovery.ToLiveEdge
-    errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED && !typed && formatRetries == 0 -> Recovery.AsDash
-    errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED && typed && formatRetries == 1 -> Recovery.AsHls
-    errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED && !typed && formatRetries == 0 -> Recovery.AsHls
-    errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED && typed && formatRetries == 2 -> Recovery.AsProgressive
-    else -> null
+internal fun recovery(errorCode: Int, formatRetries: Int = 0): Recovery? {
+    if (errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) return Recovery.ToLiveEdge
+    if (errorCode != PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED &&
+        errorCode != PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED
+    ) return null
+    return when (formatRetries) {
+        0 -> Recovery.AsDash
+        1 -> Recovery.AsHls
+        2 -> Recovery.AsProgressive
+        else -> null
+    }
 }
 
 /** Media3 groups error codes by thousands: 2xxx I/O, 3xxx parsing, 4xxx decoding, 6xxx DRM. */

@@ -5,6 +5,7 @@ import androidx.media3.common.audio.AudioProcessor
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -32,5 +33,23 @@ class AudioEffectsProcessorTest {
     @Test fun nightModeCompressesDynamicRange() {
         val output = process(shortArrayOf(2_000, 20_000), night = true)
         assertTrue(abs(output[1].toInt()) / abs(output[0].toInt()).toDouble() < 6.0)
+    }
+
+    @Test fun reusedNonPcmOutputBufferCanBeQueuedAgain() {
+        val processor = AudioEffectsProcessor().apply {
+            configure(AudioProcessor.AudioFormat(48_000, 2, C.ENCODING_PCM_FLOAT))
+            flush()
+        }
+        processor.queueInput(ByteBuffer.allocateDirect(8).apply { repeat(8) { put(1) }; flip() })
+        val reused = processor.output
+        reused.clear()
+        repeat(8) { reused.put(2) }
+        reused.flip()
+
+        processor.queueInput(reused)
+
+        val output = processor.output
+        assertEquals(8, output.remaining())
+        repeat(8) { assertEquals(2, output.get().toInt()) }
     }
 }

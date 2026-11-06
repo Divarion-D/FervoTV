@@ -29,16 +29,25 @@ internal class AudioDelayProcessor : BaseAudioProcessor() {
         adjustmentBytes += target - appliedBytes
         appliedBytes = target
 
+        val adjusting = adjustmentBytes != 0L
         if (adjustmentBytes < 0) {
             val skip = minOf(-adjustmentBytes, inputBuffer.remaining().toLong()).toInt()
             inputBuffer.position(inputBuffer.position() + skip)
             adjustmentBytes += skip
         }
+        val input = if (adjusting) inputBuffer.detachedCopy() else inputBuffer.consumedDuplicate()
         val silence = adjustmentBytes.coerceAtLeast(0).toInt()
-        val output = replaceOutputBuffer(silence + inputBuffer.remaining())
+        val output = replaceOutputBuffer(silence + input.remaining())
         repeat(silence) { output.put(0) }
         adjustmentBytes -= silence
-        output.put(inputBuffer)
+        output.put(input)
         output.flip()
     }
 }
+
+internal fun ByteBuffer.detachedCopy(): ByteBuffer = ByteBuffer.allocateDirect(remaining()).order(order()).apply {
+    put(this@detachedCopy)
+    flip()
+}
+
+internal fun ByteBuffer.consumedDuplicate(): ByteBuffer = duplicate().also { position(limit()) }

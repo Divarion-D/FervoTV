@@ -33,8 +33,9 @@ internal class AudioEffectsProcessor : BaseAudioProcessor() {
 
     override fun queueInput(inputBuffer: ByteBuffer) {
         if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
-            val output = replaceOutputBuffer(inputBuffer.remaining())
-            output.put(inputBuffer).flip()
+            val input = inputBuffer.consumedDuplicate()
+            val output = replaceOutputBuffer(input.remaining())
+            output.put(input).flip()
             return
         }
         inputBuffer.order(ByteOrder.nativeOrder())

@@ -22,28 +22,28 @@ class ExoRecoveryTest {
 
     @Test
     fun behindLiveWindowGoesBackToLive() {
-        assertEquals(Recovery.ToLiveEdge, recovery(PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW, typed = false))
-        assertEquals(Recovery.ToLiveEdge, recovery(PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW, typed = true))
+        assertEquals(Recovery.ToLiveEdge, recovery(PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW))
     }
 
     @Test
-    fun untypedLinkIsRetriedAsHlsOnce() {
-        assertEquals(Recovery.AsHls, recovery(PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED, typed = false))
-        assertEquals(Recovery.AsProgressive, recovery(PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED, typed = true, formatRetries = 2))
-        // Both format variants have failed: do not loop forever.
-        assertNull(recovery(PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED, typed = false, formatRetries = 3))
+    fun untypedContainerTriesEveryFormatOnce() {
+        assertEquals(Recovery.AsDash, recovery(PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED, formatRetries = 0))
+        assertEquals(Recovery.AsHls, recovery(PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED, formatRetries = 1))
+        assertEquals(Recovery.AsProgressive, recovery(PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED, formatRetries = 2))
+        assertNull(recovery(PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED, formatRetries = 3))
     }
 
     @Test fun malformedUntypedManifestTriesDashThenHls() {
-        assertEquals(Recovery.AsDash, recovery(PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED, typed = false))
-        assertEquals(Recovery.AsHls, recovery(PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED, typed = true, formatRetries = 1))
-        assertNull(recovery(PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED, typed = true, formatRetries = 2))
+        assertEquals(Recovery.AsDash, recovery(PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED, formatRetries = 0))
+        assertEquals(Recovery.AsHls, recovery(PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED, formatRetries = 1))
+        assertEquals(Recovery.AsProgressive, recovery(PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED, formatRetries = 2))
+        assertNull(recovery(PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED, formatRetries = 3))
     }
 
     @Test
     fun otherErrorsAreShown() {
-        assertNull(recovery(PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS, typed = false))
-        assertNull(recovery(PlaybackException.ERROR_CODE_DECODER_INIT_FAILED, typed = false))
+        assertNull(recovery(PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS))
+        assertNull(recovery(PlaybackException.ERROR_CODE_DECODER_INIT_FAILED))
     }
 
     @Test

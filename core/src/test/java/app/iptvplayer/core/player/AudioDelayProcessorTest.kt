@@ -24,6 +24,21 @@ class AudioDelayProcessorTest {
         assertTrue(advanced.isActive)
     }
 
+    @Test fun reusedOutputBufferCanBeQueuedAgainAtZeroDelay() {
+        val processor = AudioDelayProcessor().apply { configure(format); flush() }
+        processor.queueInput(bytes(8, 1))
+        val reused = processor.output
+        reused.clear()
+        repeat(8) { reused.put(2) }
+        reused.flip()
+
+        processor.queueInput(reused)
+
+        val output = processor.output
+        assertEquals(8, output.remaining())
+        repeat(8) { assertEquals(2, output.get().toInt()) }
+    }
+
     private fun bytes(size: Int, value: Byte) = ByteBuffer.allocateDirect(size).apply {
         repeat(size) { put(value) }
         flip()
