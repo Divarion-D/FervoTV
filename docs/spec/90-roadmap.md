@@ -126,6 +126,8 @@ USB, пульта, PiP, режимов экрана и сторонних пле
 
 **Проверка:** `make check` — 267 debug host-тестов, 0 ошибок/падений/пропусков, `lintDebug` и универсальный
 `app-tv` debug APK; оба GitHub Actions запуска для текущего PR прошли. Это функциональный gate, не hardware acceptance.
+ADB на TECNO CH6i подтвердил fullscreen-видео 11/11 synthetic fixtures и активный ненулевой speaker `AudioTrack`
+для 9/11; MP2 и DTS дали картинку без звука из-за отсутствующих decoder declarations и остаются блокером PLR-012.
 
 **Функции:** 🟡 SRC-009, 🟡 PLR-005, 🟡 PLR-006, ✅ PLR-007, ✅ PLR-008, 🟡 PLR-009, ✅ PLR-010,
 🟡 PLR-011, ⬜ PLR-012, 🟡 PLR-013, ⬜ PLR-014, ✅ PLR-015, 🟡 PLR-016, ⬜ PLR-017, ⬜ PLR-018,
