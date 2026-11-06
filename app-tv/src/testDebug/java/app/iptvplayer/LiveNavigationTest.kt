@@ -144,6 +144,10 @@ class LiveNavigationTest {
         compose.runOnIdle { assertTrue(engine.view is SurfaceView) }
         compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
         compose.runOnIdle { assertNull(engine.view) }
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 4"))
+                .fetchSemanticsNodes().any { it.layoutInfo.isPlaced }
+        }
         compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 4")).assertIsDisplayed()
         compose.onAllNodesWithText(compose.activity.getString(R.string.search_channels)).assertCountEquals(0)
     }
