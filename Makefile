@@ -15,12 +15,14 @@ PKG_DEBUG := $(PKG).debug
 ACTIVITY  := app.iptvplayer.MainActivity
 VERSION   := $(shell sed -n 's/.*versionName = "\(.*\)".*/\1/p' build.gradle.kts)
 DIST      := dist
+MEDIA_BIND ?= 0.0.0.0
+MEDIA_PORT ?= 8765
 
 APK_RELEASE := app-tv/build/outputs/apk/release/app-tv-release.apk
 APK_DEBUG   := app-tv/build/outputs/apk/debug/app-tv-debug.apk
 
 .DEFAULT_GOAL := help
-.PHONY: help version test test-fast test-ui test-fixtures lint check p3-fixtures ffmpeg-audio debug release bundle dist ci-release \
+.PHONY: help version test test-fast test-ui test-media-fixtures lint check media-fixtures media-serve ffmpeg-audio debug release bundle dist ci-release \
         verify install install-debug uninstall uninstall-debug run run-debug devices clean
 
 help: ## Список целей
@@ -50,11 +52,14 @@ lint: local.properties ## Lint всех модулей
 check: local.properties ## То же, что CI на каждый коммит: тесты + lint + debug-сборка
 	$(GRADLE) testDebugUnitTest lintDebug assembleDebug
 
-test-fixtures: ## Тесты Python-генератора, включая реальные медиа (нужны ffmpeg и ffprobe)
+test-media-fixtures: ## Тесты медиастенда с реальным кодированием и HTTP (нужны ffmpeg и ffprobe)
 	python3 -m unittest discover -s tools/tests -v
 
-p3-fixtures: ## Синтетические потоки, субтитры и M3U для P3 (нужны Python 3, ffmpeg и ffprobe)
-	python3 tools/p3-synthetic-streams.py --reuse-existing
+media-fixtures: ## Постоянный набор форматов видео, аудио и субтитров для проверок
+	python3 tools/media-fixtures.py --reuse-existing
+
+media-serve: media-fixtures ## HTTP-медиастенд с Range, MIME и проверкой заголовков (порт 8765)
+	python3 tools/media-test-server.py --bind $(MEDIA_BIND) --port $(MEDIA_PORT)
 
 ffmpeg-audio: ## Пересобрать Media3 FFmpeg AAR (NDK r26b, LGPL audio decoders)
 	tools/build-media3-ffmpeg.sh

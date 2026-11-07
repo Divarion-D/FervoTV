@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate local P3 media with FFmpeg; no providers, credentials or downloads."""
+"""Generate permanent local media compatibility fixtures with FFmpeg."""
 import argparse
 import json
 import math
@@ -37,7 +37,7 @@ def base_url_arg(value):
 
 
 def output_path(value):
-    return (Path(value) if value else Path(__file__).resolve().parents[1] / "build/p3-fixtures").absolute()
+    return (Path(value) if value else Path(__file__).resolve().parents[1] / "build/media-fixtures").absolute()
 
 
 def command(args, seconds):
@@ -83,7 +83,7 @@ def generate(folder, seconds):
                             ("dash/stream.mpd", "dash/manifest")):
         shutil.copyfile(folder / original, folder / alias)
 
-    text = "Fervo TV synthetic subtitle: ru/en audio track check"
+    text = "Fervo TV media fixture: ru/en audio track check"
     (folder / "subtitles.srt").write_text(
         f"1\n00:00:01,000 --> {timestamp(seconds, ',')}\n{text}\n", encoding="utf-8")
     (folder / "subtitles.vtt").write_text(
@@ -139,35 +139,41 @@ def verify_existing(folder, seconds, require_http_playlist=False):
 
 def playlist(output, base):
     entries = [
-        ("live", "mp4", "Synthetic MP4", "test.mp4"),
-        ("live", "ts", "Synthetic MPEG-TS MPEG2 MP2", "test.ts"),
-        ("live", "avc-ts", "Synthetic MPEG-TS AVC AAC", "test-avc.ts"),
-        ("live", "hls", "Synthetic HLS", "hls/live.m3u8"),
-        ("live", "mkv-dts", "Synthetic MKV DTS", "test-dts.mkv"),
-        ("live", "dash", "Synthetic DASH", "dash/stream.mpd"),
-        ("live", "extensionless", "Synthetic extensionless MP4", "test-extensionless"),
-        ("live", "headers", "Synthetic headers", "test-headers.mp4"),
-        ("live", "hls-extensionless", "Synthetic extensionless HLS", "hls/manifest"),
-        ("live", "dash-extensionless", "Synthetic extensionless DASH", "dash/manifest"),
-        ("movie", "multi", "Synthetic multi audio subtitles", "multi.mp4"),
-        ("series", "episode1", "Synthetic Series S01E01", "episode1.mp4"),
-        ("series", "episode2", "Synthetic Series S01E02", "episode2.mp4"),
+        ("live", "mp4", "Test MP4", "test.mp4"),
+        ("live", "ts", "Test MPEG-TS MPEG2 MP2", "test.ts"),
+        ("live", "avc-ts", "Test MPEG-TS AVC AAC", "test-avc.ts"),
+        ("live", "hls", "Test HLS", "hls/live.m3u8"),
+        ("live", "mkv-dts", "Test MKV DTS", "test-dts.mkv"),
+        ("live", "dash", "Test DASH", "dash/stream.mpd"),
+        ("live", "extensionless", "Test extensionless MP4", "test-extensionless"),
+        ("live", "headers", "Test headers", "test-headers.mp4"),
+        ("live", "hls-extensionless", "Test extensionless HLS", "hls/manifest"),
+        ("live", "dash-extensionless", "Test extensionless DASH", "dash/manifest"),
+        ("movie", "multi", "Test multi audio subtitles", "multi.mp4"),
+        ("series", "episode1", "Test Series S01E01", "episode1.mp4"),
+        ("series", "episode2", "Test Series S01E02", "episode2.mp4"),
     ]
     lines = ["#EXTM3U"]
     for kind, key, title, name in entries:
-        lines.append(f'#EXTINF:-1 type="{kind}" tvg-id="synthetic-{key}" group-title="P3",{title}')
+        lines.append(f'#EXTINF:-1 type="{kind}" tvg-id="media-test-{key}" group-title="Media tests",{title}')
         if key == "headers":
-            lines.extend(["#EXTVLCOPT:http-user-agent=FervoTV-P3-Test", "#EXTVLCOPT:http-referrer=https://p3.invalid/test"])
-        lines.append(f"{base}/{name}" if base else (output / name).as_uri())
+            lines.extend(["#EXTVLCOPT:http-user-agent=FervoTV-Media-Test", "#EXTVLCOPT:http-referrer=https://media-test.invalid/"])
+        live = {
+            "mp4": "live/mp4", "ts": "live/mpeg2.ts", "avc-ts": "live/avc.ts",
+            "hls": "live/hls.m3u8", "mkv-dts": "live/dts.mkv", "dash": "live/dash.mpd",
+            "extensionless": "live/extensionless", "headers": "live/headers",
+            "hls-extensionless": "live/hls", "dash-extensionless": "live/dash",
+        }.get(key)
+        lines.append(f"{base}/{live or name}" if base else (output / name).as_uri())
     return "\n".join(lines) + "\n"
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("output", nargs="?", help="output directory (default: repository build/p3-fixtures)")
+    parser.add_argument("output", nargs="?", help="output directory (default: repository build/media-fixtures)")
     parser.add_argument("--duration", type=duration_arg, default=12, help="clip duration in seconds, at least 2 (default: 12)")
-    parser.add_argument("--base-url", type=base_url_arg, default=os.environ.get("P3_BASE_URL", ""),
-                        help="HTTP(S) origin/base path for playlist-http.m3u; also accepts P3_BASE_URL")
+    parser.add_argument("--base-url", type=base_url_arg, default=os.environ.get("MEDIA_BASE_URL", ""),
+                        help="HTTP(S) origin/base path for playlist-http.m3u; also accepts MEDIA_BASE_URL")
     parser.add_argument("--reuse-existing", action="store_true",
                         help="verify and reuse a complete existing fixture directory without modifying it")
     args = parser.parse_args()
@@ -183,10 +189,10 @@ def main():
             if not output.is_dir() or output.is_symlink():
                 raise ValueError(f"existing output is not a directory: {output}")
             verify_existing(output, args.duration, require_http_playlist=bool(args.base_url))
-            print(f"Existing synthetic P3 fixtures verified and reused at {output}")
+            print(f"Existing media fixtures verified and reused at {output}")
             return 0
         output.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix=".p3-fixtures-", dir=output.parent) as temp:
+        with tempfile.TemporaryDirectory(prefix=".media-fixtures-", dir=output.parent) as temp:
             folder = Path(temp)
             generate(folder, args.duration)
             verify(folder, args.duration)
@@ -194,7 +200,7 @@ def main():
             if args.base_url:
                 (folder / "playlist-http.m3u").write_text(playlist(output, args.base_url), encoding="utf-8")
             folder.rename(output)
-        print(f"Synthetic P3 fixtures verified and written to {output}")
+        print(f"Media fixtures verified and written to {output}")
         return 0
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
         detail = error.stderr if isinstance(error, subprocess.CalledProcessError) else str(error)

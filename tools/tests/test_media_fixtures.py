@@ -9,18 +9,18 @@ import tempfile
 import unittest
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "p3-synthetic-streams.py"
+SCRIPT = Path(__file__).resolve().parents[1] / "media-fixtures.py"
 
 
-class SyntheticStreamsTest(unittest.TestCase):
+class MediaFixturesTest(unittest.TestCase):
     def test_default_output_is_repository_build_from_any_working_directory(self):
         output_path = runpy.run_path(str(SCRIPT))["output_path"]
-        self.assertEqual(SCRIPT.parents[1] / "build/p3-fixtures", output_path(None))
+        self.assertEqual(SCRIPT.parents[1] / "build/media-fixtures", output_path(None))
 
     def cli(self, *args, env=None):
         return subprocess.run(
             [sys.executable, str(SCRIPT), *map(str, args)],
-            capture_output=True, text=True, timeout=120, env={**os.environ, "P3_BASE_URL": "", **(env or {})},
+            capture_output=True, text=True, timeout=120, env={**os.environ, "MEDIA_BASE_URL": "", **(env or {})},
         )
 
     def test_help_needs_no_media_tools(self):
@@ -89,12 +89,12 @@ class SyntheticStreamsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             output = Path(temp) / "fixtures with spaces"
             result = subprocess.run(
-                ["bash", str(SCRIPT.parent / "p3-synthetic-streams.sh"), str(output), "--duration", "2"],
-                env={**os.environ, "P3_BASE_URL": "https://p3.invalid/media/"},
+                ["bash", str(SCRIPT.parent / "media-fixtures.sh"), str(output), "--duration", "2"],
+                env={**os.environ, "MEDIA_BASE_URL": "https://media-test.invalid/media/"},
                 capture_output=True, text=True, timeout=120,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("https://p3.invalid/media/test.mp4\n", (output / "playlist-http.m3u").read_text())
+            self.assertIn("https://media-test.invalid/media/live/mp4\n", (output / "playlist-http.m3u").read_text())
 
     def test_generates_playable_media_and_local_and_http_playlists(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -147,13 +147,14 @@ class SyntheticStreamsTest(unittest.TestCase):
             http = (output / "playlist-http.m3u").read_text()
             self.assertIn((output / "test.mp4").as_uri(), local)
             self.assertNotIn(temp, http)
-            self.assertIn("http://127.0.0.1:8765/qa/hls/manifest\n", http)
-            self.assertIn("http://127.0.0.1:8765/qa/dash/manifest\n", http)
+            self.assertIn("http://127.0.0.1:8765/qa/live/mp4\n", http)
+            self.assertIn("http://127.0.0.1:8765/qa/live/hls\n", http)
+            self.assertIn("http://127.0.0.1:8765/qa/live/dash\n", http)
             self.assertIn('type="live"', http)
             self.assertIn('type="movie"', http)
             self.assertIn('type="series"', http)
-            self.assertIn("#EXTVLCOPT:http-user-agent=FervoTV-P3-Test", http)
-            self.assertIn("#EXTVLCOPT:http-referrer=https://p3.invalid/test", http)
+            self.assertIn("#EXTVLCOPT:http-user-agent=FervoTV-Media-Test", http)
+            self.assertIn("#EXTVLCOPT:http-referrer=https://media-test.invalid/", http)
             urls = [line for line in http.splitlines() if line and not line.startswith("#")]
             self.assertEqual(len(urls), len(set(urls)), "Each fixture needs its own stream identity")
             self.assertTrue((output / "subtitles.vtt").read_text().startswith("WEBVTT\n"))

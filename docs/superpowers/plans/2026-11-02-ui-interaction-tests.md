@@ -6,7 +6,7 @@
 
 **Architecture:** расширить существующие Compose/Robolectric-тесты быстрыми проверками компонентов; сквозные сценарии запускать как instrumented-тесты настоящего приложения на телефонном и TV Android. Сенсорные события и клавиши проходят через UI, не через прямые вызовы обработчиков. Семантика и геометрия дают автоматические assertions, снимки до/после действия — материал для визуальной проверки.
 
-**Tech Stack:** Kotlin, JUnit4, существующие Compose UI Test/Robolectric; AndroidJUnitRunner и UI Automator для устройства/эмулятора; текущие синтетические медиаданные из `tools/p3-synthetic-streams.sh`.
+**Tech Stack:** Kotlin, JUnit4, существующие Compose UI Test/Robolectric; AndroidJUnitRunner и UI Automator для устройства/эмулятора; медиаданные из `tools/media-fixtures.sh`.
 
 **Spec:** [UI и навигация](../../spec/30-ui-navigation.md), [дизайн](../../spec/33-design.md), [плеер](../../spec/15-player.md), [текущая приёмка P3](../../P3_PLAYER_DEVICE_CHECKS.md).
 
@@ -44,7 +44,7 @@
 
 ## Задача 1. Изолированный тестовый стенд
 
-**Files:** изменить `app-tv/build.gradle.kts`; создать `app-tv/src/sharedUiTest/java/app/iptvplayer/UiFixtures.kt`, `TestPlaybackEngine.kt`; создать `app-tv/src/androidTest/java/app/iptvplayer/UiHarnessTest.kt`; использовать `tools/p3-synthetic-streams.sh`. Релизный manifest и данные `core` не менять.
+**Files:** изменить `app-tv/build.gradle.kts`; создать `app-tv/src/sharedUiTest/java/app/iptvplayer/UiFixtures.kt`, `TestPlaybackEngine.kt`; создать `app-tv/src/androidTest/java/app/iptvplayer/UiHarnessTest.kt`; использовать `tools/media-fixtures.sh`. Релизный manifest и данные `core` не менять.
 
 **Interfaces:** `UiFixtures.seed(context: Context, baseUrl: String)` наполняет только `.uitest` через существующие хранилища; `UiFixtures.reset(context: Context)` отказывает для любого другого package name. `TestPlaybackEngine : PlaybackEngine` извлекается из существующего `VodControlsTest` и остаётся только в test source sets.
 
