@@ -22,7 +22,7 @@ APK_RELEASE := app-tv/build/outputs/apk/release/app-tv-release.apk
 APK_DEBUG   := app-tv/build/outputs/apk/debug/app-tv-debug.apk
 
 .DEFAULT_GOAL := help
-.PHONY: help version test test-fast test-ui test-media-fixtures lint check media-fixtures media-serve ffmpeg-audio debug release bundle dist ci-release \
+.PHONY: help version test test-fast test-ui test-ui-host test-ui-device test-media-fixtures lint check media-fixtures media-serve ffmpeg-audio debug release bundle dist ci-release \
         verify install install-debug uninstall uninstall-debug run run-debug devices clean
 
 help: ## Список целей
@@ -43,8 +43,14 @@ test: local.properties ## Все unit-тесты (debug и release, все мо�
 test-fast: local.properties ## Unit-тесты только ядра, debug — быстрый прогон
 	$(GRADLE) :core:testDebugUnitTest $(TEST_ARGS)
 
-test-ui: local.properties ## Host UI-тесты универсального app-tv, debug
+test-ui: test-ui-host ## Совместимый псевдоним для test-ui-host
+
+test-ui-host: local.properties ## Host UI-тесты универсального app-tv, debug
 	$(GRADLE) :app-tv:testDebugUnitTest $(TEST_ARGS)
+
+test-ui-device: local.properties ## UI-тесты изолированного .uitest-приложения на выбранном устройстве
+	@test -n "$(strip $(ANDROID_SERIAL))" || { echo "Укажите устройство: make test-ui-device ANDROID_SERIAL=<serial>"; exit 2; }
+	ANDROID_SERIAL="$(ANDROID_SERIAL)" $(GRADLE) :app-tv:connectedUiTestAndroidTest $(TEST_ARGS)
 
 lint: local.properties ## Lint всех модулей
 	$(GRADLE) lint

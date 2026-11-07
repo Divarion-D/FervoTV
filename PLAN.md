@@ -94,6 +94,9 @@ files: [settings.gradle.kts, build.gradle.kts, core/build.gradle.kts, app-tv/bui
 - [ ] Run isolated device UI jobs on phone and TV emulators {#delivery-device-ui-ci}
   from: roadmap
   tech: task 6 in `docs/superpowers/plans/2026-11-02-ui-interaction-tests.md`; no `.github/workflows/ui-tests.yml` or `uiTest` build type exists
+- [x] Expose safe host and device UI-test commands through Make {#delivery-ui-test-commands}
+  by: codex
+  tech: `Makefile` targets `test-ui-host` and `test-ui-device`; device execution rejects a missing `ANDROID_SERIAL`
 
 ## Exercise media compatibility locally {#media-lab}
 
