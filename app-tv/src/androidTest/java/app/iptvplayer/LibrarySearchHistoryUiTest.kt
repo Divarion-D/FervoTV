@@ -1,6 +1,7 @@
 package app.iptvplayer
 
 import android.content.Context
+import android.view.KeyEvent
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -57,6 +58,11 @@ class LibrarySearchHistoryUiTest {
 
     private fun category(text: String) = hasText(text) and SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick)
 
+    private fun pressBack() {
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
+    }
+
     @Test
     fun opensLibrarySearchAndHistoryWithTheDeviceInputMode() {
         val tv = context.isTv()
@@ -98,11 +104,11 @@ class LibrarySearchHistoryUiTest {
         val search = context.getString(R.string.section_search)
 
         compose.waitUntil(10_000) { compose.onAllNodes(hasText("Test MP4")).fetchSemanticsNodes().isNotEmpty() }
-        compose.onRoot().performKeyInput { pressKey(Key.Back) }
+        pressBack()
         compose.waitUntil(10_000) {
             runCatching { compose.onNode(category(context.getString(R.string.group_all))).assertIsFocused() }.isSuccess
         }
-        compose.onRoot().performKeyInput { pressKey(Key.Back) }
+        pressBack()
         compose.waitUntil(10_000) { runCatching { compose.onNodeWithContentDescription(live).assertIsFocused() }.isSuccess }
         compose.onRoot().performKeyInput {
             repeat(2) { pressKey(Key.DirectionDown) }
@@ -110,11 +116,11 @@ class LibrarySearchHistoryUiTest {
         }
         compose.waitUntil(10_000) { compose.onAllNodes(hasText("Test multi audio subtitles", substring = true)).fetchSemanticsNodes().isNotEmpty() }
 
-        compose.onRoot().performKeyInput { pressKey(Key.Back) }
+        pressBack()
         compose.waitUntil(10_000) {
             runCatching { compose.onNode(category(context.getString(R.string.group_all_movies))).assertIsFocused() }.isSuccess
         }
-        compose.onRoot().performKeyInput { pressKey(Key.Back) }
+        pressBack()
         compose.waitUntil(10_000) { runCatching { compose.onNodeWithContentDescription(movies).assertIsFocused() }.isSuccess }
         compose.onRoot().performKeyInput {
             repeat(3) { pressKey(Key.DirectionUp) }

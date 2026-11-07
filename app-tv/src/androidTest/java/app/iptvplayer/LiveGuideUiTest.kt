@@ -1,6 +1,7 @@
 package app.iptvplayer
 
 import android.content.Context
+import android.view.KeyEvent
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -54,6 +55,11 @@ class LiveGuideUiTest {
     private fun category(text: String) =
         hasText(text) and SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick)
 
+    private fun pressBack() {
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
+    }
+
     @Test
     fun switchesBetweenLiveAndGuideWithTheDeviceInputMode() {
         val tv = context.isTv()
@@ -85,11 +91,11 @@ class LiveGuideUiTest {
 
         compose.waitUntil(10_000) { compose.onAllNodes(first).fetchSemanticsNodes().isNotEmpty() }
         compose.waitUntil(10_000) { runCatching { compose.onNode(first).assertIsFocused() }.isSuccess }
-        compose.onRoot().performKeyInput { pressKey(Key.DirectionLeft) }
+        pressBack()
         compose.waitUntil(5_000) {
             runCatching { compose.onNode(category(context.getString(R.string.group_all))).assertIsFocused() }.isSuccess
         }
-        compose.onRoot().performKeyInput { pressKey(Key.DirectionLeft) }
+        pressBack()
         compose.waitUntil(5_000) { runCatching { compose.onNode(live).assertIsFocused() }.isSuccess }
         compose.onRoot().performKeyInput {
             pressKey(Key.DirectionDown)
@@ -98,7 +104,7 @@ class LiveGuideUiTest {
         compose.onNode(guide).assertIsSelected()
         compose.onNodeWithText(context.getString(R.string.guide_none_title)).assertIsDisplayed()
 
-        compose.onRoot().performKeyInput { pressKey(Key.Back) }
+        pressBack()
         compose.waitUntil(5_000) { runCatching { compose.onNode(guide).assertIsFocused() }.isSuccess }
         compose.onRoot().performKeyInput {
             pressKey(Key.DirectionUp)
