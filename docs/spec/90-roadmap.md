@@ -127,10 +127,10 @@ USB, пульта, PiP, режимов экрана и сторонних пле
 **Проверка:** `make check` — 267 debug host-тестов, 0 ошибок/падений/пропусков, `lintDebug` и универсальный
 `app-tv` debug APK; оба GitHub Actions запуска для текущего PR прошли. Это функциональный gate, не hardware acceptance.
 ADB на TECNO CH6i ранее подтвердил fullscreen-видео 11/11 synthetic fixtures и активный ненулевой speaker `AudioTrack`
-для 9/11; MP2 и DTS дали картинку без звука до добавления FFmpeg. 07.11 новый debug APK технически проверен на том же телефоне API 33 без DTS MediaCodec: при OFF и ON synthetic MKV/DTS дал playing и PCM16 `AudioTrack` 48 кГц mono на speaker с ненулевым gain и 0 underruns. Финальная правка пересоздаёт playback-сессию сразу при смене приоритета; ON→OFF проверен без перезапуска процесса, persisted value стал `false`, crash log пуст. Это не TV-приёмка; человеческое акустическое подтверждение отдельно не записывалось.
+для 9/11; MP2 и DTS дали картинку без звука до добавления FFmpeg. 07.11 новый debug APK технически проверен на том же телефоне API 33 без DTS MediaCodec: при OFF и ON synthetic MKV/DTS дал playing и PCM16 `AudioTrack` 48 кГц mono на speaker с ненулевым gain и 0 underruns. Финальная правка заменяет движок внутри стабильной playback-сессии с сохранением текущего элемента, позиции и состояния; ON→OFF проверен без перезапуска процесса, persisted value стал `false`, crash log пуст. Это не TV-приёмка; человеческое акустическое подтверждение отдельно не записывалось.
 
 **Функции:** 🟡 SRC-009, 🟡 PLR-005, 🟡 PLR-006, ✅ PLR-007, ✅ PLR-008, 🟡 PLR-009, ✅ PLR-010,
-🟡 PLR-011, ✅ PLR-012, 🟡 PLR-013, ⬜ PLR-014, ✅ PLR-015, 🟡 PLR-016, ⬜ PLR-017, ⬜ PLR-018,
+🟡 PLR-011, 🟡 PLR-012, 🟡 PLR-013, ⬜ PLR-014, ✅ PLR-015, 🟡 PLR-016, ⬜ PLR-017, ⬜ PLR-018,
 ✅ PLR-019, ✅ PLR-020, 🟡 PLR-021, 🟡 PLR-022, 🟡 PLR-023, ✅ PLR-024, 🟡 PLR-025, 🟡 PLR-026,
 🟡 PLR-027, 🟡 PLR-028, ✅ PLR-029, 🟡 PLR-030, ✅ SET-009.
 

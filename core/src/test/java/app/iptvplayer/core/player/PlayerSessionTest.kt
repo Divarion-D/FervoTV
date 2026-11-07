@@ -70,12 +70,14 @@ class PlayerSessionTest {
         player.setMuted(true)
         player.setSpeed(1.25f)
         player.setPaused(true)
+        player.setSleepAtEnd(true)
 
         player.reconfigure { second }
 
         assertEquals(listOf("play http://a/film.mkv", "muted true", "speed 1.25", "pause", "release"), first.calls)
         assertEquals("http://a/film.mkv", player.current?.url)
         assertEquals(42_000L, player.current?.start)
+        assertEquals(true, player.sleepAtEnd.value)
         assertEquals(
             listOf("play http://a/film.mkv @42000", "muted true", "speed 1.25", "pause"),
             second.calls.filterNot { it == "view null" },
