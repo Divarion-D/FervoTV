@@ -25,16 +25,19 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.audio.MediaCodecAudioRenderer
 import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
 import androidx.media3.exoplayer.drm.DefaultDrmSessionManagerProvider
 import androidx.media3.exoplayer.drm.FrameworkMediaDrm
 import androidx.media3.exoplayer.drm.LocalMediaDrmCallback
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.session.MediaSession
 import androidx.media3.ui.SubtitleView
@@ -82,10 +85,12 @@ class ExoEngine(ctx: Context, private val config: PlaybackConfig = PlaybackConfi
             DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(audioDelay, audioEffects)).build()
     }.setExtensionRendererMode(extensionRendererMode(config.preferSoftwareAudio))
         .setEnableDecoderFallback(true)
+    private val trackSelector = DefaultTrackSelector(ctx)
 
     private val exo: ExoPlayer = run {
         ExoPlayer.Builder(ctx)
             .setRenderersFactory(renderers)
+            .setTrackSelector(trackSelector)
             .setAudioAttributes(AudioAttributes.DEFAULT, true)
             .setLoadControl(
                 DefaultLoadControl.Builder()
@@ -115,6 +120,8 @@ class ExoEngine(ctx: Context, private val config: PlaybackConfig = PlaybackConfi
     private val main = Handler(Looper.getMainLooper())
     private val stall = StallWatch(Defaults.BUFFER_STALL_TIMEOUT_MS)
     private var formatRetries = 0
+    private var softwareAudioRetry = false
+    private var disabledHardwareAudioRenderer: Int? = null
     private var current: PlayItem? = null
     private var reconnectAttempt = 0
     private var reconnectStartedAt = 0L
@@ -277,6 +284,19 @@ class ExoEngine(ctx: Context, private val config: PlaybackConfig = PlaybackConfi
             override fun onPlayerError(e: PlaybackException) {
                 val item = exo.currentMediaItem
                 val playItem = current
+                if (shouldRetryWithSoftwareAudio(e.errorCode, softwareAudioRetry, config.preferSoftwareAudio)) {
+                    val hardwareAudio = (e as? ExoPlaybackException)?.rendererIndex
+                        ?.takeIf { it in 0 until exo.rendererCount && exo.getRenderer(it) is MediaCodecAudioRenderer }
+                    if (hardwareAudio != null) {
+                        softwareAudioRetry = true
+                        disabledHardwareAudioRenderer = hardwareAudio
+                        trackSelector.setParameters(trackSelector.parameters.buildUpon().setRendererDisabled(hardwareAudio, true))
+                        log.record(playItem?.url, "decoder-init:ffmpeg-retry")
+                        exo.prepare()
+                        exo.play()
+                        return
+                    }
+                }
                 if (playItem?.live == true && errorKind(e.errorCode) == PlaybackError.Kind.Network) {
                     val now = SystemClock.elapsedRealtime()
                     if (reconnectStartedAt == 0L) reconnectStartedAt = now
@@ -323,6 +343,11 @@ class ExoEngine(ctx: Context, private val config: PlaybackConfig = PlaybackConfi
     }
 
     override fun play(item: PlayItem) {
+        disabledHardwareAudioRenderer?.let { renderer ->
+            trackSelector.setParameters(trackSelector.parameters.buildUpon().setRendererDisabled(renderer, false))
+        }
+        disabledHardwareAudioRenderer = null
+        softwareAudioRetry = false
         current = item
         metrics.reset()
         if (config.verboseLogging) log.record(item.url, "play")
@@ -666,6 +691,9 @@ internal enum class Recovery { ToLiveEdge, AsDash, AsHls, AsProgressive }
 internal fun extensionRendererMode(preferSoftwareAudio: Boolean): Int =
     if (preferSoftwareAudio) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
     else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+
+internal fun shouldRetryWithSoftwareAudio(errorCode: Int, alreadyTried: Boolean, preferSoftwareAudio: Boolean): Boolean =
+    errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED && !alreadyTried && !preferSoftwareAudio
 
 /**
  * What to do before showing a format error: try each explicit format once and keep the chain finite.

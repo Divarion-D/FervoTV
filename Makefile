@@ -54,7 +54,7 @@ test-fixtures: ## Тесты Python-генератора, включая реа�
 	python3 -m unittest discover -s tools/tests -v
 
 p3-fixtures: ## Синтетические потоки, субтитры и M3U для P3 (нужны Python 3, ffmpeg и ffprobe)
-	python3 tools/p3-synthetic-streams.py
+	python3 tools/p3-synthetic-streams.py --reuse-existing
 
 ffmpeg-audio: ## Пересобрать Media3 FFmpeg AAR (NDK r26b, LGPL audio decoders)
 	tools/build-media3-ffmpeg.sh

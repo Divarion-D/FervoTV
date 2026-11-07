@@ -10,9 +10,15 @@ import app.iptvplayer.core.model.SubtitleBackground
 import app.iptvplayer.core.model.SubtitleColor
 import app.iptvplayer.core.model.SubtitleFont
 import app.iptvplayer.core.model.SubtitlePosition
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /**
  * What to play. [live] = a channel of the live list: dropped in the background, resumed at the live edge.
@@ -151,8 +157,8 @@ data class PlaybackError(val kind: Kind, val detail: String) {
 }
 
 /**
- * A playback engine (Media3 ExoPlayer now; FFmpeg audio and libmpv in P3). Screens never talk to an engine
- * directly, only through [PlayerSession]. All calls on the main thread.
+ * A playback engine (Media3 ExoPlayer with its FFmpeg audio renderer; libmpv may be another backend). Screens
+ * never talk to an engine directly, only through [PlayerSession]. All calls on the main thread.
  *
  * An engine tries the variants of a format itself (e.g. an extensionless link as HLS) and reports an error only when
  * it has nothing left to try.
@@ -214,14 +220,21 @@ interface PlaybackEngine {
  * The engine is created on first use: an app that never plays doesn't pay for it.
  */
 class PlayerSession(private val memory: PlayerMemory? = null, newEngine: () -> PlaybackEngine) {
-    private val lazyEngine = lazy {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val _state = MutableStateFlow(PlaybackState())
+    val state: StateFlow<PlaybackState> = _state.asStateFlow()
+    private var stateJob: Job? = null
+    private fun lazyEngine(newEngine: () -> PlaybackEngine) = lazy {
         newEngine().also { engine ->
+            stateJob?.cancel()
+            stateJob = scope.launch { engine.state.collect { _state.value = it } }
             engine.setWorkingFormatListener { format ->
                 item?.takeIf { it.live }?.let { memory?.put(it.key, live = true, PlayerMemory.Kind.FORMAT, format) }
             }
         }
     }
-    private val engine by lazyEngine
+    private var lazyEngine = lazyEngine(newEngine)
+    private val engine: PlaybackEngine get() = lazyEngine.value
     private var item: PlayItem? = null
     private val _current = MutableStateFlow<PlayItem?>(null)
     val currentItem: StateFlow<PlayItem?> = _current.asStateFlow()
@@ -231,6 +244,10 @@ class PlayerSession(private val memory: PlayerMemory? = null, newEngine: () -> P
     private var view: View? = null
     private var subtitleView: View? = null
     private var videoEnabled = true
+    private var muted = false
+    private var speed = 1f
+    private var previousHandler: (() -> Unit)? = null
+    private var nextHandler: (() -> Unit)? = null
     private val _sleepRemainingMs = MutableStateFlow<Long?>(null)
     val sleepRemainingMs: StateFlow<Long?> = _sleepRemainingMs.asStateFlow()
     private val _sleepAtEnd = MutableStateFlow(false)
@@ -250,10 +267,36 @@ class PlayerSession(private val memory: PlayerMemory? = null, newEngine: () -> P
         }
     }
 
-    val state: StateFlow<PlaybackState> get() = engine.state
-
     /** What is open now (null = nothing). */
     val current: PlayItem? get() = item
+
+    /** Replaces the engine after a decoder-policy change without discarding the open item. */
+    fun reconfigure(newEngine: () -> PlaybackEngine) {
+        if (!lazyEngine.isInitialized()) {
+            lazyEngine = lazyEngine(newEngine)
+            return
+        }
+        val old = engine
+        val playing = item
+        val position = old.position
+        val paused = old.state.value.paused
+        stateJob?.cancel()
+        old.release()
+        lazyEngine = lazyEngine(newEngine)
+        if (playing == null) {
+            _state.value = PlaybackState()
+            return
+        }
+        item = null
+        open(if (playing.live) playing else playing.copy(start = position))
+        engine.setVideoEnabled(videoEnabled)
+        if (videoEnabled) view?.let(engine::setVideoView)
+        subtitleView?.let(engine::setSubtitleView)
+        engine.setMediaNavigationHandlers(previousHandler, nextHandler)
+        engine.setMuted(muted)
+        engine.setSpeed(speed)
+        if (paused) engine.pause()
+    }
 
     /** Starts [item]; the same item already playing goes on as is (preview → full screen without a restart). */
     fun open(item: PlayItem) {
@@ -311,7 +354,10 @@ class PlayerSession(private val memory: PlayerMemory? = null, newEngine: () -> P
         if (paused) engine.pause() else engine.resume()
     }
 
-    fun setMuted(muted: Boolean) = engine.setMuted(muted)
+    fun setMuted(muted: Boolean) {
+        this.muted = muted
+        engine.setMuted(muted)
+    }
     fun selectAudioTrack(index: Int) {
         engine.selectAudioTrack(index)
         item?.let { memory?.put(it.key, it.live, PlayerMemory.Kind.AUDIO_TRACK, index.toString()) }
@@ -326,7 +372,10 @@ class PlayerSession(private val memory: PlayerMemory? = null, newEngine: () -> P
     }
     fun selectVideoTrack(index: Int) = engine.selectVideoTrack(index)
     fun clearVideoTrackOverride() = engine.clearVideoTrackOverride()
-    fun setSpeed(speed: Float) = engine.setSpeed(speed)
+    fun setSpeed(speed: Float) {
+        this.speed = speed.coerceIn(0.5f, 2f)
+        engine.setSpeed(this.speed)
+    }
     fun setVolume(percent: Int) {
         engine.setVolume(percent)
         item?.let { memory?.put(it.key, it.live, PlayerMemory.Kind.VOLUME, percent.coerceIn(0, 150).toString()) }
@@ -341,8 +390,11 @@ class PlayerSession(private val memory: PlayerMemory? = null, newEngine: () -> P
     }
     fun addSubtitle(url: String, mimeType: String? = null, offsetMs: Long = 0) = engine.addSubtitle(url, mimeType, offsetMs)
     fun streamInfo(): StreamInfo? = engine.streamInfo()
-    fun setMediaNavigationHandlers(previous: (() -> Unit)?, next: (() -> Unit)?) =
+    fun setMediaNavigationHandlers(previous: (() -> Unit)?, next: (() -> Unit)?) {
+        previousHandler = previous
+        nextHandler = next
         engine.setMediaNavigationHandlers(previous, next)
+    }
 
     fun setVideoEnabled(enabled: Boolean) {
         videoEnabled = enabled
@@ -425,6 +477,8 @@ class PlayerSession(private val memory: PlayerMemory? = null, newEngine: () -> P
         backgrounded = false
         resumeOnForeground = false
         if (lazyEngine.isInitialized()) engine.release()
+        stateJob?.cancel()
+        scope.cancel()
         sleepHandler.removeCallbacks(sleepTick)
         _sleepRemainingMs.value = null
         _sleepAtEnd.value = false
