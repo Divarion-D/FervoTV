@@ -49,7 +49,7 @@ files: [core/src/main/java/app/iptvplayer/core/epg/**, core/src/main/java/app/ip
 - [~] Drive core screen routes with real touch and remote events {#experience-ui-test-routes}
   by: codex
   from: roadmap
-  tech: first slice is touch `Live → More → Live` plus DPAD focus movement between seeded channels through production Compose UI
+  tech: `NavigationUiTest.kt` now contains touch `Live → More → Live` and DPAD focus movement between seeded channels; compilation and device execution remain pending
 
 ## Play streams across supported formats {#playback}
 
@@ -96,7 +96,7 @@ files: [settings.gradle.kts, build.gradle.kts, core/build.gradle.kts, app-tv/bui
   tech: task 6 in `docs/superpowers/plans/2026-11-02-ui-interaction-tests.md`; no `.github/workflows/ui-tests.yml` or `uiTest` build type exists
 - [x] Expose safe host and device UI-test commands through Make {#delivery-ui-test-commands}
   by: codex
-  tech: `Makefile` targets `test-ui-host` and `test-ui-device`; device execution rejects a missing `ANDROID_SERIAL`
+  tech: `Makefile` targets `test-ui-host`, `test-ui-build` and `test-ui-device`; device execution rejects a missing `ANDROID_SERIAL`
 
 ## Exercise media compatibility locally {#media-lab}
 
