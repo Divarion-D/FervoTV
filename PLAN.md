@@ -49,7 +49,7 @@ files: [core/src/main/java/app/iptvplayer/core/epg/**, core/src/main/java/app/ip
 - [~] Drive core screen routes with real touch and remote events {#experience-ui-test-routes}
   by: codex
   from: roadmap
-  tech: `NavigationUiTest.kt` now contains touch `Live → More → Live` and DPAD focus movement between seeded channels; compilation and device execution remain pending
+  tech: `NavigationUiTest.kt` contains touch `Live → More → Live` and DPAD focus movement between seeded channels; `make test-ui-build` compiles both routes, while device execution remains pending
 
 ## Play streams across supported formats {#playback}
 
@@ -91,9 +91,10 @@ files: [settings.gradle.kts, build.gradle.kts, core/build.gradle.kts, app-tv/bui
   tech: `settings.gradle.kts` includes `:core` and `:app-tv`; `app-tv/build.gradle.kts`; `app-tv/src/main/AndroidManifest.xml`
 - [x] Gate debug and release builds with tests, lint, signing and APK verification {#delivery-gates}
   tech: `Makefile` targets `check`, `release`, `verify`, `ci-release`; `.github/workflows/ci.yml`; `.github/workflows/release.yml`
-- [ ] Run isolated device UI jobs on phone and TV emulators {#delivery-device-ui-ci}
+- [~] Run isolated device UI jobs on phone and TV emulators {#delivery-device-ui-ci}
+  by: codex
   from: roadmap
-  tech: task 6 in `docs/superpowers/plans/2026-11-02-ui-interaction-tests.md`; no `.github/workflows/ui-tests.yml` or `uiTest` build type exists
+  tech: `.github/workflows/ui-tests.yml` defines fixed phone and Android TV API 35 jobs with retained reports; the first GitHub Actions execution remains pending
 - [x] Expose safe host and device UI-test commands through Make {#delivery-ui-test-commands}
   by: codex
   tech: `Makefile` targets `test-ui-host`, `test-ui-build` and `test-ui-device`; device execution rejects a missing `ANDROID_SERIAL`

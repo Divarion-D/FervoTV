@@ -333,7 +333,9 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit, onPlayer: (Playe
         }
     }
     // BAK-009: check once when the app opens; failures stay silent here and remain visible in Settings.
-    LaunchedEffect(Unit) { checkForUpdate() }
+    LaunchedEffect(Unit) {
+        if (BuildConfig.ENABLE_AUTOMATIC_UPDATE_CHECK) checkForUpdate()
+    }
 
     // Channels are shown right away; logos found in the index are stored next to them and fill in when ready.
     suspend fun loadLogos(s: Source) {

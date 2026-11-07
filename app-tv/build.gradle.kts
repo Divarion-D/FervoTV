@@ -14,6 +14,7 @@ android {
         minSdk = 21
         targetSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("boolean", "ENABLE_AUTOMATIC_UPDATE_CHECK", "true")
     }
 
     buildTypes {
@@ -22,6 +23,7 @@ android {
             applicationIdSuffix = ".uitest"
             matchingFallbacks += listOf("debug")
             manifestPlaceholders["appLabel"] = "Fervo TV UI test"
+            buildConfigField("boolean", "ENABLE_AUTOMATIC_UPDATE_CHECK", "false")
         }
     }
     testBuildType = "uiTest"
@@ -31,7 +33,10 @@ android {
         getByName("androidTest").java.srcDir("src/sharedUiTest/java")
     }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     testOptions.unitTests.isIncludeAndroidResources = true
     // UI-022: the language is switched inside the app, so every translation must be in the APK, not in Play splits.
     bundle { language { enableSplit = false } }

@@ -1,6 +1,7 @@
 package app.iptvplayer
 
 import android.content.Context
+import android.content.pm.PackageManager
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -19,8 +20,9 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pressKey
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import org.junit.Assume.assumeFalse
-import org.junit.Assume.assumeTrue
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TestWatcher
@@ -52,10 +54,26 @@ class NavigationUiTest {
         hasText(text) and SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick)
 
     @Test
-    fun touchMovesFromLiveToMoreAndBack() {
-        assumeFalse(context.isTv())
+    fun navigatesWithTheDeviceInputMode() {
+        val tv = context.isTv()
+        InstrumentationRegistry.getArguments().getString("expectedMode")?.let { expected ->
+            assertTrue("expectedMode must be phone or tv", expected in setOf("phone", "tv"))
+            assertEquals("AVD reported the wrong UI mode", expected == "tv", tv)
+        }
+        if (tv) {
+            assertTrue("TV image must expose Leanback", context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK))
+            remoteMovesFocusBetweenLiveChannels()
+        } else {
+            touchMovesFromLiveToMoreAndBack()
+        }
+    }
+
+    private fun touchMovesFromLiveToMoreAndBack() {
         val configuration = context.resources.configuration
-        assumeFalse(configuration.screenWidthDp >= 600 && configuration.screenWidthDp > configuration.screenHeightDp)
+        assertFalse(
+            "Phone UI job must use the narrow layout",
+            configuration.screenWidthDp >= 600 && configuration.screenWidthDp > configuration.screenHeightDp,
+        )
         val live = tab(context.getString(R.string.section_live))
         val more = tab(context.getString(R.string.section_more))
 
@@ -72,9 +90,7 @@ class NavigationUiTest {
         compose.onNodeWithText(context.getString(R.string.search_channels)).assertIsDisplayed()
     }
 
-    @Test
-    fun remoteMovesFocusBetweenLiveChannels() {
-        assumeTrue(context.isTv())
+    private fun remoteMovesFocusBetweenLiveChannels() {
         val first = channel("Test MP4")
         val second = channel("Test MPEG-TS")
 
