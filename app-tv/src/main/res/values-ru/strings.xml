@@ -411,6 +411,8 @@
     <string name="settings_player_reconnect">Повторные подключения</string>
     <string name="settings_player_reconnect_summary">Максимум автоматических попыток для эфира</string>
     <string name="settings_player_audio_languages">Предпочитаемые языки звука</string>
+    <string name="settings_player_software_audio">Программный декодер звука</string>
+    <string name="settings_player_software_audio_summary">Предпочитать FFmpeg для DTS, TrueHD, AC-3 и E-AC-3</string>
     <string name="settings_player_subtitle_languages">Предпочитаемые языки субтитров</string>
     <string name="settings_player_languages_hint">Теги через запятую, например en,ru</string>
     <string name="settings_player_match_frame_rate">Совпадение частоты кадров</string>

@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -12,6 +13,10 @@ SCRIPT = Path(__file__).resolve().parents[1] / "p3-synthetic-streams.py"
 
 
 class SyntheticStreamsTest(unittest.TestCase):
+    def test_default_output_is_repository_build_from_any_working_directory(self):
+        output_path = runpy.run_path(str(SCRIPT))["output_path"]
+        self.assertEqual(SCRIPT.parents[1] / "build/p3-fixtures", output_path(None))
+
     def cli(self, *args, env=None):
         return subprocess.run(
             [sys.executable, str(SCRIPT), *map(str, args)],
@@ -53,6 +58,10 @@ class SyntheticStreamsTest(unittest.TestCase):
             self.assertIn("exists", result.stderr)
             self.assertEqual(sentinel.read_bytes(), b"user data\x00")
             self.assertEqual(list(output.iterdir()), [sentinel])
+            reused = self.cli(output, "--reuse-existing")
+            self.assertNotEqual(reused.returncode, 0)
+            self.assertIn("incomplete", reused.stderr)
+            self.assertEqual(sentinel.read_bytes(), b"user data\x00")
 
     def test_missing_ffmpeg_is_reported_before_creating_output(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -92,6 +101,9 @@ class SyntheticStreamsTest(unittest.TestCase):
             output = Path(temp) / "fixtures with spaces"
             result = self.cli(output, "--duration", "2", "--base-url", "http://127.0.0.1:8765/qa/")
             self.assertEqual(result.returncode, 0, result.stderr)
+            reused = self.cli(output, "--reuse-existing")
+            self.assertEqual(reused.returncode, 0, reused.stderr)
+            self.assertIn("verified and reused", reused.stdout)
             expected = {
                 "test.mp4": ("h264", ["aac"]),
                 "test.ts": ("mpeg2video", ["mp2"]),

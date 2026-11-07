@@ -130,6 +130,8 @@ data class Settings(
     val playerReconnectAttempts: Int = Defaults.PLAYER_RECONNECT_ATTEMPTS,
     /** PLR-013: comma-separated preferred audio language tags. */
     val playerAudioLanguages: String = "",
+    /** PLR-012: prefer bundled FFmpeg audio over a device decoder; unsupported codecs always fall back to it. */
+    val playerSoftwareAudio: Boolean = false,
     /** PLR-013: comma-separated preferred subtitle language tags. */
     val playerSubtitleLanguages: String = "",
     /** PLR-023: match display frame rate when the platform allows it. */

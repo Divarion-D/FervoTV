@@ -97,6 +97,7 @@ class SettingsFileTest {
                 playerSubtitleColor = SubtitleColor.YELLOW, playerSubtitleBackground = SubtitleBackground.BLACK,
                 playerSubtitlePosition = SubtitlePosition.CENTER,
                 playerNightMode = true, playerNormalizeVolume = true, playerVerboseLogging = true,
+                playerSoftwareAudio = true,
                 playerExternalLive = true, playerExternalMovies = true, playerExternalSeries = true,
                 playerSeekSeconds = 30,
             )

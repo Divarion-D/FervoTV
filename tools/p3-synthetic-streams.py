@@ -36,6 +36,10 @@ def base_url_arg(value):
     return value.rstrip("/")
 
 
+def output_path(value):
+    return (Path(value) if value else Path(__file__).resolve().parents[1] / "build/p3-fixtures").absolute()
+
+
 def command(args, seconds):
     return subprocess.run(
         list(map(str, args)), check=True, capture_output=True, text=True,
@@ -119,6 +123,20 @@ def verify(folder, seconds):
                 raise ValueError(f"Audio/subtitle validation failed: {name}")
 
 
+def verify_existing(folder, seconds, require_http_playlist=False):
+    required = [
+        "test.mp4", "test.ts", "test-avc.ts", "test-dts.mkv", "test-extensionless", "test-headers.mp4",
+        "hls/live.m3u8", "hls/manifest", "dash/stream.mpd", "dash/manifest", "multi.mp4",
+        "episode1.mp4", "episode2.mp4", "subtitles.srt", "subtitles.vtt", "playlist.m3u",
+    ]
+    if require_http_playlist:
+        required.append("playlist-http.m3u")
+    missing = [name for name in required if not (folder / name).is_file()]
+    if missing:
+        raise ValueError(f"fixture set is incomplete; missing: {', '.join(missing)}")
+    verify(folder, seconds)
+
+
 def playlist(output, base):
     entries = [
         ("live", "mp4", "Synthetic MP4", "test.mp4"),
@@ -146,19 +164,27 @@ def playlist(output, base):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("output", nargs="?", default="build/p3-fixtures", help="new output directory (must not exist)")
+    parser.add_argument("output", nargs="?", help="output directory (default: repository build/p3-fixtures)")
     parser.add_argument("--duration", type=duration_arg, default=12, help="clip duration in seconds, at least 2 (default: 12)")
     parser.add_argument("--base-url", type=base_url_arg, default=os.environ.get("P3_BASE_URL", ""),
                         help="HTTP(S) origin/base path for playlist-http.m3u; also accepts P3_BASE_URL")
+    parser.add_argument("--reuse-existing", action="store_true",
+                        help="verify and reuse a complete existing fixture directory without modifying it")
     args = parser.parse_args()
-    output = Path(args.output).absolute()
-    if output.exists() or output.is_symlink():
+    output = output_path(args.output)
+    if (output.exists() or output.is_symlink()) and not args.reuse_existing:
         parser.error(f"output already exists: {output}; choose a new directory")
     for tool in ("ffmpeg", "ffprobe"):
         if shutil.which(tool) is None:
             print(f"error: {tool} is required on PATH", file=sys.stderr)
             return 1
     try:
+        if output.exists() or output.is_symlink():
+            if not output.is_dir() or output.is_symlink():
+                raise ValueError(f"existing output is not a directory: {output}")
+            verify_existing(output, args.duration, require_http_playlist=bool(args.base_url))
+            print(f"Existing synthetic P3 fixtures verified and reused at {output}")
+            return 0
         output.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix=".p3-fixtures-", dir=output.parent) as temp:
             folder = Path(temp)

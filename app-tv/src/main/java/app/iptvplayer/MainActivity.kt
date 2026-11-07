@@ -223,38 +223,37 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit, onPlayer: (Playe
     val sectionBack: (() -> Unit)? = backTo?.let { b -> { go(b) } } ?: if (!wide && shown != startSection) ({ go(startSection) }) else null
 
     // One playback session above the screens (spec 01 §6.3); released with the activity.
-    val player = remember {
-        PlayerSession(repo.playerMemory) {
-            ExoEngine(
-                ctx.applicationContext,
-                PlaybackConfig(
-                    giveUpAfterMs = settings.playerGiveUpSeconds * 1_000L,
-                    reconnectAttempts = settings.playerReconnectAttempts,
-                    defaultVolume = settings.playerVolume,
-                    audioOnly = settings.playerAudioOnly,
-                    preferredAudioLanguages = settings.playerAudioLanguages.split(',').map(String::trim).filter(String::isNotEmpty),
-                    preferredSubtitleLanguages = settings.playerSubtitleLanguages.split(',').map(String::trim).filter(String::isNotEmpty),
-                    minBufferMs = settings.playerMinBufferSeconds * 1_000,
-                    maxBufferMs = maxOf(settings.playerMaxBufferSeconds, settings.playerMinBufferSeconds + 1) * 1_000,
-                    bufferForPlaybackMs = settings.playerPrebufferSeconds * 1_000,
-                    matchFrameRate = settings.playerMatchFrameRate,
-                    maxVideoHeight = settings.playerMaxVideoHeight,
-                    defaultAudioDelayMs = settings.playerAudioDelayMs,
-                    subtitleEmbeddedStyles = settings.playerSubtitleEmbeddedStyles,
-                    subtitleFont = settings.playerSubtitleFont,
-                    subtitleSize = settings.playerSubtitleSize,
-                    subtitleColor = settings.playerSubtitleColor,
-                    subtitleBackground = settings.playerSubtitleBackground,
-                    subtitlePosition = settings.playerSubtitlePosition,
-                    nightMode = settings.playerNightMode,
-                    normalizeVolume = settings.playerNormalizeVolume,
-                    verboseLogging = settings.playerVerboseLogging,
-                    measuredMetrics = settings.playerMeasuredMetrics,
-                ),
-            )
-        }
-    }
+    fun newPlayerEngine() = ExoEngine(
+        ctx.applicationContext,
+        PlaybackConfig(
+            giveUpAfterMs = settings.playerGiveUpSeconds * 1_000L,
+            reconnectAttempts = settings.playerReconnectAttempts,
+            defaultVolume = settings.playerVolume,
+            audioOnly = settings.playerAudioOnly,
+            preferredAudioLanguages = settings.playerAudioLanguages.split(',').map(String::trim).filter(String::isNotEmpty),
+            preferSoftwareAudio = settings.playerSoftwareAudio,
+            preferredSubtitleLanguages = settings.playerSubtitleLanguages.split(',').map(String::trim).filter(String::isNotEmpty),
+            minBufferMs = settings.playerMinBufferSeconds * 1_000,
+            maxBufferMs = maxOf(settings.playerMaxBufferSeconds, settings.playerMinBufferSeconds + 1) * 1_000,
+            bufferForPlaybackMs = settings.playerPrebufferSeconds * 1_000,
+            matchFrameRate = settings.playerMatchFrameRate,
+            maxVideoHeight = settings.playerMaxVideoHeight,
+            defaultAudioDelayMs = settings.playerAudioDelayMs,
+            subtitleEmbeddedStyles = settings.playerSubtitleEmbeddedStyles,
+            subtitleFont = settings.playerSubtitleFont,
+            subtitleSize = settings.playerSubtitleSize,
+            subtitleColor = settings.playerSubtitleColor,
+            subtitleBackground = settings.playerSubtitleBackground,
+            subtitlePosition = settings.playerSubtitlePosition,
+            nightMode = settings.playerNightMode,
+            normalizeVolume = settings.playerNormalizeVolume,
+            verboseLogging = settings.playerVerboseLogging,
+            measuredMetrics = settings.playerMeasuredMetrics,
+        ),
+    )
+    val player = remember { PlayerSession(repo.playerMemory, ::newPlayerEngine) }
     val playingItem by player.currentItem.collectAsState()
+    LaunchedEffect(settings.playerSoftwareAudio) { player.reconfigure(::newPlayerEngine) }
     LaunchedEffect(source) { player.close() }
     DisposableEffect(player) {
         onPlayer(player)

@@ -32,6 +32,7 @@ class FakeEngine : PlaybackEngine {
     override fun setAudioOffset(ms: Long) { calls += "delay $ms" }
     override fun selectVideoTrack(index: Int) { calls += "video $index" }
     override fun clearVideoTrackOverride() { calls += "video auto" }
+    override fun setSpeed(speed: Float) { calls += "speed $speed" }
     override fun setScale(scale: VideoScale) { calls += "scale $scale" }
     override var position = 0L
     override var duration = 0L
@@ -58,6 +59,29 @@ class PlayerSessionTest {
         assertEquals("News", session.currentItem.value?.title)
         session.close()
         assertEquals(null, session.currentItem.value)
+    }
+
+    @Test fun reconfigureKeepsVodPositionPauseAndSessionControls() {
+        val first = FakeEngine()
+        val second = FakeEngine()
+        val player = PlayerSession { first }
+        player.open(PlayItem("http://a/film.mkv", live = false))
+        first.position = 42_000
+        player.setMuted(true)
+        player.setSpeed(1.25f)
+        player.setPaused(true)
+        player.setSleepAtEnd(true)
+
+        player.reconfigure { second }
+
+        assertEquals(listOf("play http://a/film.mkv", "muted true", "speed 1.25", "pause", "release"), first.calls)
+        assertEquals("http://a/film.mkv", player.current?.url)
+        assertEquals(42_000L, player.current?.start)
+        assertEquals(true, player.sleepAtEnd.value)
+        assertEquals(
+            listOf("play http://a/film.mkv @42000", "muted true", "speed 1.25", "pause"),
+            second.calls.filterNot { it == "view null" },
+        )
     }
 
     @Test fun sourcePlaybackHeadersIgnoreBlanks() {

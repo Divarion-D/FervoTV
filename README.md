@@ -131,8 +131,9 @@ UI-регрессии VOD в `app-tv/src/testDebug` запускаются на 
 
 [Python-генератор](tools/p3-synthetic-streams.py) использует только стандартную библиотеку Python 3
 и установленные `ffmpeg`/`ffprobe` (нужны кодеры `libx264`, AAC, MPEG2/MP2 и `dca`). Ничего не скачивает.
-По умолчанию создаёт 12-секундный набор в `build/p3-fixtures`. Для ручных TV-проверок задайте большую
-длительность; например, 240 секунд, а для ожидания 15-минутного таймера — не меньше 1200.
+По умолчанию создаёт 12-секундный набор в корневом `build/p3-fixtures` независимо от текущего каталога.
+Для ручных TV-проверок задайте большую длительность; например, 240 секунд, а для ожидания
+15-минутного таймера — не меньше 1200.
 
 ```bash
 python3 tools/p3-synthetic-streams.py --help
@@ -140,7 +141,9 @@ python3 tools/p3-synthetic-streams.py build/p3-tv-fixtures \
   --duration 240 --base-url http://192.168.1.10:8765
 ```
 
-Выходной каталог должен отсутствовать: существующие данные не перезаписываются. Сначала файлы
+При прямом запуске выходной каталог должен отсутствовать: существующие данные не перезаписываются.
+`make p3-fixtures` безопасно повторяем: полный существующий набор заново проверяется и используется без
+изменений, а незнакомый или неполный каталог оставляется нетронутым с ошибкой. Сначала новые файлы
 генерируются во временном каталоге и проверяются ffprobe, затем публикуется готовый набор.
 `playlist.m3u` содержит локальные `file://` URI с кодированием пробелов; для другого устройства нужен
 `playlist-http.m3u`, создаваемый при `--base-url` или переменной `P3_BASE_URL`:
@@ -165,6 +168,11 @@ MP4/HLS/DASH без расширения, SRT/WebVTT, MP4 с ru/en AAC (тоны
 JDK и SDK по умолчанию ищутся в `~/.local/share/jdk-17` и `~/Android/Sdk`; другие пути задаются через
 `JAVA_HOME` и `ANDROID_HOME`.
 
+FFmpeg audio AAR уже входит в репозиторий и обычная сборка не компилирует native-код заново. Для его
+воспроизводимой пересборки из точных upstream-тегов используйте `make ffmpeg-audio`; нужны NDK r26b и
+Android SDK CMake 3.22.1 с Ninja. Состав кодеков, SHA-256 и лицензии описаны в
+[`third_party/media3-ffmpeg`](third_party/media3-ffmpeg/README.md).
+
 <details>
 <summary>То же самое через Gradle</summary>
 
@@ -174,8 +182,8 @@ export ANDROID_HOME=~/Android/Sdk
 echo "sdk.dir=$ANDROID_HOME" > local.properties   # один раз
 
 ./gradlew testDebugUnitTest lintDebug   # то же, что CI на каждый коммит
-./gradlew :app-tv:assembleDebug         # app-tv/build/outputs/apk/debug/app-tv-debug.apk (~16 МБ)
-./gradlew :app-tv:assembleRelease       # app-tv/build/outputs/apk/release/app-tv-release.apk (~3 МБ, R8)
+./gradlew :app-tv:assembleDebug         # app-tv/build/outputs/apk/debug/app-tv-debug.apk
+./gradlew :app-tv:assembleRelease       # app-tv/build/outputs/apk/release/app-tv-release.apk (R8)
 ./gradlew :app-tv:bundleRelease         # app-tv/build/outputs/bundle/release/app-tv-release.aab — для Google Play
 ```
 

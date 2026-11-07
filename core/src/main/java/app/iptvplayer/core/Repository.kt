@@ -203,6 +203,7 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
             playerGiveUpSeconds = settingsPrefs.getInt("playerGiveUpSeconds", Defaults.PLAYER_GIVE_UP_SECONDS).coerceIn(0, 300),
             playerReconnectAttempts = settingsPrefs.getInt("playerReconnectAttempts", Defaults.PLAYER_RECONNECT_ATTEMPTS).coerceIn(0, 20),
             playerAudioLanguages = settingsPrefs.getString("playerAudioLanguages", "").orEmpty(),
+            playerSoftwareAudio = settingsPrefs.getBoolean("playerSoftwareAudio", false),
             playerSubtitleLanguages = settingsPrefs.getString("playerSubtitleLanguages", "").orEmpty(),
             playerMatchFrameRate = settingsPrefs.getBoolean("playerMatchFrameRate", false),
             playerAudioOnly = settingsPrefs.getBoolean("playerAudioOnly", false),
@@ -257,6 +258,7 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
                 .putInt("playerGiveUpSeconds", v.playerGiveUpSeconds)
                 .putInt("playerReconnectAttempts", v.playerReconnectAttempts)
                 .putString("playerAudioLanguages", v.playerAudioLanguages)
+                .putBoolean("playerSoftwareAudio", v.playerSoftwareAudio)
                 .putString("playerSubtitleLanguages", v.playerSubtitleLanguages)
                 .putBoolean("playerMatchFrameRate", v.playerMatchFrameRate)
                 .putBoolean("playerAudioOnly", v.playerAudioOnly)

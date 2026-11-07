@@ -35,6 +35,7 @@ class SettingsPersistenceTest {
             playerPrebufferSeconds = 10,
             playerMaxVideoHeight = 1080,
             playerAudioDelayMs = -75,
+            playerSoftwareAudio = true,
             playerSubtitleEmbeddedStyles = false,
             playerSubtitleFont = SubtitleFont.MONO,
             playerSubtitleSize = 150,
@@ -57,6 +58,7 @@ class SettingsPersistenceTest {
         assertEquals(10, restored.playerPrebufferSeconds)
         assertEquals(1080, restored.playerMaxVideoHeight)
         assertEquals(-75, restored.playerAudioDelayMs)
+        assertEquals(true, restored.playerSoftwareAudio)
         assertEquals(false, restored.playerSubtitleEmbeddedStyles)
         assertEquals(SubtitleFont.MONO, restored.playerSubtitleFont)
         assertEquals(150, restored.playerSubtitleSize)
