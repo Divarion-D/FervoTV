@@ -39,6 +39,17 @@ class PlaylistCacheTest {
     }
 
     @Test
+    fun requestHeadersDoNotChangeSourceIdentity() {
+        val m3u = Source.M3u("http://x")
+        assertEquals(m3u.cacheKey(), m3u.copy(userAgent = "TV", referer = "http://portal").cacheKey())
+        assertEquals(m3u.userKey(), m3u.copy(userAgent = "TV", referer = "http://portal").userKey())
+
+        val xtream = Source.Xtream("http://h", "u", "p", hls = true)
+        assertEquals(xtream.cacheKey(), xtream.copy(userAgent = "TV", referer = "http://portal").cacheKey())
+        assertEquals(xtream.userKey(), xtream.copy(userAgent = "TV", referer = "http://portal").userKey())
+    }
+
+    @Test
     fun refreshPolicy() {
         val hour = 3_600_000L
         val now = 100 * 24 * hour

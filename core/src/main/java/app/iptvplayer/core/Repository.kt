@@ -76,6 +76,7 @@ import app.iptvplayer.core.model.nextEpisode
 import app.iptvplayer.core.search.SearchKind
 import app.iptvplayer.core.search.SearchResults
 import app.iptvplayer.core.search.ranked
+import app.iptvplayer.core.player.PlayerMemory
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.combine
@@ -112,6 +113,7 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
     private val user = UserStore(db)
     private val library = LibraryStore(db)
     private val libraryUser = LibraryUser(db)
+    val playerMemory = PlayerMemory(ctx)
 
     /** Library imports, one at a time; taken after [importLock] when both are needed (M3U). */
     private val libraryLock = Mutex()
@@ -138,12 +140,18 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
 
     var source: Source?
         get() = when (prefs.getString("type", null)) {
-            "m3u" -> Source.M3u(prefs.getString("url", "")!!)
+            "m3u" -> Source.M3u(
+                prefs.getString("url", "")!!,
+                prefs.getString("userAgent", null),
+                prefs.getString("referer", null),
+            )
             "xtream" -> Source.Xtream(
                 prefs.getString("server", "")!!,
                 prefs.getString("user", "")!!,
                 prefs.getString("pass", "")!!,
                 prefs.getBoolean("hls", false),
+                prefs.getString("userAgent", null),
+                prefs.getString("referer", null),
             )
             else -> null
         }
@@ -151,8 +159,10 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
             val e = prefs.edit().clear()
             when (v) {
                 is Source.M3u -> e.putString("type", "m3u").putString("url", v.url)
+                    .putString("userAgent", v.userAgent).putString("referer", v.referer)
                 is Source.Xtream -> e.putString("type", "xtream").putString("server", v.server)
                     .putString("user", v.user).putString("pass", v.pass).putBoolean("hls", v.hls)
+                    .putString("userAgent", v.userAgent).putString("referer", v.referer)
                 null -> {}
             }
             e.apply()
@@ -197,6 +207,25 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
             playerMatchFrameRate = settingsPrefs.getBoolean("playerMatchFrameRate", false),
             playerAudioOnly = settingsPrefs.getBoolean("playerAudioOnly", false),
             playerVolume = settingsPrefs.getInt("playerVolume", Defaults.PLAYER_VOLUME).coerceIn(0, 150),
+            playerMinBufferSeconds = settingsPrefs.getInt("playerMinBufferSeconds", Defaults.PLAYER_MIN_BUFFER_MS / 1_000).coerceIn(1, 60),
+            playerMaxBufferSeconds = settingsPrefs.getInt("playerMaxBufferSeconds", Defaults.PLAYER_MAX_BUFFER_MS / 1_000).coerceIn(2, 120),
+            playerPrebufferSeconds = settingsPrefs.getInt("playerPrebufferSeconds", Defaults.PLAYER_BUFFER_FOR_PLAYBACK_MS / 1_000).coerceIn(0, 30),
+            playerMaxVideoHeight = settingsPrefs.getInt("playerMaxVideoHeight", 0).takeIf { it in setOf(0, 720, 1080, 2160) } ?: 0,
+            playerAudioDelayMs = settingsPrefs.getInt("playerAudioDelayMs", 0).coerceIn(-500, 500),
+            playerSubtitleEmbeddedStyles = settingsPrefs.getBoolean("playerSubtitleEmbeddedStyles", true),
+            playerSubtitleFont = enumPref("playerSubtitleFont", app.iptvplayer.core.model.SubtitleFont.SANS),
+            playerSubtitleSize = settingsPrefs.getInt("playerSubtitleSize", 100).coerceIn(50, 200),
+            playerSubtitleColor = enumPref("playerSubtitleColor", app.iptvplayer.core.model.SubtitleColor.WHITE),
+            playerSubtitleBackground = enumPref("playerSubtitleBackground", app.iptvplayer.core.model.SubtitleBackground.TRANSLUCENT),
+            playerSubtitlePosition = enumPref("playerSubtitlePosition", app.iptvplayer.core.model.SubtitlePosition.BOTTOM),
+            playerNightMode = settingsPrefs.getBoolean("playerNightMode", false),
+            playerNormalizeVolume = settingsPrefs.getBoolean("playerNormalizeVolume", false),
+            playerVerboseLogging = settingsPrefs.getBoolean("playerVerboseLogging", false),
+            playerMeasuredMetrics = settingsPrefs.getBoolean("playerMeasuredMetrics", false),
+            playerExternalLive = settingsPrefs.getBoolean("playerExternalLive", false),
+            playerExternalMovies = settingsPrefs.getBoolean("playerExternalMovies", false),
+            playerExternalSeries = settingsPrefs.getBoolean("playerExternalSeries", false),
+            playerSeekSeconds = settingsPrefs.getInt("playerSeekSeconds", 10).takeIf { it in setOf(5, 10, 15, 30, 60) } ?: 10,
         )
         set(v) {
             settingsPrefs.edit()
@@ -232,6 +261,25 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
                 .putBoolean("playerMatchFrameRate", v.playerMatchFrameRate)
                 .putBoolean("playerAudioOnly", v.playerAudioOnly)
                 .putInt("playerVolume", v.playerVolume)
+                .putInt("playerMinBufferSeconds", v.playerMinBufferSeconds)
+                .putInt("playerMaxBufferSeconds", v.playerMaxBufferSeconds)
+                .putInt("playerPrebufferSeconds", v.playerPrebufferSeconds)
+                .putInt("playerMaxVideoHeight", v.playerMaxVideoHeight)
+                .putInt("playerAudioDelayMs", v.playerAudioDelayMs)
+                .putBoolean("playerSubtitleEmbeddedStyles", v.playerSubtitleEmbeddedStyles)
+                .putString("playerSubtitleFont", v.playerSubtitleFont.name)
+                .putInt("playerSubtitleSize", v.playerSubtitleSize)
+                .putString("playerSubtitleColor", v.playerSubtitleColor.name)
+                .putString("playerSubtitleBackground", v.playerSubtitleBackground.name)
+                .putString("playerSubtitlePosition", v.playerSubtitlePosition.name)
+                .putBoolean("playerNightMode", v.playerNightMode)
+                .putBoolean("playerNormalizeVolume", v.playerNormalizeVolume)
+                .putBoolean("playerVerboseLogging", v.playerVerboseLogging)
+                .putBoolean("playerMeasuredMetrics", v.playerMeasuredMetrics)
+                .putBoolean("playerExternalLive", v.playerExternalLive)
+                .putBoolean("playerExternalMovies", v.playerExternalMovies)
+                .putBoolean("playerExternalSeries", v.playerExternalSeries)
+                .putInt("playerSeekSeconds", v.playerSeekSeconds)
                 .apply { if (v.liveTiles == null) remove("liveTiles") else putBoolean("liveTiles", v.liveTiles) }
                 .apply()
         }
@@ -290,9 +338,10 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
                             readM3u(s) { reader ->
                                 parseM3uEntries(reader, s.url, import::epgUrls) { e ->
                                     job.ensureActive()
-                                    when (val kind = m3uSection(e.type, e.channel.url, e.channel.name)) {
-                                        null -> import.channel(e.channel)
-                                        else -> lib.m3u(e.channel, kind)
+                                    val channel = e.channel.withSourceHeaders(s)
+                                    when (val kind = m3uSection(e.type, channel.url, channel.name)) {
+                                        null -> import.channel(channel)
+                                        else -> lib.m3u(channel, kind)
                                     }
                                 }
                             }
@@ -301,12 +350,18 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
                     }
                 }
                 is Source.Xtream -> store.import(s.cacheKey(), userKey = s.userKey(), epgIndex = epg.index()) { import ->
-                    loadXtream(s, { import.category(it) }) { ch -> job.ensureActive(); import.channel(ch) }
+                    loadXtream(s, { import.category(it) }) { ch -> job.ensureActive(); import.channel(ch.withSourceHeaders(s)) }
                 }
             }
         }
         if (s is Source.Xtream) startLibrary(s)
         count
+    }
+
+    private fun Channel.withSourceHeaders(s: Source): Channel {
+        val userAgent = when (s) { is Source.M3u -> s.userAgent; is Source.Xtream -> s.userAgent }
+        val referer = when (s) { is Source.M3u -> s.referer; is Source.Xtream -> s.referer }
+        return copy(userAgent = this.userAgent ?: userAgent, referer = this.referer ?: referer)
     }
 
     private fun readM3u(s: Source.M3u, read: (java.io.Reader) -> Unit) {
@@ -321,7 +376,7 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
             } ?: throw CoreException(ErrorCode.FILE_LOST)
             input.reader().use(read)
         } else {
-            httpStream(s.url) { input -> input.reader().use(read) }
+            httpStream(s.url, s.userAgent ?: Defaults.USER_AGENT, s.referer) { input -> input.reader().use(read) }
         }
     }
 
@@ -404,6 +459,7 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
     private suspend fun <T> io(block: () -> T): T = withContext(Dispatchers.IO) { block() }
 
     suspend fun setFavorite(s: Source, key: String, on: Boolean) = io { user.setFavorite(s.cacheKey(), key, on) }
+    suspend fun toggleFavorite(s: Source, key: String): Boolean = io { user.toggleFavorite(s.cacheKey(), key) }
     suspend fun setHidden(keys: List<String>, hidden: Boolean) = io { user.setHidden(keys, hidden) }
     suspend fun rename(key: String, name: String?) = io { user.rename(key, name) }
     suspend fun setCategoriesHidden(s: Source, names: List<String>, hidden: Boolean) = io { user.setCategoriesHidden(s.cacheKey(), names, hidden) }

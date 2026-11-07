@@ -74,6 +74,14 @@ class UserStoreTest {
         assertEquals(0, rowsOf("channel_state", "ckey = 'http://d'")) // nothing left to keep
     }
 
+    @Test fun favoriteCanBeToggledAtomicallyFromThePlayer() {
+        refresh()
+        assertTrue(user.toggleFavorite("k", "http://a"))
+        assertEquals(listOf("Первый"), names(ChannelGroup.Favorites))
+        assertEquals(false, user.toggleFavorite("k", "http://a"))
+        assertEquals(emptyList<String>(), names(ChannelGroup.Favorites))
+    }
+
     // --- LIVE-008: favourites follow the user to another source by name ---
 
     /** Another playlist: other keys (URLs), some of the same names. */

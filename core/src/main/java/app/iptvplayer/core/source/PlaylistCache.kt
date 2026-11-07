@@ -31,7 +31,11 @@ fun readCacheChannels(r: BufferedReader, onChannel: (Channel) -> Unit) {
 }
 
 /** Identity of the playlist source: another URL or Xtream account doesn't reuse its saved channels. */
-fun Source.cacheKey(): String = hashCode().toUInt().toString()
+fun Source.cacheKey(): String = when (this) {
+    // Keep the pre-SRC-009 data-class hash: changing request headers must not orphan saved channels or user edits.
+    is Source.M3u -> url.hashCode()
+    is Source.Xtream -> (((server.hashCode() * 31 + user.hashCode()) * 31 + pass.hashCode()) * 31 + hls.hashCode())
+}.toUInt().toString()
 
 /**
  * Identity of the source for user data (favorites, edits, EPG bindings): unlike [cacheKey] it doesn't change with

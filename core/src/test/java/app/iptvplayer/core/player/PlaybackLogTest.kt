@@ -42,4 +42,16 @@ class PlaybackLogTest {
         assertFalse(text.contains("secret"))
         assertFalse(text.contains("abc"))
     }
+
+    @Test
+    fun crashStackIsCapturedWithoutStreamCredentials() {
+        val ctx = RuntimeEnvironment.getApplication() as Context
+        val log = PlaybackLog(ctx)
+        log.recordCrash(IllegalStateException("failed https://provider.example/live/alice/secret/42.ts?token=private"))
+        val text = log.read()
+        assertTrue(text.contains("IllegalStateException"))
+        assertTrue(text.contains("provider.example"))
+        assertFalse(text.contains("alice"))
+        assertFalse(text.contains("private"))
+    }
 }

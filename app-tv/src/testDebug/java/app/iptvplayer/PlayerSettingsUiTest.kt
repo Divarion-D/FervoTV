@@ -16,8 +16,11 @@ import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import app.iptvplayer.core.model.Settings
+import app.iptvplayer.core.player.PlayerMemory
+import app.iptvplayer.core.player.VideoScale
 import app.iptvplayer.ui.AppTheme
 import app.iptvplayer.ui.SettingsScreen
 import org.junit.Assert.assertEquals
@@ -35,6 +38,7 @@ class PlayerSettingsUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private var settings by mutableStateOf(Settings())
     private val repositoryUrl = "https://github.com/Divarion-D/FervoTV"
+    private val playerMemory by lazy { PlayerMemory(compose.activity) }
 
     private fun repositoryIntent() = Intent(Intent.ACTION_VIEW, Uri.parse(repositoryUrl))
 
@@ -43,7 +47,7 @@ class PlayerSettingsUiTest {
             AppTheme {
                 SettingsScreen(
                     settings, "", "", "", false, { settings = it }, {}, {},
-                    "", false, false, null, {}, {}, {}, {}, {}, {},
+                    "", false, false, null, {}, {}, {}, {}, {}, playerMemory, {},
                 )
             }
         }
@@ -58,9 +62,65 @@ class PlayerSettingsUiTest {
         val initial = settings.playerPrebufferSeconds
         click(R.string.settings_player_prebuffer)
         assertEquals(initial + 2, settings.playerPrebufferSeconds)
+        click(R.string.settings_player_seek_step)
+        assertEquals(15, settings.playerSeekSeconds)
         compose.onNodeWithText(compose.activity.getString(R.string.settings_player_audio_languages)).assertExists()
         compose.onNodeWithText(compose.activity.getString(R.string.settings_resume)).assertDoesNotExist()
         compose.onNodeWithText(compose.activity.getString(R.string.settings_auto_next)).assertDoesNotExist()
+    }
+
+    @Test fun playerGroupShowsCountAndConfirmsScaleReset() {
+        playerMemory.reset(PlayerMemory.Kind.SCALE)
+        playerMemory.put("movie-42", live = false, PlayerMemory.Kind.SCALE, VideoScale.FILL.name)
+        openGroup(R.string.settings_player)
+
+        compose.onNodeWithText(compose.activity.getString(R.string.settings_player_reset_count, 1)).performScrollTo().assertIsDisplayed()
+        click(R.string.settings_player_reset_scale)
+        compose.onNodeWithText(compose.activity.getString(R.string.settings_player_reset_confirm_action)).performClick()
+
+        assertNull(playerMemory.get("movie-42", live = false, PlayerMemory.Kind.SCALE))
+    }
+
+    @Test fun subtitleAppearanceHasLiveExampleAndDisablesFileStyle() {
+        openGroup(R.string.settings_player)
+        compose.onNodeWithText(compose.activity.getString(R.string.settings_subtitle_example)).performScrollTo().assertIsDisplayed()
+        click(R.string.settings_subtitle_file_style)
+        assertEquals(false, settings.playerSubtitleEmbeddedStyles)
+        click(R.string.settings_subtitle_size)
+        assertEquals(125, settings.playerSubtitleSize)
+    }
+
+    @Test fun audioEffectsAreOffByDefaultAndCanBeEnabled() {
+        openGroup(R.string.settings_player)
+        assertEquals(false, settings.playerNightMode)
+        assertEquals(false, settings.playerNormalizeVolume)
+        click(R.string.settings_player_night_mode)
+        click(R.string.settings_player_normalize)
+        assertEquals(true, settings.playerNightMode)
+        assertEquals(true, settings.playerNormalizeVolume)
+    }
+
+    @Test fun diagnosticCollectionIsOffByDefaultAndCanBeEnabled() {
+        openGroup(R.string.settings_player)
+        assertEquals(false, settings.playerVerboseLogging)
+        assertEquals(false, settings.playerMeasuredMetrics)
+        click(R.string.settings_player_verbose_log)
+        click(R.string.settings_player_measured_metrics)
+        assertEquals(true, settings.playerVerboseLogging)
+        assertEquals(true, settings.playerMeasuredMetrics)
+    }
+
+    @Test fun externalPlayerCanBeSelectedSeparatelyForEachContentType() {
+        openGroup(R.string.settings_player)
+        assertEquals(false, settings.playerExternalLive)
+        assertEquals(false, settings.playerExternalMovies)
+        assertEquals(false, settings.playerExternalSeries)
+        click(R.string.settings_player_external_live)
+        click(R.string.settings_player_external_movies)
+        click(R.string.settings_player_external_series)
+        assertEquals(true, settings.playerExternalLive)
+        assertEquals(true, settings.playerExternalMovies)
+        assertEquals(true, settings.playerExternalSeries)
     }
 
     @Test fun libraryKeepsResumeAndAutoNextWithoutPlayerSettings() {

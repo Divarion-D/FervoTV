@@ -38,8 +38,10 @@ import app.iptvplayer.ui.LiveScreen
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
-import org.junit.runner.RunWith
 import org.junit.rules.TemporaryFolder
+import org.junit.rules.TestWatcher
+import org.junit.runner.Description
+import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
@@ -47,12 +49,16 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34], qualifiers = "en-w1280dp-h720dp-land-television")
 @OptIn(ExperimentalTestApi::class)
 class LiveNavigationTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
-    @get:Rule val tmp = TemporaryFolder()
+    @get:Rule(order = 2) val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule(order = 0) val tmp = TemporaryFolder()
     private lateinit var repo: Repository
     private lateinit var source: Source
     private lateinit var playlist: java.io.File
     private var database: AppDb? = null
+    // Compose must cancel its Room collectors before the database closes; the temporary directory is removed last.
+    @get:Rule(order = 1) val databaseCloser = object : TestWatcher() {
+        override fun finished(description: Description) { database?.close() }
+    }
     private val engine = TestEngine()
     private val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val blockPage = AtomicBoolean(false)
@@ -67,7 +73,6 @@ class LiveNavigationTest {
             val root = compose.activity.findViewById<ViewGroup>(android.R.id.content)
             (root.getChildAt(0) as? ComposeView)?.disposeComposition()
         }
-        database?.close()
     }
 
     private fun start(tv: Boolean = true, channels: Int = 30, duplicate: Boolean = false) {
@@ -144,7 +149,9 @@ class LiveNavigationTest {
         compose.runOnIdle { assertTrue(engine.view is SurfaceView) }
         compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
         compose.runOnIdle { assertNull(engine.view) }
-        compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 4")).assertIsDisplayed()
+        val channel = SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 4")
+        compose.waitUntil(10_000) { runCatching { compose.onNode(channel).assertIsDisplayed() }.isSuccess }
+        compose.onNode(channel).assertIsDisplayed()
         compose.onAllNodesWithText(compose.activity.getString(R.string.search_channels)).assertCountEquals(0)
     }
 

@@ -63,10 +63,17 @@ data class GuideRow(val item: ChannelItem, val programmes: List<Programme>)
 
 sealed interface Source {
     /** http(s):// playlist URL or content:// URI of a local file. */
-    data class M3u(val url: String) : Source
+    data class M3u(val url: String, val userAgent: String? = null, val referer: String? = null) : Source
 
     /** [hls] = request .m3u8 streams instead of .ts (for servers that block TS). */
-    data class Xtream(val server: String, val user: String, val pass: String, val hls: Boolean = false) : Source
+    data class Xtream(
+        val server: String,
+        val user: String,
+        val pass: String,
+        val hls: Boolean = false,
+        val userAgent: String? = null,
+        val referer: String? = null,
+    ) : Source
 }
 
 /** User settings (Настройки). Defaults live in [Defaults]. */
@@ -135,7 +142,34 @@ data class Settings(
     val playerMinBufferSeconds: Int = Defaults.PLAYER_MIN_BUFFER_MS / 1000,
     val playerMaxBufferSeconds: Int = Defaults.PLAYER_MAX_BUFFER_MS / 1000,
     val playerPrebufferSeconds: Int = Defaults.PLAYER_BUFFER_FOR_PLAYBACK_MS / 1000,
+    /** PLR-022: maximum adaptive video height; 0 = automatic. */
+    val playerMaxVideoHeight: Int = 0,
+    /** PLR-016: global PCM A/V correction; per-item memory overrides it. */
+    val playerAudioDelayMs: Int = 0,
+    /** PLR-010: ExoPlayer subtitle appearance. */
+    val playerSubtitleEmbeddedStyles: Boolean = true,
+    val playerSubtitleFont: SubtitleFont = SubtitleFont.SANS,
+    val playerSubtitleSize: Int = 100,
+    val playerSubtitleColor: SubtitleColor = SubtitleColor.WHITE,
+    val playerSubtitleBackground: SubtitleBackground = SubtitleBackground.TRANSLUCENT,
+    val playerSubtitlePosition: SubtitlePosition = SubtitlePosition.BOTTOM,
+    val playerNightMode: Boolean = false,
+    val playerNormalizeVolume: Boolean = false,
+    val playerVerboseLogging: Boolean = false,
+    /** PLR-024: collect actual bandwidth, rendered FPS and dropped-frame counters. */
+    val playerMeasuredMetrics: Boolean = false,
+    /** PLR-030: open the selected category through Android's external-player resolver. */
+    val playerExternalLive: Boolean = false,
+    val playerExternalMovies: Boolean = false,
+    val playerExternalSeries: Boolean = false,
+    /** PLR-007: remote/touch seek step for VOD, seconds. */
+    val playerSeekSeconds: Int = 10,
 )
+
+enum class SubtitleFont { SANS, SERIF, MONO }
+enum class SubtitleColor { WHITE, YELLOW, CYAN }
+enum class SubtitleBackground { NONE, BLACK, TRANSLUCENT }
+enum class SubtitlePosition { TOP, CENTER, BOTTOM }
 
 /** HOME-001: where the app opens. The apps name them. */
 enum class StartScreen { HOME, LIVE }

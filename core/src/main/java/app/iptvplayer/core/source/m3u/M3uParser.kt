@@ -6,6 +6,7 @@ import java.io.BufferedReader
 import java.io.Reader
 import java.io.StringReader
 import java.net.URI
+import java.net.URLEncoder
 
 private val ATTR = Regex("""([\w-]+)="([^"]*)"""")
 
@@ -88,10 +89,37 @@ private fun toEntry(info: String?, extGroup: String?, url: String, baseUrl: Stri
             ?.coerceAtLeast(0) ?: 0,
         userAgent = userAgent,
         referer = referer,
-        drmLicenseUrl = drmLicense,
+        drmLicenseUrl = drmLicense?.let { clearKeyLicense(drmScheme, it) },
         drmScheme = drmScheme,
     )
     return M3uEntry(channel, (attrs["type"] ?: attrs["tvg-type"])?.ifBlank { null })
+}
+
+private val INLINE_CLEAR_KEY = Regex("^([0-9a-fA-F]{32}):([0-9a-fA-F]{32})$")
+
+internal fun clearKeyLicense(scheme: String?, value: String): String {
+    val match = INLINE_CLEAR_KEY.matchEntire(value) ?: return value
+    if (!scheme.orEmpty().contains("clearkey", true) && !scheme.orEmpty().contains("clear_key", true)) return value
+    val kid = base64Url(match.groupValues[1])
+    val key = base64Url(match.groupValues[2])
+    val json = "{\"keys\":[{\"kty\":\"oct\",\"kid\":\"$kid\",\"k\":\"$key\"}],\"type\":\"temporary\"}"
+    return "data:application/json,${URLEncoder.encode(json, "UTF-8")}"
+}
+
+private fun base64Url(hex: String): String {
+    val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+    val bytes = hex.chunked(2).map { it.toInt(16) }
+    val out = StringBuilder()
+    for (i in bytes.indices step 3) {
+        val a = bytes[i]
+        val b = bytes.getOrNull(i + 1)
+        val c = bytes.getOrNull(i + 2)
+        out.append(alphabet[a shr 2])
+        out.append(alphabet[((a and 3) shl 4) or ((b ?: 0) shr 4)])
+        if (b != null) out.append(alphabet[((b and 15) shl 2) or ((c ?: 0) shr 6)])
+        if (c != null) out.append(alphabet[c and 63])
+    }
+    return out.toString()
 }
 
 private fun epgUrls(header: String): List<String> {

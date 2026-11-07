@@ -85,6 +85,7 @@ import app.iptvplayer.core.model.VodKind
 import app.iptvplayer.core.player.PlayItem
 import app.iptvplayer.core.player.playItem
 import app.iptvplayer.core.player.PlayerSession
+import app.iptvplayer.core.player.playbackHeaders
 import app.iptvplayer.core.source.cacheKey
 import app.iptvplayer.findActivity
 import app.iptvplayer.isTv
@@ -192,7 +193,7 @@ fun HomeScreen(
             is VodContinue -> {
                 val url = if (item.kind == VodKind.MOVIE) repo.vodItem(source, VodKind.MOVIE, item.watch.vkey)?.url
                 else repo.episode(source, item.watch.vkey)?.url
-                url?.let { PlayItem(it, live = false, start = item.watch.position) }
+                url?.let { PlayItem(it, live = false, start = item.watch.position, key = item.watch.vkey, headers = source.playbackHeaders()) }
             }
         } ?: return@LaunchedEffect
         player.setMuted(true)
@@ -370,6 +371,7 @@ fun ContinueCard(
                     update = { it.keepScreenOn = keepScreenOn },
                     onRelease = { player.releaseVideoView(it) },
                 )
+                SubtitleOverlay(player, Modifier.matchParentSize())
             } else when (item) {
                 is ChannelContinue -> ChannelLogo(item.channel.channel, Modifier.matchParentSize(), top = 12.dp)
                 is VodContinue -> Poster(item.watch.image, title, Modifier.matchParentSize())

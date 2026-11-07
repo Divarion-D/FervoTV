@@ -10,8 +10,6 @@ import app.iptvplayer.core.model.Source
 import app.iptvplayer.core.model.VodEntry
 import app.iptvplayer.core.model.VodInfo
 import app.iptvplayer.core.model.VodKind
-import app.iptvplayer.core.net.httpGet
-import app.iptvplayer.core.net.httpStream
 import app.iptvplayer.core.source.episodeTitle
 import app.iptvplayer.core.source.userKey
 import app.iptvplayer.core.source.yearOf
@@ -37,27 +35,27 @@ internal fun xtreamSeriesId(key: String) = key.substringAfterLast('|')
 fun loadXtreamLibrary(s: Source.Xtream, onCategory: (VodKind, String) -> Unit, onItem: (VodEntry) -> Unit) {
     val api = api(s)
     val userKey = s.userKey()
-    val movies = categories("$api&action=get_vod_categories")
+    val movies = categories(s, "$api&action=get_vod_categories")
     movies.values.distinct().forEach { onCategory(VodKind.MOVIE, it) }
-    httpStream("$api&action=get_vod_streams") { input ->
+    stream(s, "$api&action=get_vod_streams") { input ->
         JsonReader(input.reader()).use { readVodStreams(it, movies, path(s, "movie"), userKey, onItem) }
     }
-    val series = categories("$api&action=get_series_categories")
+    val series = categories(s, "$api&action=get_series_categories")
     series.values.distinct().forEach { onCategory(VodKind.SERIES, it) }
-    httpStream("$api&action=get_series") { input ->
+    stream(s, "$api&action=get_series") { input ->
         JsonReader(input.reader()).use { readSeries(it, series, userKey, onItem) }
     }
 }
 
 /** A series' episodes (get_series_info); [name] = the series' name, to clean episode titles. */
 fun loadXtreamEpisodes(s: Source.Xtream, seriesKey: String, name: String): List<EpisodeEntry> =
-    httpStream("${api(s)}&action=get_series_info&series_id=${enc(xtreamSeriesId(seriesKey))}") { input ->
+    stream(s, "${api(s)}&action=get_series_info&series_id=${enc(xtreamSeriesId(seriesKey))}") { input ->
         JsonReader(input.reader()).use { readSeriesInfo(it, path(s, "series"), seriesKey, name) }
     }
 
 /** VOD-004: what get_vod_info adds to a film keyed by [movieKey]; empty when the panel has nothing. */
 fun loadXtreamVodInfo(s: Source.Xtream, movieKey: String): VodInfo =
-    httpStream("${api(s)}&action=get_vod_info&vod_id=${enc(movieKey.substringAfterLast('|'))}") { input ->
+    stream(s, "${api(s)}&action=get_vod_info&vod_id=${enc(movieKey.substringAfterLast('|'))}") { input ->
         JsonReader(input.reader()).use(::readVodInfo)
     }
 
@@ -85,8 +83,8 @@ internal fun readVodInfo(r: JsonReader): VodInfo {
 private fun path(s: Source.Xtream, kind: String) = "${s.server.trimEnd('/')}/$kind/${enc(s.user)}/${enc(s.pass)}"
 
 /** id → name; an answer that isn't a list (some panels send `{}` or `null` when there are none) = no categories. */
-private fun categories(url: String): Map<String, String> {
-    val list = runCatching { JSONArray(httpGet(url).trim()) }.getOrNull() ?: return emptyMap()
+private fun categories(s: Source.Xtream, url: String): Map<String, String> {
+    val list = runCatching { JSONArray(get(s, url).trim()) }.getOrNull() ?: return emptyMap()
     return list.objects().associate { it.optString("category_id") to it.optString("category_name").trim().ifEmpty { NO_GROUP } }
 }
 
