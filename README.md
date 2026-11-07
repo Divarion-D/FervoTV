@@ -165,6 +165,11 @@ MP4/HLS/DASH без расширения, SRT/WebVTT, MP4 с ru/en AAC (тоны
 JDK и SDK по умолчанию ищутся в `~/.local/share/jdk-17` и `~/Android/Sdk`; другие пути задаются через
 `JAVA_HOME` и `ANDROID_HOME`.
 
+FFmpeg audio AAR уже входит в репозиторий и обычная сборка не компилирует native-код заново. Для его
+воспроизводимой пересборки из точных upstream-тегов используйте `make ffmpeg-audio`; нужны NDK r26b и
+Android SDK CMake 3.22.1 с Ninja. Состав кодеков, SHA-256 и лицензии описаны в
+[`third_party/media3-ffmpeg`](third_party/media3-ffmpeg/README.md).
+
 <details>
 <summary>То же самое через Gradle</summary>
 
@@ -174,8 +179,8 @@ export ANDROID_HOME=~/Android/Sdk
 echo "sdk.dir=$ANDROID_HOME" > local.properties   # один раз
 
 ./gradlew testDebugUnitTest lintDebug   # то же, что CI на каждый коммит
-./gradlew :app-tv:assembleDebug         # app-tv/build/outputs/apk/debug/app-tv-debug.apk (~16 МБ)
-./gradlew :app-tv:assembleRelease       # app-tv/build/outputs/apk/release/app-tv-release.apk (~3 МБ, R8)
+./gradlew :app-tv:assembleDebug         # app-tv/build/outputs/apk/debug/app-tv-debug.apk
+./gradlew :app-tv:assembleRelease       # app-tv/build/outputs/apk/release/app-tv-release.apk (R8)
 ./gradlew :app-tv:bundleRelease         # app-tv/build/outputs/bundle/release/app-tv-release.aab — для Google Play
 ```
 

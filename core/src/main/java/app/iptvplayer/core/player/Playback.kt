@@ -93,6 +93,7 @@ data class PlaybackConfig(
     val defaultVolume: Int = Defaults.PLAYER_VOLUME,
     val audioOnly: Boolean = false,
     val preferredAudioLanguages: List<String> = emptyList(),
+    val preferSoftwareAudio: Boolean = false,
     val preferredSubtitleLanguages: List<String> = emptyList(),
     val minBufferMs: Int = Defaults.PLAYER_MIN_BUFFER_MS,
     val maxBufferMs: Int = Defaults.PLAYER_MAX_BUFFER_MS,

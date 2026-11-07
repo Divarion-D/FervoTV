@@ -242,6 +242,7 @@ private fun settingsJson(s: Settings): JSONObject = JSONObject()
     .put("playerGiveUpSeconds", s.playerGiveUpSeconds)
     .put("playerReconnectAttempts", s.playerReconnectAttempts)
     .put("playerAudioLanguages", s.playerAudioLanguages)
+    .put("playerSoftwareAudio", s.playerSoftwareAudio)
     .put("playerSubtitleLanguages", s.playerSubtitleLanguages)
     .put("playerMatchFrameRate", s.playerMatchFrameRate)
     .put("playerAudioOnly", s.playerAudioOnly)
@@ -298,6 +299,7 @@ private fun readSettings(j: JSONObject): Settings {
         playerGiveUpSeconds = j.optInt("playerGiveUpSeconds", d.playerGiveUpSeconds).coerceIn(0, 300),
         playerReconnectAttempts = j.optInt("playerReconnectAttempts", d.playerReconnectAttempts).coerceIn(0, 20),
         playerAudioLanguages = j.optString("playerAudioLanguages", d.playerAudioLanguages),
+        playerSoftwareAudio = j.optBoolean("playerSoftwareAudio", d.playerSoftwareAudio),
         playerSubtitleLanguages = j.optString("playerSubtitleLanguages", d.playerSubtitleLanguages),
         playerMatchFrameRate = j.optBoolean("playerMatchFrameRate", d.playerMatchFrameRate),
         playerAudioOnly = j.optBoolean("playerAudioOnly", d.playerAudioOnly),

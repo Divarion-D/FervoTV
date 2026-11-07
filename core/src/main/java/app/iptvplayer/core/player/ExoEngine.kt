@@ -52,6 +52,7 @@ import kotlinx.coroutines.flow.update
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
+import java.util.UUID
 
 /**
  * Media3 ExoPlayer. The stream type is guessed from the URL extension (.m3u8 → HLS, anything else progressive:
@@ -79,7 +80,7 @@ class ExoEngine(ctx: Context, private val config: PlaybackConfig = PlaybackConfi
     private val renderers = object : DefaultRenderersFactory(ctx) {
         override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioOutputPlaybackParams: Boolean): AudioSink =
             DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(audioDelay, audioEffects)).build()
-    }.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+    }.setExtensionRendererMode(extensionRendererMode(config.preferSoftwareAudio))
         .setEnableDecoderFallback(true)
 
     private val exo: ExoPlayer = run {
@@ -107,7 +108,7 @@ class ExoEngine(ctx: Context, private val config: PlaybackConfig = PlaybackConfi
         override fun seekToPrevious() = previousHandler?.invoke() ?: super.seekToPrevious()
         override fun seekToNext() = nextHandler?.invoke() ?: super.seekToNext()
     }
-    private val mediaSession = MediaSession.Builder(ctx, sessionPlayer).build()
+    private val mediaSession = MediaSession.Builder(ctx, sessionPlayer).setId(UUID.randomUUID().toString()).build()
     private val videoDecoder = VideoDecoderInfo()
     private val metrics = StreamMetrics()
 
@@ -659,6 +660,12 @@ internal class StallWatch(private val timeoutMs: Long) {
 }
 
 internal enum class Recovery { ToLiveEdge, AsDash, AsHls, AsProgressive }
+
+/** Hardware first by default; PLR-012's switch makes the same automatic FFmpeg fallback preferred. */
+@OptIn(UnstableApi::class)
+internal fun extensionRendererMode(preferSoftwareAudio: Boolean): Int =
+    if (preferSoftwareAudio) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+    else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
 
 /**
  * What to do before showing a format error: try each explicit format once and keep the chain finite.

@@ -416,6 +416,8 @@
     <string name="settings_player_reconnect">Reconnect attempts</string>
     <string name="settings_player_reconnect_summary">Maximum automatic attempts for live streams</string>
     <string name="settings_player_audio_languages">Preferred audio languages</string>
+    <string name="settings_player_software_audio">Software audio decoder</string>
+    <string name="settings_player_software_audio_summary">Prefer FFmpeg for DTS, TrueHD, AC-3 and E-AC-3</string>
     <string name="settings_player_subtitle_languages">Preferred subtitle languages</string>
     <string name="settings_player_languages_hint">Comma-separated tags, for example en,ru</string>
     <string name="settings_player_match_frame_rate">Match frame rate</string>

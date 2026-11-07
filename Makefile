@@ -6,7 +6,7 @@ ANDROID_HOME ?= $(HOME)/Android/Sdk
 export JAVA_HOME ANDROID_HOME
 export PATH := $(JAVA_HOME)/bin:$(PATH)
 
-GRADLE    := ./gradlew --no-daemon --max-workers=2 --console=plain
+GRADLE    := ./gradlew --no-daemon --max-workers=2 -Dkotlin.compiler.execution.strategy=in-process --console=plain
 TEST_ARGS ?=
 ADB       := $(ANDROID_HOME)/platform-tools/adb
 APKSIGNER  = $(lastword $(sort $(wildcard $(ANDROID_HOME)/build-tools/*/apksigner)))
@@ -20,7 +20,7 @@ APK_RELEASE := app-tv/build/outputs/apk/release/app-tv-release.apk
 APK_DEBUG   := app-tv/build/outputs/apk/debug/app-tv-debug.apk
 
 .DEFAULT_GOAL := help
-.PHONY: help version test test-fast test-ui test-fixtures lint check p3-fixtures debug release bundle dist ci-release \
+.PHONY: help version test test-fast test-ui test-fixtures lint check p3-fixtures ffmpeg-audio debug release bundle dist ci-release \
         verify install install-debug uninstall uninstall-debug run run-debug devices clean
 
 help: ## Список целей
@@ -55,6 +55,9 @@ test-fixtures: ## Тесты Python-генератора, включая реа�
 
 p3-fixtures: ## Синтетические потоки, субтитры и M3U для P3 (нужны Python 3, ffmpeg и ffprobe)
 	python3 tools/p3-synthetic-streams.py
+
+ffmpeg-audio: ## Пересобрать Media3 FFmpeg AAR (NDK r26b, LGPL audio decoders)
+	tools/build-media3-ffmpeg.sh
 
 # --- Сборки ---
 

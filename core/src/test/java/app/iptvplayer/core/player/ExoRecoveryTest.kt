@@ -1,6 +1,7 @@
 package app.iptvplayer.core.player
 
 import androidx.media3.common.PlaybackException
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -8,6 +9,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ExoRecoveryTest {
+    @Test fun softwareAudioIsAutomaticFallbackByDefaultAndPreferredWhenEnabled() {
+        assertEquals(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON, extensionRendererMode(false))
+        assertEquals(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER, extensionRendererMode(true))
+    }
+
     @Test fun retryAfterIsUsedOnlyForConnectionLimitResponses() {
         assertEquals(12_000L, providerRetryAfterMs(429, mapOf("Retry-After" to listOf("12")), nowEpochMs = 0))
         assertEquals(3_000L, providerRetryAfterMs(429, mapOf("retry-after" to listOf("3")), nowEpochMs = 0))

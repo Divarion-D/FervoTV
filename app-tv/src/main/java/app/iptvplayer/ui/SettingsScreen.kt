@@ -371,6 +371,9 @@ fun SettingsScreen(
             ) { onChange(settings.copy(playerReconnectAttempts = (settings.playerReconnectAttempts + 1).mod(11))) }
             var audioLanguages by remember(settings.playerAudioLanguages) { mutableStateOf(settings.playerAudioLanguages) }
             OutlinedTextField(audioLanguages, { audioLanguages = it; onChange(settings.copy(playerAudioLanguages = it)) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.settings_player_audio_languages)) }, placeholder = { Text(stringResource(R.string.settings_player_languages_hint)) })
+            SettingItem(
+                R.drawable.ic_play_arrow, stringResource(R.string.settings_player_software_audio), stringResource(R.string.settings_player_software_audio_summary), Modifier.row("playerSoftwareAudio"), trailing = { Switch(settings.playerSoftwareAudio, onCheckedChange = null) },
+            ) { onChange(settings.copy(playerSoftwareAudio = !settings.playerSoftwareAudio)) }
             var subtitleLanguages by remember(settings.playerSubtitleLanguages) { mutableStateOf(settings.playerSubtitleLanguages) }
             OutlinedTextField(subtitleLanguages, { subtitleLanguages = it; onChange(settings.copy(playerSubtitleLanguages = it)) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.settings_player_subtitle_languages)) }, placeholder = { Text(stringResource(R.string.settings_player_languages_hint)) })
             SettingItem(

@@ -92,10 +92,13 @@ class PlayerSettingsUiTest {
 
     @Test fun audioEffectsAreOffByDefaultAndCanBeEnabled() {
         openGroup(R.string.settings_player)
+        assertEquals(false, settings.playerSoftwareAudio)
         assertEquals(false, settings.playerNightMode)
         assertEquals(false, settings.playerNormalizeVolume)
+        click(R.string.settings_player_software_audio)
         click(R.string.settings_player_night_mode)
         click(R.string.settings_player_normalize)
+        assertEquals(true, settings.playerSoftwareAudio)
         assertEquals(true, settings.playerNightMode)
         assertEquals(true, settings.playerNormalizeVolume)
     }

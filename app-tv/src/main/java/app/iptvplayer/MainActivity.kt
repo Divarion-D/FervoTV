@@ -223,7 +223,7 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit, onPlayer: (Playe
     val sectionBack: (() -> Unit)? = backTo?.let { b -> { go(b) } } ?: if (!wide && shown != startSection) ({ go(startSection) }) else null
 
     // One playback session above the screens (spec 01 §6.3); released with the activity.
-    val player = remember {
+    val player = remember(settings.playerSoftwareAudio) {
         PlayerSession(repo.playerMemory) {
             ExoEngine(
                 ctx.applicationContext,
@@ -233,6 +233,7 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit, onPlayer: (Playe
                     defaultVolume = settings.playerVolume,
                     audioOnly = settings.playerAudioOnly,
                     preferredAudioLanguages = settings.playerAudioLanguages.split(',').map(String::trim).filter(String::isNotEmpty),
+                    preferSoftwareAudio = settings.playerSoftwareAudio,
                     preferredSubtitleLanguages = settings.playerSubtitleLanguages.split(',').map(String::trim).filter(String::isNotEmpty),
                     minBufferMs = settings.playerMinBufferSeconds * 1_000,
                     maxBufferMs = maxOf(settings.playerMaxBufferSeconds, settings.playerMinBufferSeconds + 1) * 1_000,
