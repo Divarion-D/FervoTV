@@ -63,6 +63,8 @@ files: [core/src/main/java/app/iptvplayer/core/player/**, core/src/main/java/app
   tech: `core/src/main/java/app/iptvplayer/core/player/Playback.kt`; `ExoEngine.kt`; `PlayerMemory.kt`; `core/src/test/java/app/iptvplayer/core/player/PlayerSessionTest.kt`; `ExoRecoveryTest.kt`
 - [x] Control tracks, subtitles, scale, speed, volume, delay and stream diagnostics {#playback-controls}
   tech: `app-tv/src/main/java/app/iptvplayer/ui/PlayerTools.kt`; `VodPlayer.kt`; `core/src/main/java/app/iptvplayer/core/player/AudioDelayProcessor.kt`; `AudioEffectsProcessor.kt`; `VideoDetails.kt`
+- [x] Switch live channels from the transport buttons instead of seeking {#playback-live-transport}
+  tech: `PlayerTools.kt`; `PlayerScreen.kt`; `NavigationUiTest.kt`; `make test-ui-build`; `make test-ui-host`
 - [x] Decode unsupported audio with the bundled Media3 FFmpeg extension {#playback-ffmpeg-audio}
   tech: `third_party/media3-ffmpeg/media3-decoder-ffmpeg-1.5.1.aar`; `third_party/media3-ffmpeg/README.md`; `app-tv/build.gradle.kts`; `tools/build-media3-ffmpeg.sh`
 - [ ] Add and select a second playback backend {#playback-alternative-engine}
@@ -134,3 +136,4 @@ files: [PLAN.md, AGENTS.md, CLAUDE.md, README.md, docs/**]
 - 2026-11-07: Did not promote partial device observations to `[x]`; the checked playback tasks are limited to source and automated-test artifacts, while hardware acceptance remains bounded by the P3 device reports.
 - 2026-11-07: Split the device UI matrix into independent screen-route test classes over the shared deterministic fixtures. Production UI changes require a reproduced route failure; agents may report missing semantics instead of editing shared screens speculatively.
 - 2026-11-07: Kept the phone emulator on API 35 but moved the TV job to API 36: the official SDK repository has no Android TV API 35 image, while `system-images;android-36;android-tv;x86_64` is published. The first API 35 TV job failed before Gradle for that exact missing package.
+- 2026-11-08: Live transport buttons will reuse the fullscreen player's existing circular channel index navigation; VOD keeps seek and episode controls unchanged. This changes only the two touch-panel actions and their labels/icons, not remote key behavior.

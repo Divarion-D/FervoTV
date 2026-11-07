@@ -230,7 +230,12 @@ fun PlayerScreen(
         if (shown != null && (showInfo || error != null)) {
             InfoBar(shown, index + 1, total, error, Modifier.align(if (controls) Alignment.TopStart else Alignment.BottomStart))
         }
-        if (controls) PlayerControls(player, shown?.let { onFavorite?.let { action -> { action(it) } } }, Modifier.align(Alignment.BottomCenter))
+        if (controls) PlayerControls(
+            player,
+            shown?.let { onFavorite?.let { action -> { action(it) } } },
+            onChannelStep = { handle(if (it < 0) Action.Down else Action.Up) },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
         // The dialed number at the top right (LIVE-009); no clock in the player (UI-009, owner's decision).
         if (dial.text.isNotEmpty()) Text(
             dial.text, style = TvType.display,
@@ -287,11 +292,20 @@ private fun InfoBar(ch: Channel, number: Int, total: Int, error: String?, modifi
 
 /** Compact live D-pad/touch panel; timer and details are shared with VOD through PlayerTools. */
 @Composable
-private fun PlayerControls(player: PlayerSession, onFavorite: (() -> Unit)?, modifier: Modifier) {
+private fun PlayerControls(
+    player: PlayerSession,
+    onFavorite: (() -> Unit)?,
+    onChannelStep: (Int) -> Unit,
+    modifier: Modifier,
+) {
     Column(
         modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.88f), RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
             .padding(horizontal = 18.dp, vertical = 16.dp),
     ) {
-        PlayerTools(player, onFavorite = onFavorite)
+        PlayerTools(
+            player,
+            onFavorite = onFavorite,
+            onChannelStep = onChannelStep,
+        )
     }
 }

@@ -68,6 +68,7 @@ fun PlayerTools(
     onPause: () -> Unit = player::togglePause,
     onPrevious: (() -> Unit)? = null,
     onNext: (() -> Unit)? = null,
+    onChannelStep: ((Int) -> Unit)? = null,
     favorite: Boolean? = null,
     onFavorite: (() -> Unit)? = null,
     seekStepMs: Long = Defaults.SEEK_STEP_MS,
@@ -102,16 +103,24 @@ fun PlayerTools(
         onDispose { onDialogOpen(false) }
     }
     val transport: @Composable () -> Unit = {
-            if (onPrevious != null) PlayerControlButton(R.drawable.ic_skip_previous, stringResource(R.string.episode_previous), onClick = onPrevious)
-            PlayerControlButton(R.drawable.ic_replay_10, stringResource(R.string.seek_back), onClick = { onSeek(-seekStepMs) })
+            if (onChannelStep != null) PlayerControlButton(
+                R.drawable.ic_skip_previous, stringResource(R.string.channel_previous), onClick = { onChannelStep(-1) },
+            ) else {
+                if (onPrevious != null) PlayerControlButton(R.drawable.ic_skip_previous, stringResource(R.string.episode_previous), onClick = onPrevious)
+                PlayerControlButton(R.drawable.ic_replay_10, stringResource(R.string.seek_back), onClick = { onSeek(-seekStepMs) })
+            }
             PlayerControlButton(
                 if (state.error != null) R.drawable.ic_replay else if (state.paused) R.drawable.ic_play_arrow else R.drawable.ic_pause,
                 stringResource(if (state.error != null) R.string.retry else if (state.paused) R.string.player_play else R.string.player_pause),
                 primary = true, modifier = primaryModifier.initialFocus(),
                 onClick = { if (state.error != null) player.retry() else onPause() },
             )
-            PlayerControlButton(R.drawable.ic_forward_10, stringResource(R.string.seek_forward), onClick = { onSeek(seekStepMs) })
-            if (onNext != null) PlayerControlButton(R.drawable.ic_skip_next, stringResource(R.string.episode_next), onClick = onNext)
+            if (onChannelStep != null) PlayerControlButton(
+                R.drawable.ic_skip_next, stringResource(R.string.channel_next), onClick = { onChannelStep(1) },
+            ) else {
+                PlayerControlButton(R.drawable.ic_forward_10, stringResource(R.string.seek_forward), onClick = { onSeek(seekStepMs) })
+                if (onNext != null) PlayerControlButton(R.drawable.ic_skip_next, stringResource(R.string.episode_next), onClick = onNext)
+            }
     }
     val options: @Composable () -> Unit = {
         PlayerControlButton(R.drawable.ic_language, stringResource(R.string.player_audio), caption = !horizontal) { audio = true }

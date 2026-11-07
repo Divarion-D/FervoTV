@@ -396,6 +396,8 @@
     <string name="pause">Pause</string>
     <string name="seek_back">Back 10 seconds</string>
     <string name="seek_forward">Forward 10 seconds</string>
+    <string name="channel_previous">Previous channel</string>
+    <string name="channel_next">Next channel</string>
     <string name="episode_previous">Previous episode</string>
     <string name="episode_next">Next episode</string>
     <string name="next_episode_in">Next episode in %1$d s</string>

@@ -11,10 +11,13 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasAnySibling
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pressKey
@@ -98,5 +101,25 @@ class NavigationUiTest {
         compose.waitUntil(10_000) { runCatching { compose.onNode(first).assertIsFocused() }.isSuccess }
         compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
         compose.onNode(second).assertIsFocused()
+
+        compose.onRoot().performKeyInput {
+            pressKey(Key.DirectionUp)
+            pressKey(Key.DirectionCenter)
+        }
+        val firstPosition = context.getString(R.string.player_position, 1, 24)
+        val secondPosition = context.getString(R.string.player_position, 2, 24)
+        compose.waitUntil(10_000) { compose.onAllNodes(hasText(firstPosition)).fetchSemanticsNodes().isNotEmpty() }
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
+
+        val next = context.getString(R.string.channel_next)
+        val previous = context.getString(R.string.channel_previous)
+        compose.waitUntil(5_000) { runCatching { compose.onNodeWithContentDescription(next).fetchSemanticsNode() }.isSuccess }
+        compose.onNodeWithContentDescription(next).performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(secondPosition)).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasText("Test MPEG-TS") and hasAnySibling(hasText(secondPosition))).assertIsDisplayed()
+
+        compose.onNodeWithContentDescription(previous).performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(firstPosition)).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasText("Test MP4") and hasAnySibling(hasText(firstPosition))).assertIsDisplayed()
     }
 }
