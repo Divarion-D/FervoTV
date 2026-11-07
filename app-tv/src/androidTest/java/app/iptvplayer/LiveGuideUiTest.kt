@@ -13,6 +13,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
@@ -85,8 +86,10 @@ class LiveGuideUiTest {
     }
 
     private fun remoteSwitchesBetweenLiveAndGuide() {
-        val live = tab(context.getString(R.string.section_live))
-        val guide = tab(context.getString(R.string.section_guide))
+        val liveText = context.getString(R.string.section_live)
+        val guideText = context.getString(R.string.section_guide)
+        val live = tab(liveText)
+        val guide = tab(guideText)
         val first = channel("Test MP4")
 
         compose.waitUntil(10_000) { compose.onAllNodes(first).fetchSemanticsNodes().isNotEmpty() }
@@ -96,7 +99,7 @@ class LiveGuideUiTest {
             runCatching { compose.onNode(category(context.getString(R.string.group_all))).assertIsFocused() }.isSuccess
         }
         pressBack()
-        compose.waitUntil(5_000) { runCatching { compose.onNode(live).assertIsFocused() }.isSuccess }
+        compose.waitUntil(5_000) { runCatching { compose.onNodeWithContentDescription(liveText).assertIsFocused() }.isSuccess }
         compose.onRoot().performKeyInput {
             pressKey(Key.DirectionDown)
             pressKey(Key.DirectionCenter)
@@ -105,7 +108,7 @@ class LiveGuideUiTest {
         compose.onNodeWithText(context.getString(R.string.guide_none_title)).assertIsDisplayed()
 
         pressBack()
-        compose.waitUntil(5_000) { runCatching { compose.onNode(guide).assertIsFocused() }.isSuccess }
+        compose.waitUntil(5_000) { runCatching { compose.onNodeWithContentDescription(guideText).assertIsFocused() }.isSuccess }
         compose.onRoot().performKeyInput {
             pressKey(Key.DirectionUp)
             pressKey(Key.DirectionCenter)

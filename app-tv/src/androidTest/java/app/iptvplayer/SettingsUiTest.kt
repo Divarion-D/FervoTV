@@ -13,6 +13,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
@@ -92,7 +93,7 @@ class SettingsUiTest {
     }
 
     private fun remoteOpensSettingsAndReturns() {
-        val live = tab(context.getString(R.string.section_live))
+        val live = context.getString(R.string.section_live)
         val settings = action(context.getString(R.string.section_settings))
         val first = channel("Test MP4")
 
@@ -103,7 +104,7 @@ class SettingsUiTest {
             runCatching { compose.onNode(category(context.getString(R.string.group_all))).assertIsFocused() }.isSuccess
         }
         pressBack()
-        compose.waitUntil(5_000) { runCatching { compose.onNode(live).assertIsFocused() }.isSuccess }
+        compose.waitUntil(5_000) { runCatching { compose.onNodeWithContentDescription(live).assertIsFocused() }.isSuccess }
         compose.onRoot().performKeyInput {
             repeat(4) { pressKey(Key.DirectionDown) }
             pressKey(Key.DirectionCenter)

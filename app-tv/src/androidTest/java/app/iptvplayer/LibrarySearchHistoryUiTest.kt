@@ -101,7 +101,6 @@ class LibrarySearchHistoryUiTest {
     private fun remoteOpensLibrarySearchAndHistory() {
         val live = context.getString(R.string.section_live)
         val movies = context.getString(R.string.section_movies)
-        val search = context.getString(R.string.section_search)
 
         compose.waitUntil(10_000) { compose.onAllNodes(hasText("Test MP4")).fetchSemanticsNodes().isNotEmpty() }
         pressBack()
@@ -128,10 +127,18 @@ class LibrarySearchHistoryUiTest {
         }
         compose.onNodeWithText(context.getString(R.string.search_everything)).assertIsDisplayed()
 
-        compose.onRoot().performKeyInput { pressKey(Key.DirectionLeft) }
-        compose.waitUntil(10_000) { runCatching { compose.onNodeWithContentDescription(search).assertIsFocused() }.isSuccess }
+        pressBack()
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText("Test multi audio subtitles", substring = true)).fetchSemanticsNodes().isNotEmpty()
+        }
+        pressBack()
+        compose.waitUntil(10_000) {
+            runCatching { compose.onNode(category(context.getString(R.string.group_all_movies))).assertIsFocused() }.isSuccess
+        }
+        pressBack()
+        compose.waitUntil(10_000) { runCatching { compose.onNodeWithContentDescription(movies).assertIsFocused() }.isSuccess }
         compose.onRoot().performKeyInput {
-            repeat(5) { pressKey(Key.DirectionDown) }
+            repeat(2) { pressKey(Key.DirectionDown) }
             pressKey(Key.DirectionCenter)
         }
         compose.waitUntil(10_000) {
