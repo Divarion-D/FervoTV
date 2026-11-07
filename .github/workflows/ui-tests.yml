@@ -79,7 +79,7 @@ jobs:
           profile: ${{ matrix.profile }}
           disable-animations: true
           emulator-options: -no-snapshot -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect
-          script: ANDROID_SERIAL=emulator-5554 make test-ui-device TEST_ARGS="-Pandroid.testInstrumentationRunnerArguments.expectedMode=${{ matrix.mode }} -Pandroid.testInstrumentationRunnerArguments.class=app.iptvplayer.NavigationUiTest#navigatesWithTheDeviceInputMode"
+          script: ANDROID_SERIAL=emulator-5554 make test-ui-device TEST_ARGS="-Pandroid.testInstrumentationRunnerArguments.expectedMode=${{ matrix.mode }} -Pandroid.testInstrumentationRunnerArguments.class=app.iptvplayer.NavigationUiTest,app.iptvplayer.LiveGuideUiTest,app.iptvplayer.LibrarySearchHistoryUiTest,app.iptvplayer.SettingsUiTest"
 
       - name: UI test artifacts
         if: always()

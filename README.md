@@ -114,6 +114,9 @@ Fervo TV развивается по фазам. Сейчас в работе P3
 ```bash
 make check        # то же, что CI на каждый коммит: тесты + lint + debug-сборка
 make test         # unit-тесты и debug UI-регрессии; make test-fast — только ядро
+make test-ui-host   # быстрые Compose/Robolectric UI-тесты без устройства
+make test-ui-build  # собрать изолированное .uitest-приложение и его tests APK
+make test-ui-device ANDROID_SERIAL=<serial>  # UI-маршруты на явно выбранном устройстве
 make release      # один подписанный универсальный APK для TV, телефона и планшета → dist/
 make install run  # собрать release, поставить по adb и запустить (данные сохраняются)
 make install-debug run-debug  # debug — отдельным приложением «Fervo TV debug» рядом с release
@@ -124,9 +127,11 @@ make media-serve     # запустить медиастенд по HTTP с Rang
 make test-media-fixtures  # проверить генерацию, форматы и HTTP-поведение стенда
 ```
 
-UI-регрессии VOD в `app-tv/src/testDebug` запускаются на хосте через Compose/Robolectric,
-без подключённого устройства. Они проверяют панель, крестовину, Back и автоскрытие с тестовым
-движком; реальные декодеры и аппаратный пульт этим не проверяются.
+Host UI-регрессии в `app-tv/src/testDebug` запускаются через Compose/Robolectric без
+подключённого устройства. Instrumentation-маршруты ставят отдельное приложение
+`io.github.divarion_d.fervotv.uitest` с синтетическими данными и не трогают debug/release-данные.
+Автоматические phone/TV-прогоны описаны в `.github/workflows/ui-tests.yml`; аппаратный пульт
+и реальную видеоповерхность всё равно нужно принимать на физическом TV.
 
 ### Медиастенд совместимости
 

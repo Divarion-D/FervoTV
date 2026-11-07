@@ -37,9 +37,10 @@ files: [core/src/main/java/app/iptvplayer/core/epg/**, core/src/main/java/app/ip
   tech: `app-tv/src/main/java/app/iptvplayer/MainActivity.kt`; `ui/Sections.kt`; `ui/HomeScreen.kt`; `ui/LiveScreen.kt`; `ui/LibraryScreen.kt`; `ui/SearchScreen.kt`; `ui/MoreScreen.kt`
 - [x] Render remote-aware lists, grids, guide navigation and adaptive layouts {#experience-adaptive-navigation}
   tech: `app-tv/src/main/java/app/iptvplayer/Input.kt`; `ui/LiveParts.kt`; `ui/GuideGrid.kt`; `app-tv/src/testDebug/java/app/iptvplayer/LiveNavigationTest.kt`
-- [ ] Automate end-to-end touch and TV-remote interaction routes {#experience-device-ui-matrix}
+- [~] Automate end-to-end touch and TV-remote interaction routes {#experience-device-ui-matrix}
+  by: codex
   from: roadmap
-  tech: `docs/superpowers/plans/2026-11-02-ui-interaction-tests.md`; the isolated harness now exists, but production-screen touch/remote routes do not
+  tech: `NavigationUiTest.kt`, `LiveGuideUiTest.kt`, `LibrarySearchHistoryUiTest.kt` and `SettingsUiTest.kt` compile independent touch/remote routes; emulator execution remains pending
 - [x] Isolate device UI tests in a dedicated application variant {#experience-ui-test-variant}
   by: codex
   tech: `app-tv/build.gradle.kts`; `UiTestPackage.kt`; `UiHarnessTest.kt`; assembled packages `io.github.divarion_d.fervotv.uitest` and `.uitest.test`
@@ -131,3 +132,4 @@ files: [PLAN.md, AGENTS.md, CLAUDE.md, README.md, docs/**]
 - 2026-11-07: Omitted `app-mobile` as a component: commit `22a2151` removed its source, and `settings.gradle.kts` now includes only `core` and `app-tv`. The roadmap's older three-module P0 criterion is stale.
 - 2026-11-07: Left multi-provider aggregation, the device UI matrix/CI, and an alternative playback backend unchecked. Their planning documents name them, but the corresponding aggregate source model, `androidTest`/`uiTest` harness and second engine were not found in code.
 - 2026-11-07: Did not promote partial device observations to `[x]`; the checked playback tasks are limited to source and automated-test artifacts, while hardware acceptance remains bounded by the P3 device reports.
+- 2026-11-07: Split the device UI matrix into independent screen-route test classes over the shared deterministic fixtures. Production UI changes require a reproduced route failure; agents may report missing semantics instead of editing shared screens speculatively.

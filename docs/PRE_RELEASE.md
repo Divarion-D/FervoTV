@@ -53,10 +53,13 @@ make verify
 ```bash
 make check          # debug-тесты, lint и debug-сборка
 make test           # unit-тесты всех модулей
+make test-ui-build  # сборка изолированного UI-test APK без устройства
 make ci-release     # release-тесты, lint, подписанный APK и проверка подписи
 ```
 
-После push проверьте CI для `main`. Релизный workflow дополнительно проверяет формат тега, запускает release-тесты и lint, собирает `app-tv` и проверяет APK через `apksigner`.
+После push проверьте CI для `main`, включая отдельные phone/TV jobs `Device UI tests`.
+Релизный workflow дополнительно проверяет формат тега, запускает release-тесты и lint, собирает
+`app-tv` и проверяет APK через `apksigner`.
 
 ## 5. Проверить на устройствах
 
@@ -65,6 +68,8 @@ make ci-release     # release-тесты, lint, подписанный APK и п
 ```bash
 make devices
 make install run
+# для изолированного instrumentation-прогона:
+make test-ui-device ANDROID_SERIAL=<serial>
 ```
 
 Минимальный smoke-тест:
