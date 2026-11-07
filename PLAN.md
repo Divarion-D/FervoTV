@@ -95,7 +95,7 @@ files: [settings.gradle.kts, build.gradle.kts, core/build.gradle.kts, app-tv/bui
 - [~] Run isolated device UI jobs on phone and TV emulators {#delivery-device-ui-ci}
   by: codex
   from: roadmap
-  tech: `.github/workflows/ui-tests.yml` defines fixed phone and Android TV API 35 jobs with retained reports; the first GitHub Actions execution remains pending
+  tech: `.github/workflows/ui-tests.yml` defines fixed phone API 35 and Android TV API 36 jobs with retained reports; successful execution remains pending
 - [x] Expose safe host and device UI-test commands through Make {#delivery-ui-test-commands}
   by: codex
   tech: `Makefile` targets `test-ui-host`, `test-ui-build` and `test-ui-device`; device execution rejects a missing `ANDROID_SERIAL`
@@ -133,3 +133,4 @@ files: [PLAN.md, AGENTS.md, CLAUDE.md, README.md, docs/**]
 - 2026-11-07: Left multi-provider aggregation, the device UI matrix/CI, and an alternative playback backend unchecked. Their planning documents name them, but the corresponding aggregate source model, `androidTest`/`uiTest` harness and second engine were not found in code.
 - 2026-11-07: Did not promote partial device observations to `[x]`; the checked playback tasks are limited to source and automated-test artifacts, while hardware acceptance remains bounded by the P3 device reports.
 - 2026-11-07: Split the device UI matrix into independent screen-route test classes over the shared deterministic fixtures. Production UI changes require a reproduced route failure; agents may report missing semantics instead of editing shared screens speculatively.
+- 2026-11-07: Kept the phone emulator on API 35 but moved the TV job to API 36: the official SDK repository has no Android TV API 35 image, while `system-images;android-36;android-tv;x86_64` is published. The first API 35 TV job failed before Gradle for that exact missing package.
