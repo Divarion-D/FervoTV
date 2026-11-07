@@ -12,6 +12,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
@@ -51,6 +52,9 @@ class LiveGuideUiTest {
     private fun channel(text: String) =
         hasText(text) and SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick)
 
+    private fun category(text: String) =
+        hasText(text) and SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick)
+
     @Test
     fun switchesBetweenLiveAndGuideWithTheDeviceInputMode() {
         val tv = context.isTv()
@@ -63,14 +67,13 @@ class LiveGuideUiTest {
 
     private fun touchSwitchesBetweenLiveAndGuide() {
         val live = tab(context.getString(R.string.section_live))
-        val guide = tab(context.getString(R.string.section_guide))
 
         compose.waitUntil(10_000) { compose.onAllNodes(live).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNode(guide).performTouchInput { click() }
-        compose.onNode(guide).assertIsSelected()
+        compose.onNodeWithContentDescription(context.getString(R.string.view_guide)).performTouchInput { click() }
+        compose.onNode(live).assertIsSelected()
         compose.onNodeWithText(context.getString(R.string.guide_none_title)).assertIsDisplayed()
 
-        compose.onNode(live).performTouchInput { click() }
+        compose.onNodeWithContentDescription(context.getString(R.string.view_list)).performTouchInput { click() }
         compose.onNode(live).assertIsSelected()
         compose.onNodeWithText("Test MP4").assertIsDisplayed()
     }
@@ -82,10 +85,11 @@ class LiveGuideUiTest {
 
         compose.waitUntil(10_000) { compose.onAllNodes(first).fetchSemanticsNodes().isNotEmpty() }
         compose.waitUntil(10_000) { runCatching { compose.onNode(first).assertIsFocused() }.isSuccess }
-        compose.onRoot().performKeyInput {
-            pressKey(Key.DirectionLeft)
-            pressKey(Key.DirectionLeft)
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionLeft) }
+        compose.waitUntil(5_000) {
+            runCatching { compose.onNode(category(context.getString(R.string.group_all))).assertIsFocused() }.isSuccess
         }
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionLeft) }
         compose.waitUntil(5_000) { runCatching { compose.onNode(live).assertIsFocused() }.isSuccess }
         compose.onRoot().performKeyInput {
             pressKey(Key.DirectionDown)

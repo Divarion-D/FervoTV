@@ -12,6 +12,7 @@ on:
       - gradle/**
       - gradle.properties
       - gradlew
+      - Makefile
   pull_request:
     paths:
       - app-tv/**
@@ -22,6 +23,7 @@ on:
       - gradle/**
       - gradle.properties
       - gradlew
+      - Makefile
   workflow_dispatch:
 
 permissions:

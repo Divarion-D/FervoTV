@@ -2,6 +2,7 @@ package app.iptvplayer
 
 import android.content.Context
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
@@ -21,6 +22,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.iptvplayer.core.Repository
 import app.iptvplayer.core.db.AppDb
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TestWatcher
@@ -50,9 +53,18 @@ class LibrarySearchHistoryUiTest {
 
     private fun tab(text: String) = hasText(text) and SemanticsMatcher.keyIsDefined(SemanticsProperties.Selected)
 
+    private fun action(text: String) = hasText(text) and SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick)
+
+    private fun category(text: String) = hasText(text) and SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick)
+
     @Test
     fun opensLibrarySearchAndHistoryWithTheDeviceInputMode() {
-        if (context.isTv()) remoteOpensLibrarySearchAndHistory() else touchOpensLibrarySearchAndHistory()
+        val tv = context.isTv()
+        InstrumentationRegistry.getArguments().getString("expectedMode")?.let { expected ->
+            assertTrue("expectedMode must be phone or tv", expected in setOf("phone", "tv"))
+            assertEquals("AVD reported the wrong UI mode", expected == "tv", tv)
+        }
+        if (tv) remoteOpensLibrarySearchAndHistory() else touchOpensLibrarySearchAndHistory()
     }
 
     private fun touchOpensLibrarySearchAndHistory() {
@@ -86,10 +98,11 @@ class LibrarySearchHistoryUiTest {
         val search = context.getString(R.string.section_search)
 
         compose.waitUntil(10_000) { compose.onAllNodes(hasText("Test MP4")).fetchSemanticsNodes().isNotEmpty() }
-        compose.onRoot().performKeyInput {
-            pressKey(Key.Back)
-            pressKey(Key.Back)
+        compose.onRoot().performKeyInput { pressKey(Key.Back) }
+        compose.waitUntil(10_000) {
+            runCatching { compose.onNode(category(context.getString(R.string.group_all))).assertIsFocused() }.isSuccess
         }
+        compose.onRoot().performKeyInput { pressKey(Key.Back) }
         compose.waitUntil(10_000) { runCatching { compose.onNodeWithContentDescription(live).assertIsFocused() }.isSuccess }
         compose.onRoot().performKeyInput {
             repeat(2) { pressKey(Key.DirectionDown) }
@@ -97,10 +110,11 @@ class LibrarySearchHistoryUiTest {
         }
         compose.waitUntil(10_000) { compose.onAllNodes(hasText("Test multi audio subtitles", substring = true)).fetchSemanticsNodes().isNotEmpty() }
 
-        compose.onRoot().performKeyInput {
-            pressKey(Key.Back)
-            pressKey(Key.Back)
+        compose.onRoot().performKeyInput { pressKey(Key.Back) }
+        compose.waitUntil(10_000) {
+            runCatching { compose.onNode(category(context.getString(R.string.group_all_movies))).assertIsFocused() }.isSuccess
         }
+        compose.onRoot().performKeyInput { pressKey(Key.Back) }
         compose.waitUntil(10_000) { runCatching { compose.onNodeWithContentDescription(movies).assertIsFocused() }.isSuccess }
         compose.onRoot().performKeyInput {
             repeat(3) { pressKey(Key.DirectionUp) }
@@ -113,6 +127,11 @@ class LibrarySearchHistoryUiTest {
         compose.onRoot().performKeyInput {
             repeat(5) { pressKey(Key.DirectionDown) }
             pressKey(Key.DirectionCenter)
+        }
+        compose.waitUntil(10_000) {
+            runCatching { compose.onNode(action(context.getString(R.string.more_favorites))).assertIsFocused() }.isSuccess
+        }
+        compose.onRoot().performKeyInput {
             pressKey(Key.DirectionDown)
             pressKey(Key.DirectionCenter)
         }

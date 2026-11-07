@@ -55,6 +55,9 @@ class SettingsUiTest {
     private fun action(text: String) =
         hasText(text) and SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick)
 
+    private fun category(text: String) =
+        hasText(text) and SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick)
+
     private fun pressBack() {
         InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
         compose.waitForIdle()
@@ -95,17 +98,20 @@ class SettingsUiTest {
 
         compose.waitUntil(10_000) { compose.onAllNodes(first).fetchSemanticsNodes().isNotEmpty() }
         compose.waitUntil(10_000) { runCatching { compose.onNode(first).assertIsFocused() }.isSuccess }
-        compose.onRoot().performKeyInput {
-            pressKey(Key.DirectionLeft)
-            pressKey(Key.DirectionLeft)
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionLeft) }
+        compose.waitUntil(5_000) {
+            runCatching { compose.onNode(category(context.getString(R.string.group_all))).assertIsFocused() }.isSuccess
         }
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionLeft) }
         compose.waitUntil(5_000) { runCatching { compose.onNode(live).assertIsFocused() }.isSuccess }
         compose.onRoot().performKeyInput {
             repeat(4) { pressKey(Key.DirectionDown) }
             pressKey(Key.DirectionCenter)
-            pressKey(Key.DirectionDown)
-            pressKey(Key.DirectionDown)
         }
+        compose.waitUntil(5_000) {
+            runCatching { compose.onNode(action(context.getString(R.string.more_favorites))).assertIsFocused() }.isSuccess
+        }
+        compose.onRoot().performKeyInput { repeat(2) { pressKey(Key.DirectionDown) } }
         compose.onNode(settings).assertIsFocused()
         compose.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
         compose.onNode(action(context.getString(R.string.settings_playlist))).assertIsDisplayed()
