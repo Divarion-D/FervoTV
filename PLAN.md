@@ -31,7 +31,7 @@ files: [core/src/main/java/app/iptvplayer/core/db/**, core/src/main/java/app/ipt
 tech: the adaptive Compose shell in `app-tv` consumes home, search, guide and logo projections from `core`.
 needs: [ingestion, persistence]
 links: [playback, configuration]
-files: [core/src/main/java/app/iptvplayer/core/epg/**, core/src/main/java/app/iptvplayer/core/home/**, core/src/main/java/app/iptvplayer/core/search/**, core/src/main/java/app/iptvplayer/core/logos/**, app-tv/src/main/java/app/iptvplayer/MainActivity.kt, app-tv/src/main/java/app/iptvplayer/Input.kt, app-tv/src/main/java/app/iptvplayer/ui/HomeScreen.kt, app-tv/src/main/java/app/iptvplayer/ui/Live*.kt, app-tv/src/main/java/app/iptvplayer/ui/GuideGrid.kt, app-tv/src/main/java/app/iptvplayer/ui/LibraryScreen.kt, app-tv/src/main/java/app/iptvplayer/ui/SearchScreen.kt, app-tv/src/main/java/app/iptvplayer/ui/MoreScreen.kt, app-tv/src/main/java/app/iptvplayer/ui/VodPages.kt, app-tv/src/main/java/app/iptvplayer/ui/VodParts.kt, app-tv/src/main/java/app/iptvplayer/ui/Sections.kt, app-tv/src/main/java/app/iptvplayer/ui/ChannelLogo.kt, app-tv/src/main/res/**, app-tv/src/testDebug/**]
+files: [core/src/main/java/app/iptvplayer/core/epg/**, core/src/main/java/app/iptvplayer/core/home/**, core/src/main/java/app/iptvplayer/core/search/**, core/src/main/java/app/iptvplayer/core/logos/**, app-tv/src/main/java/app/iptvplayer/MainActivity.kt, app-tv/src/main/java/app/iptvplayer/Input.kt, app-tv/src/main/java/app/iptvplayer/ui/HomeScreen.kt, app-tv/src/main/java/app/iptvplayer/ui/Live*.kt, app-tv/src/main/java/app/iptvplayer/ui/GuideGrid.kt, app-tv/src/main/java/app/iptvplayer/ui/LibraryScreen.kt, app-tv/src/main/java/app/iptvplayer/ui/SearchScreen.kt, app-tv/src/main/java/app/iptvplayer/ui/MoreScreen.kt, app-tv/src/main/java/app/iptvplayer/ui/VodPages.kt, app-tv/src/main/java/app/iptvplayer/ui/VodParts.kt, app-tv/src/main/java/app/iptvplayer/ui/Sections.kt, app-tv/src/main/java/app/iptvplayer/ui/ChannelLogo.kt, app-tv/src/main/res/**, app-tv/src/sharedUiTest/**, app-tv/src/testDebug/**, app-tv/src/androidTest/**]
 
 - [x] Route home, live TV, guide, VOD, search, favorites and history in one shell {#experience-route-sections}
   tech: `app-tv/src/main/java/app/iptvplayer/MainActivity.kt`; `ui/Sections.kt`; `ui/HomeScreen.kt`; `ui/LiveScreen.kt`; `ui/LibraryScreen.kt`; `ui/SearchScreen.kt`; `ui/MoreScreen.kt`
@@ -39,7 +39,17 @@ files: [core/src/main/java/app/iptvplayer/core/epg/**, core/src/main/java/app/ip
   tech: `app-tv/src/main/java/app/iptvplayer/Input.kt`; `ui/LiveParts.kt`; `ui/GuideGrid.kt`; `app-tv/src/testDebug/java/app/iptvplayer/LiveNavigationTest.kt`
 - [ ] Automate end-to-end touch and TV-remote interaction routes {#experience-device-ui-matrix}
   from: roadmap
-  tech: `docs/superpowers/plans/2026-11-02-ui-interaction-tests.md` says implementation has not started; `app-tv/src/androidTest` does not exist
+  tech: `docs/superpowers/plans/2026-11-02-ui-interaction-tests.md`; the isolated harness now exists, but production-screen touch/remote routes do not
+- [x] Isolate device UI tests in a dedicated application variant {#experience-ui-test-variant}
+  by: codex
+  tech: `app-tv/build.gradle.kts`; `UiTestPackage.kt`; `UiHarnessTest.kt`; assembled packages `io.github.divarion_d.fervotv.uitest` and `.uitest.test`
+- [~] Seed repeatable synthetic catalog and playback data {#experience-ui-test-fixtures}
+  by: codex
+  from: roadmap
+  tech: reuse the existing Room stores and `tools/media-fixtures.py`; reject every package except `.uitest`
+- [ ] Drive core screen routes with real touch and remote events {#experience-ui-test-routes}
+  from: roadmap
+  tech: instrumented phone and TV tests must inject pointer/key events through production Compose UI
 
 ## Play streams across supported formats {#playback}
 

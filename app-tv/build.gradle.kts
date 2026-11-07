@@ -13,6 +13,22 @@ android {
         applicationId = "io.github.divarion_d.fervotv"
         minSdk = 21
         targetSdk = 35
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        create("uiTest") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".uitest"
+            matchingFallbacks += listOf("debug")
+            manifestPlaceholders["appLabel"] = "Fervo TV UI test"
+        }
+    }
+    testBuildType = "uiTest"
+
+    sourceSets {
+        getByName("testDebug").java.srcDir("src/sharedUiTest/java")
+        getByName("androidTest").java.srcDir("src/sharedUiTest/java")
     }
 
     buildFeatures { compose = true }
@@ -42,4 +58,7 @@ dependencies {
     add("testDebugImplementation", "androidx.room:room-runtime:2.6.1")
     add("testDebugImplementation", "androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+
+    androidTestImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.5.0")
 }
