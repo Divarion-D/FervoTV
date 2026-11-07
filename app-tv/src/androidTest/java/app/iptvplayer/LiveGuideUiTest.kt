@@ -12,7 +12,6 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
@@ -67,13 +66,14 @@ class LiveGuideUiTest {
 
     private fun touchSwitchesBetweenLiveAndGuide() {
         val live = tab(context.getString(R.string.section_live))
+        val guide = tab(context.getString(R.string.section_guide))
 
         compose.waitUntil(10_000) { compose.onAllNodes(live).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithContentDescription(context.getString(R.string.view_guide)).performTouchInput { click() }
-        compose.onNode(live).assertIsSelected()
+        compose.onNode(guide).performTouchInput { click() }
+        compose.onNode(guide).assertIsSelected()
         compose.onNodeWithText(context.getString(R.string.guide_none_title)).assertIsDisplayed()
 
-        compose.onNodeWithContentDescription(context.getString(R.string.view_list)).performTouchInput { click() }
+        compose.onNode(live).performTouchInput { click() }
         compose.onNode(live).assertIsSelected()
         compose.onNodeWithText("Test MP4").assertIsDisplayed()
     }
