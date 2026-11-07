@@ -43,13 +43,13 @@ files: [core/src/main/java/app/iptvplayer/core/epg/**, core/src/main/java/app/ip
 - [x] Isolate device UI tests in a dedicated application variant {#experience-ui-test-variant}
   by: codex
   tech: `app-tv/build.gradle.kts`; `UiTestPackage.kt`; `UiHarnessTest.kt`; assembled packages `io.github.divarion_d.fervotv.uitest` and `.uitest.test`
-- [~] Seed repeatable synthetic catalog and playback data {#experience-ui-test-fixtures}
+- [x] Seed repeatable synthetic catalog and playback data {#experience-ui-test-fixtures}
+  by: codex
+  tech: `UiFixtures.kt` uses `PlaylistStore`, `LibraryStore` and `LibraryUser`; `UiFixturesTest.kt` proves package/URL rejection and repeatable live/VOD/episode/progress state
+- [~] Drive core screen routes with real touch and remote events {#experience-ui-test-routes}
   by: codex
   from: roadmap
-  tech: reuse the existing Room stores and `tools/media-fixtures.py`; reject every package except `.uitest`
-- [ ] Drive core screen routes with real touch and remote events {#experience-ui-test-routes}
-  from: roadmap
-  tech: instrumented phone and TV tests must inject pointer/key events through production Compose UI
+  tech: first slice is touch `Live → More → Live` plus DPAD focus movement between seeded channels through production Compose UI
 
 ## Play streams across supported formats {#playback}
 
