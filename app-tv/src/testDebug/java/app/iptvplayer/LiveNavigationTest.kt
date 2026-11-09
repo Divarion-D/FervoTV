@@ -2,8 +2,10 @@ package app.iptvplayer
 
 import android.app.UiModeManager
 import android.content.res.Configuration
+import android.os.SystemClock
 import android.view.SurfaceView
 import android.view.ViewGroup
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.ui.platform.ComposeView
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -127,9 +129,9 @@ class LiveNavigationTest {
         start(tv = false, channels = 3, search = true)
         compose.onNode(hasSetTextAction()).performTextInput("Channel 1")
         compose.mainClock.advanceTimeBy(500)
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Channel 1").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNode(hasText("Channel 1") and !hasSetTextAction() and SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick))
-            .performSemanticsAction(SemanticsActions.OnLongClick)
+        val channel = hasText("Channel 1") and !hasSetTextAction() and SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick)
+        compose.waitUntil(10_000) { compose.onAllNodes(channel).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(channel).performSemanticsAction(SemanticsActions.OnLongClick)
         compose.waitForIdle()
         compose.onNodeWithText(compose.activity.getString(R.string.favorite_add))
             .performSemanticsAction(SemanticsActions.RequestFocus)
@@ -139,6 +141,36 @@ class LiveNavigationTest {
         compose.waitUntil(10_000) {
             compose.onAllNodesWithContentDescription(compose.activity.getString(R.string.row_favorite)).fetchSemanticsNodes().isNotEmpty()
         }
+    }
+
+    @Test fun searchResultRemoteMenusToggleFavoriteAndRestoreFocus() {
+        start(channels = 3, search = true)
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.waitUntil(5_000) { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasSetTextAction()).performTextInput("Channel 1")
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.waitUntil(5_000) { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isEmpty() }
+        compose.mainClock.advanceTimeBy(500)
+        val channel = hasText("Channel 1") and !hasSetTextAction() and SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick)
+        compose.waitUntil(10_000) { compose.onAllNodes(channel).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(channel).performSemanticsAction(SemanticsActions.RequestFocus)
+
+        compose.onRoot().performKeyInput { pressKey(Key.Menu) }
+        compose.onNodeWithText(compose.activity.getString(R.string.favorite_add)).assertIsFocused()
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.waitUntil(10_000) { runBlocking { repo.channel(source, "https://example.invalid/1")?.favorite == true } }
+        compose.onNode(channel).assertIsFocused()
+
+        compose.runOnUiThread {
+            val down = SystemClock.uptimeMillis()
+            compose.activity.dispatchKeyEvent(AndroidKeyEvent(down, down, AndroidKeyEvent.ACTION_DOWN, AndroidKeyEvent.KEYCODE_DPAD_CENTER, 0))
+            compose.activity.dispatchKeyEvent(AndroidKeyEvent(down, down + 500, AndroidKeyEvent.ACTION_DOWN, AndroidKeyEvent.KEYCODE_DPAD_CENTER, 1, 0, -1, 0, AndroidKeyEvent.FLAG_LONG_PRESS))
+            compose.activity.dispatchKeyEvent(AndroidKeyEvent(down, down + 501, AndroidKeyEvent.ACTION_UP, AndroidKeyEvent.KEYCODE_DPAD_CENTER, 0))
+        }
+        compose.onNodeWithText(compose.activity.getString(R.string.favorite_remove)).assertIsFocused()
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.waitUntil(10_000) { runBlocking { repo.channel(source, "https://example.invalid/1")?.favorite == false } }
+        compose.onNode(channel).assertIsFocused()
     }
 
     @Test fun opensOnFirstChannelAndRemoteMovesToNext() {
