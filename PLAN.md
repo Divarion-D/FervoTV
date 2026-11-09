@@ -29,6 +29,10 @@ files: [core/src/main/java/app/iptvplayer/core/db/**, core/src/main/java/app/ipt
   by: codex
   from: roadmap
   tech: `core/src/test/java/app/iptvplayer/core/db/UserStoreTest.kt` covers LIVE-015 reset scope and preserved user data
+- [x] Keep favorite channels available across source changes {#persistence-live-favorites}
+  by: codex
+  from: roadmap
+  tech: stable channel keys and stored source names resolve the first current-source match without deleting unmatched favorites
 
 ## Navigate live, guide and library content {#experience}
 
@@ -41,6 +45,10 @@ files: [core/src/main/java/app/iptvplayer/core/epg/**, core/src/main/java/app/ip
   tech: `app-tv/src/main/java/app/iptvplayer/MainActivity.kt`; `ui/Sections.kt`; `ui/HomeScreen.kt`; `ui/LiveScreen.kt`; `ui/LibraryScreen.kt`; `ui/SearchScreen.kt`; `ui/MoreScreen.kt`
 - [x] Render remote-aware lists, grids, guide navigation and adaptive layouts {#experience-adaptive-navigation}
   tech: `app-tv/src/main/java/app/iptvplayer/Input.kt`; `ui/LiveParts.kt`; `ui/GuideGrid.kt`; `app-tv/src/testDebug/java/app/iptvplayer/LiveNavigationTest.kt`
+- [x] Show and toggle favorite channels across live surfaces {#experience-live-favorites}
+  by: codex
+  from: roadmap
+  tech: live rows, tiles, guide, search and player surfaces expose the favorite toggle and marker; `LiveNavigationTest.kt` covers touch and TV remote paths
 - [x] Keep live preview delayed and reuse its stream in full screen {#experience-live-preview}
   by: codex
   from: roadmap
@@ -149,3 +157,4 @@ files: [PLAN.md, AGENTS.md, CLAUDE.md, README.md, docs/**]
 - 2026-11-08: Live transport buttons will reuse the fullscreen player's existing circular channel index navigation; VOD keeps seek and episode controls unchanged. This changes only the two touch-panel actions and their labels/icons, not remote key behavior.
 - 2026-11-09: LIVE-015 keeps the existing reset implementation and adds one focused regression test because the menu, preview and transactional reset already exist; no duplicate reset path is introduced.
 - 2026-11-09: Assign the LIVE-015 reset proof to `persistence`, which owns its only changed artifact under `core/db`.
+- 2026-11-09: Split LIVE-008 ownership between persistence and experience so the component map assigns storage to core and favorite controls to app-tv.
