@@ -446,7 +446,7 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
     suspend fun schedule(s: Source, key: String, from: Long, to: Long): List<Programme> =
         store.schedule(s.cacheKey(), key, settings.epgShift, from, to)
 
-    suspend fun channelAt(f: ChannelFilter, index: Int): Channel? = store.channelAt(f, index)
+    suspend fun channelAt(f: ChannelFilter, index: Int): ChannelItem? = store.channelAt(f, index)
 
     suspend fun firstChannels(f: ChannelFilter, n: Int): List<ChannelItem> = store.first(f, n)
 

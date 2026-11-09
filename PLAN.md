@@ -41,6 +41,10 @@ files: [core/src/main/java/app/iptvplayer/core/epg/**, core/src/main/java/app/ip
   by: codex
   from: roadmap
   tech: `ui/LiveScreen.kt`; `ui/LiveParts.kt`; `core/Defaults.kt`; `app-tv/src/testDebug/java/app/iptvplayer/LiveNavigationTest.kt`
+- [x] Show channel numbers and switch live TV by digit entry {#experience-channel-number-dialing}
+  by: codex
+  from: roadmap
+  tech: LIVE-009 covers provider/fallback numbers, fullscreen digit input, immediate OK, delayed switch, cancellation and missing-number feedback
 - [~] Automate end-to-end touch and TV-remote interaction routes {#experience-device-ui-matrix}
   by: codex
   from: roadmap
@@ -133,6 +137,7 @@ files: [PLAN.md, AGENTS.md, CLAUDE.md, README.md, docs/**]
 
 ## decisions
 
+- 2026-11-09: Full-screen live playback will receive `ChannelItem`, not a bare `Channel`, so its displayed number remains the provider/source number even when playback starts from a filtered or sorted list. The digit-dial enable/disable preference remains owned by UI-013.
 - 2026-11-09: LIVE-006 production behavior already exists in `LiveScreen.kt`, `LiveParts.kt`, settings and player-session handoff. This task will add focused regression coverage for delayed focus playback and stream reuse instead of duplicating the feature; DL-009 and physical-TV acceptance stay separate.
 
 - 2026-11-07: Replaced the placeholder `setup` node with eight session-ownable components derived from the current source tree. IDs introduced by this backfill are now stable.

@@ -239,8 +239,8 @@ class PlaylistStore(private val db: AppDb, private val clock: () -> Long = Syste
         listSource(f) { limit, offset, now -> guidePage(rows(f, limit, offset), shift, from, to, now) }
 
     /** The [index]-th channel of the filtered list (player: next/previous channel). */
-    suspend fun channelAt(f: ChannelFilter, index: Int): Channel? = withContext(Dispatchers.IO) {
-        rows(f, 1, index).firstOrNull()?.channel
+    suspend fun channelAt(f: ChannelFilter, index: Int): ChannelItem? = withContext(Dispatchers.IO) {
+        rows(f, 1, index).firstOrNull()?.item(null, null)
     }
 
     /** The first [n] channels of the list, without their programmes (search results). */

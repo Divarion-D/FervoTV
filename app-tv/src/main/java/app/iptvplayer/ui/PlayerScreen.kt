@@ -53,6 +53,7 @@ import kotlinx.coroutines.launch
 import app.iptvplayer.core.Defaults
 import app.iptvplayer.core.input.Action
 import app.iptvplayer.core.model.Channel
+import app.iptvplayer.core.model.ChannelItem
 import app.iptvplayer.core.db.ChannelGroup
 import androidx.compose.foundation.layout.BoxScope
 import app.iptvplayer.core.player.PlayItem
@@ -89,7 +90,7 @@ fun PlayerScreen(
     count: Int,
     startIndex: Int,
     offline: Boolean,
-    channelAt: suspend (Int) -> Channel?,
+    channelAt: suspend (Int) -> ChannelItem?,
     onIndexChange: (Int, Channel) -> Unit,
     find: suspend (Zap) -> Int?,
     panelOpen: Boolean = false,
@@ -99,7 +100,7 @@ fun PlayerScreen(
 ) {
     var index by remember { mutableIntStateOf(startIndex) }
     var reopen by remember { mutableIntStateOf(0) } // a jump can land on the same index of another list
-    var ch by remember { mutableStateOf<Channel?>(null) }
+    var item by remember { mutableStateOf<ChannelItem?>(null) }
     val total by rememberUpdatedState(count) // a background refresh can change it
     var showInfo by remember { mutableStateOf(true) }
     var controls by remember { mutableStateOf(false) }
@@ -111,9 +112,9 @@ fun PlayerScreen(
     LaunchedEffect(index, reopen) {
         showInfo = true
         val next = channelAt(index) ?: return@LaunchedEffect
-        ch = next
-        onIndexChange(index, next)
-        player.open(next.playItem()) // the preview's stream goes on as is
+        item = next
+        onIndexChange(index, next.channel)
+        player.open(next.channel.playItem()) // the preview's stream goes on as is
     }
     LaunchedEffect(index, showInfo) {
         if (showInfo) {
@@ -140,8 +141,8 @@ fun PlayerScreen(
         delay(due - System.currentTimeMillis())
         commit()
     }
-    BackHandler(dial.text.isNotEmpty()) { dial = NumberDial() }
     BackHandler(controls) { controls = false }
+    BackHandler(dial.text.isNotEmpty()) { dial = NumberDial() }
 
     val latestSide by rememberUpdatedState(onSide)
     val panelNow by rememberUpdatedState(panelOpen)
@@ -168,7 +169,7 @@ fun PlayerScreen(
     }
 
     val focus = remember { FocusRequester() }
-    val shown = ch
+    val shown = item
     Box(
         Modifier
             .fillMaxSize()
@@ -228,11 +229,11 @@ fun PlayerScreen(
             )
         }
         if (shown != null && (showInfo || error != null)) {
-            InfoBar(shown, index + 1, total, error, Modifier.align(if (controls) Alignment.TopStart else Alignment.BottomStart))
+            InfoBar(shown.channel, shown.number, error, Modifier.align(if (controls) Alignment.TopStart else Alignment.BottomStart))
         }
         if (controls) PlayerControls(
             player,
-            shown?.let { onFavorite?.let { action -> { action(it) } } },
+            shown?.channel?.let { onFavorite?.let { action -> { action(it) } } },
             onChannelStep = { handle(if (it < 0) Action.Down else Action.Up) },
             modifier = Modifier.align(Alignment.BottomCenter),
         )
@@ -259,9 +260,9 @@ fun PlayerScreen(
     }
 }
 
-/** Bottom info bar on a gradient scrim: logo, category, name, position, error. */
+/** Bottom info bar on a gradient scrim: logo, category, name, channel number, error. */
 @Composable
-private fun InfoBar(ch: Channel, number: Int, total: Int, error: String?, modifier: Modifier) {
+private fun InfoBar(ch: Channel, number: Int, error: String?, modifier: Modifier) {
     val c = MaterialTheme.colorScheme
     Row(
         modifier
@@ -278,7 +279,7 @@ private fun InfoBar(ch: Channel, number: Int, total: Int, error: String?, modifi
                 ch.name, style = MaterialTheme.typography.headlineSmall, color = Color.White,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
-            Text(stringResource(R.string.player_position, number, total), style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
+            Text(stringResource(R.string.player_position, number), style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
             if (error != null) {
                 Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(painterResource(R.drawable.ic_error), contentDescription = null, tint = c.error, modifier = Modifier.size(18.dp))

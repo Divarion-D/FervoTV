@@ -74,7 +74,8 @@ class PlaylistStoreTest {
 
     @Test
     fun importThenReadCategoriesFilterAndSearch() {
-        assertEquals(4, importSample())
+        val numbered = sample.map { if (it.name == "Второй") it.copy(number = 303) else it }
+        assertEquals(4, importSample(channels = numbered))
         assertEquals(42L, runBlocking { store.savedAt("k") })
 
         // Provider order (pre-registered first), counts, empty categories hidden.
@@ -97,7 +98,9 @@ class PlaylistStoreTest {
         assertEquals(sample.map { it.name }, names(ChannelFilter("k", search = " !! "))) // nothing to search for
 
         // Player: channel by position in the filtered list.
-        assertEquals("Второй", runBlocking { store.channelAt(ChannelFilter("k", group = ChannelGroup.Category("Новости")), 1) }?.name)
+        val filtered = runBlocking { store.channelAt(ChannelFilter("k", group = ChannelGroup.Category("Новости")), 1) }
+        assertEquals("Второй", filtered?.channel?.name)
+        assertEquals(303, filtered?.number) // provider number, not position 2 in this category
         assertNull(runBlocking { store.channelAt(all, 4) })
 
         // Another source key sees nothing.
@@ -166,9 +169,9 @@ class PlaylistStoreTest {
     fun autoLogosAreStoredNextToChannels() {
         importSample()
         assertEquals(1 to 4, store.applyAutoLogos("k") { if (it.tvgId == "one.ru") "http://auto/1.png" else null })
-        assertEquals("http://auto/1.png", runBlocking { store.channelAt(ChannelFilter("k"), 0) }?.autoLogo)
+        assertEquals("http://auto/1.png", runBlocking { store.channelAt(ChannelFilter("k"), 0) }?.channel?.autoLogo)
         assertEquals(0 to 4, store.applyAutoLogos("k") { null }) // logos off
-        assertNull(runBlocking { store.channelAt(ChannelFilter("k"), 0) }?.autoLogo)
+        assertNull(runBlocking { store.channelAt(ChannelFilter("k"), 0) }?.channel?.autoLogo)
     }
 
     @Test
@@ -221,6 +224,6 @@ class PlaylistStoreTest {
         val found = names(ChannelFilter("big", search = "канал 4242"))
         println("FTS search over 100k: ${(System.nanoTime() - t) / 1_000_000} ms")
         assertEquals(listOf("Канал 4242 HD") + (0..9).map { "Канал 4242$it HD" }, found)
-        assertEquals("Канал 99999 HD", runBlocking { store.channelAt(ChannelFilter("big"), 99_999) }?.name)
+        assertEquals("Канал 99999 HD", runBlocking { store.channelAt(ChannelFilter("big"), 99_999) }?.channel?.name)
     }
 }

@@ -218,7 +218,7 @@
     <string name="err_backup_newer">The file was made by a newer version of Fervo TV (format %1$s). Update the app and try again. Nothing was changed.</string>
 
     <!-- Player -->
-    <string name="player_position">Channel %1$d of %2$d</string>
+    <string name="player_position">Channel %1$d</string>
     <string name="player_error">Error: %1$s · OK to retry</string>
     <string name="play_err_network">network error (%1$s)</string>
     <string name="play_err_format">unsupported stream format (%1$s)</string>

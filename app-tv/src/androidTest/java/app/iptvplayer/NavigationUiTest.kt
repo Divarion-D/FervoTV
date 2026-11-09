@@ -106,8 +106,8 @@ class NavigationUiTest {
             pressKey(Key.DirectionUp)
             pressKey(Key.DirectionCenter)
         }
-        val firstPosition = context.getString(R.string.player_position, 1, 24)
-        val secondPosition = context.getString(R.string.player_position, 2, 24)
+        val firstPosition = context.getString(R.string.player_position, 1)
+        val secondPosition = context.getString(R.string.player_position, 2)
         compose.waitUntil(10_000) { compose.onAllNodes(hasText(firstPosition)).fetchSemanticsNodes().isNotEmpty() }
         compose.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
 
