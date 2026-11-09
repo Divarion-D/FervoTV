@@ -35,6 +35,7 @@ import app.iptvplayer.core.player.PlayItem
 import kotlinx.coroutines.flow.MutableStateFlow
 import app.iptvplayer.ui.AppTheme
 import app.iptvplayer.ui.LiveScreen
+import app.iptvplayer.ui.SearchScreen
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
@@ -75,7 +76,7 @@ class LiveNavigationTest {
         }
     }
 
-    private fun start(tv: Boolean = true, channels: Int = 30, duplicate: Boolean = false) {
+    private fun start(tv: Boolean = true, channels: Int = 30, duplicate: Boolean = false, tiles: Boolean = false, favorite: Int? = null, search: Boolean = false) {
         shadowOf(compose.activity.getSystemService(UiModeManager::class.java)).setCurrentModeType(if (tv) Configuration.UI_MODE_TYPE_TELEVISION else Configuration.UI_MODE_TYPE_NORMAL)
         val file = tmp.newFile("live.m3u")
         playlist = file
@@ -99,17 +100,45 @@ class LiveNavigationTest {
             }, Executor { it.run() }).build()
         database = db
         repo = Repository(compose.activity, db)
-        runBlocking { repo.load(source) }
+        runBlocking {
+            repo.load(source)
+            favorite?.let { repo.setFavorite(source, "https://example.invalid/$it", true) }
+        }
         val player = PlayerSession { engine }
         compose.setContent {
             AppTheme {
-                LiveScreen(repo, source, player,
-                    Settings(preview = false, rememberLive = false, liveTiles = false), true, null, {})
+                if (search) SearchScreen(
+                    repo, source, player, Settings(preview = false), true, null, emptySet(), null, {}, { _, _ -> }, null,
+                ) else LiveScreen(repo, source, player,
+                    Settings(preview = false, rememberLive = false, liveTiles = tiles), true, null, {})
             }
         }
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Channel 1").fetchSemanticsNodes().isNotEmpty() }
+        if (!search) compose.waitUntil(10_000) { compose.onAllNodesWithText("Channel 1").fetchSemanticsNodes().isNotEmpty() }
         compose.mainClock.advanceTimeBy(500)
         compose.waitForIdle()
+    }
+
+    @Test fun favoriteTileShowsHeart() {
+        start(channels = 1, tiles = true, favorite = 1)
+        compose.onNodeWithContentDescription(compose.activity.getString(R.string.row_favorite)).assertIsDisplayed()
+    }
+
+    @Test fun searchResultMenuTogglesFavorite() {
+        start(tv = false, channels = 3, search = true)
+        compose.onNode(hasSetTextAction()).performTextInput("Channel 1")
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Channel 1").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasText("Channel 1") and !hasSetTextAction() and SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick))
+            .performSemanticsAction(SemanticsActions.OnLongClick)
+        compose.waitForIdle()
+        compose.onNodeWithText(compose.activity.getString(R.string.favorite_add))
+            .performSemanticsAction(SemanticsActions.RequestFocus)
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.waitForIdle()
+        assertTrue(runBlocking { repo.channel(source, "https://example.invalid/1")?.favorite == true })
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithContentDescription(compose.activity.getString(R.string.row_favorite)).fetchSemanticsNodes().isNotEmpty()
+        }
     }
 
     @Test fun opensOnFirstChannelAndRemoteMovesToNext() {

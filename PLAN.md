@@ -25,6 +25,10 @@ files: [core/src/main/java/app/iptvplayer/core/db/**, core/src/main/java/app/ipt
   tech: `core/src/main/java/app/iptvplayer/core/db/Db.kt`; `PlaylistStore.kt`; `EpgStore.kt`; `LibraryStore.kt`; `core/schemas/app.iptvplayer.core.db.AppDb/7.json`
 - [x] Preserve favorites, edits, collections, history and resume positions {#persistence-user-state}
   tech: `core/src/main/java/app/iptvplayer/core/db/UserStore.kt`; `LibraryUser.kt`; `core/src/test/java/app/iptvplayer/core/db/UserStoreTest.kt`; `LibraryStoreTest.kt`
+- [x] Keep favorite channels available across source changes {#persistence-live-favorites}
+  by: codex
+  from: roadmap
+  tech: stable channel keys and stored source names resolve the first current-source match; live rows, tiles, guide, search and player surfaces expose the favorite toggle and marker
 
 ## Navigate live, guide and library content {#experience}
 
