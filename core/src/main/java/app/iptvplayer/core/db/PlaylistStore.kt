@@ -246,6 +246,11 @@ class PlaylistStore(private val db: AppDb, private val clock: () -> Long = Syste
     /** The first [n] channels of the list, without their programmes (search results). */
     suspend fun first(f: ChannelFilter, n: Int): List<ChannelItem> = withContext(Dispatchers.IO) { rows(f, n, 0).map { it.item(null, null) } }
 
+    /** Stable keys of an inclusive block in the filtered list (LIVE-012 range actions). */
+    suspend fun keys(f: ChannelFilter, range: IntRange): List<String> = withContext(Dispatchers.IO) {
+        if (range.isEmpty()) emptyList() else rows(f, range.last - range.first + 1, range.first).map { it.channel.key }.distinct()
+    }
+
     /** Position of the channel [key] in the list (LIVE-017: focus where the user left), null if it isn't there. */
     suspend fun indexOf(f: ChannelFilter, key: String, occurrence: Int? = null): Int? = withContext(Dispatchers.IO) {
         db.query(f.query("ch.ckey, ch.sourceId, ch.position", order = true)).use { c ->

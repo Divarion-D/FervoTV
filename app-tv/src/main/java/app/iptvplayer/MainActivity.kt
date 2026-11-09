@@ -98,6 +98,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import app.iptvplayer.ui.SettingsScreen
+import app.iptvplayer.ui.LiveManagementScreen
 import app.iptvplayer.ui.HomeScreen
 import app.iptvplayer.ui.SearchScreen
 import app.iptvplayer.ui.MoreScreen
@@ -169,6 +170,8 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit, onPlayer: (Playe
     var attempt by remember { mutableIntStateOf(0) }
     var settings by remember { mutableStateOf(repo.settings) }
     var settingsOpen by remember { mutableStateOf(false) }
+    var liveManagement by rememberSaveable { mutableStateOf(false) }
+    var liveManagementCategory by rememberSaveable { mutableStateOf<String?>(null) }
     var logoStatus by remember { mutableStateOf<Txt?>(null) }
     var logosFound by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var refreshing by remember { mutableStateOf(false) }
@@ -549,6 +552,10 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit, onPlayer: (Playe
                 go(startSection)
             },
         )
+        liveManagement -> LiveManagementScreen(repo, src, liveManagementCategory) {
+            liveManagement = false
+            liveManagementCategory = null
+        }
         settingsOpen -> screens.SaveableStateProvider("settings") {
             val close = { settingsOpen = false; screens.removeState("settings") }
             val content: @Composable () -> Unit = {
@@ -569,6 +576,7 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit, onPlayer: (Playe
                     onSaveFile = file.save,
                     onLoadFile = file.load,
                     playerMemory = repo.playerMemory,
+                    onManageLive = { liveManagement = true },
                     onClose = close,
                 )
             }
@@ -657,6 +665,7 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit, onPlayer: (Playe
                 onSection = { go(it) },
                 jump = jump, onJumpDone = { jump = null }, onBack = sectionBack,
                 continueItem = continueItem, onContinue = onContinue,
+                onManage = { category -> liveManagementCategory = category; liveManagement = true },
             )
         }
     }

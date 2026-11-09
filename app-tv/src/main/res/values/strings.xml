@@ -163,6 +163,14 @@
     <!-- Settings: Live (LIVE-022) -->
     <string name="settings_open_guide">Open as the programme grid</string>
     <string name="settings_open_guide_summary">Live opens as the guide grid instead of the list</string>
+    <string name="manage_live">Manage categories</string>
+    <string name="manage_live_summary">Rename, hide or restore categories and channels</string>
+    <string name="manage_channels">Manage channels</string>
+    <string name="manage_channel_count">%1$d visible channels</string>
+    <string name="manage_range_hint">Select the first row, then hold Hide or Show on the last row to change the whole range.</string>
+    <string name="filter_visible">Visible</string>
+    <string name="filter_hidden">Hidden</string>
+    <string name="channel_number">Channel %1$d</string>
     <!-- UI-022: the rest of the interface (P1.4) -->
     <string name="app_name" translatable="false">Fervo TV</string>
     <string name="back">Back</string>

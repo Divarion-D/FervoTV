@@ -432,6 +432,7 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
 
     /** Live rows with now/next (EPG-006); the shift of [settings] is applied. */
     fun items(f: ChannelFilter): Flow<PagingData<ChannelItem>> = store.items(f, settings.epgShift)
+    suspend fun channelKeys(f: ChannelFilter, range: IntRange): List<String> = store.keys(f, range)
 
     /** Programme grid rows for [from, to) (EPG-008); the first page starts at row [initialKey]. */
     fun guide(f: ChannelFilter, from: Long, to: Long, initialKey: Int? = null): Flow<PagingData<GuideRow>> =

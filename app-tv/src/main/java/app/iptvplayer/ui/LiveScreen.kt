@@ -169,6 +169,7 @@ fun LiveScreen(
     onBack: (() -> Unit)? = null,
     continueItem: ContinueItem? = null,
     onContinue: (ContinueItem) -> Unit = {},
+    onManage: (String?) -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val tv = remember { ctx.isTv() }
@@ -688,6 +689,7 @@ fun LiveScreen(
                 }
                 lines += if (gc.hidden) SheetItem(R.drawable.ic_visibility, str(R.string.category_show)) { scope.launch { repo.setCategoriesHidden(source, listOf(g.name), false) } }
                 else SheetItem(R.drawable.ic_visibility_off, str(R.string.category_hide), danger = true) { scope.launch { repo.setCategoriesHidden(source, listOf(g.name), true) } }
+                lines += SheetItem(R.drawable.ic_category, str(R.string.manage_live)) { onManage(g.name) }
                 lines += SheetItem(R.drawable.ic_replay, str(R.string.reset_category)) { resetEdits(g.name, gc.title) }
             }
             is ChannelGroup.Collection -> {

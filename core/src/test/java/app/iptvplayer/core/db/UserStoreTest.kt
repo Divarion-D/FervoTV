@@ -148,6 +148,10 @@ class UserStoreTest {
     @Test
     fun hideAndRenameChannelsAndCategories() {
         refresh()
+        assertEquals(
+            listOf("http://b", "http://c", "http://d"),
+            runBlocking { store.keys(ChannelFilter("k", visibility = Visibility.ALL), 1..3) },
+        )
         user.setHidden(listOf("http://b"), true)
         user.rename("http://c", "Ёлочки")
         refresh()

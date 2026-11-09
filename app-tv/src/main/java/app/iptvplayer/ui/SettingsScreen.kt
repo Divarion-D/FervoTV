@@ -153,6 +153,7 @@ fun SettingsScreen(
     onLoadFile: () -> Unit,
     playerMemory: PlayerMemory,
     onClose: () -> Unit,
+    onManageLive: () -> Unit = {},
 ) {
     // Row to put the focus back on after a subpage, a dialog or the source editor (UI-005); saved across the editor.
     var lastRow by rememberSaveable { mutableStateOf("refresh") }
@@ -312,6 +313,10 @@ fun SettingsScreen(
 
             if (group == SettingsGroup.LIVE) {
             SectionTitle(stringResource(R.string.settings_live))
+            SettingItem(
+                R.drawable.ic_category, stringResource(R.string.manage_live), stringResource(R.string.manage_live_summary),
+                Modifier.row("manageLive"), onClick = onManageLive,
+            )
             SettingItem(
                 R.drawable.ic_live_tv, stringResource(R.string.settings_preview), stringResource(R.string.settings_preview_summary),
                 Modifier.row("preview"), trailing = { Switch(settings.preview, onCheckedChange = null) },

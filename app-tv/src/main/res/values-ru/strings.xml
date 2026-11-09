@@ -158,6 +158,14 @@
     <!-- Настройки: Эфир (LIVE-022) -->
     <string name="settings_open_guide">Открывать сеткой телегида</string>
     <string name="settings_open_guide_summary">«Эфир» открывается сеткой телегида, а не списком</string>
+    <string name="manage_live">Управление категориями</string>
+    <string name="manage_live_summary">Переименование, скрытие и возврат категорий и каналов</string>
+    <string name="manage_channels">Управление каналами</string>
+    <string name="manage_channel_count">Видимых каналов: %1$d</string>
+    <string name="manage_range_hint">Выберите первую строку, затем удерживайте «Скрыть» или «Показать» на последней строке диапазона.</string>
+    <string name="filter_visible">Видимые</string>
+    <string name="filter_hidden">Скрытые</string>
+    <string name="channel_number">Канал %1$d</string>
     <!-- UI-022 -->
     <string name="back">Назад</string>
     <string name="close">Закрыть</string>
