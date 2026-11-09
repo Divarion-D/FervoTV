@@ -9,7 +9,7 @@ class KeyActionTest {
     @Test
     fun channelKeys() {
         for (k in listOf(KEYCODE_CHANNEL_UP, KEYCODE_PAGE_UP, KEYCODE_MEDIA_NEXT)) assertEquals(Action.ChannelUp, keyAction(k))
-        for (k in listOf(KEYCODE_CHANNEL_DOWN, KEYCODE_PAGE_DOWN, KEYCODE_MEDIA_PREVIOUS)) assertEquals(Action.ChannelDown, keyAction(k))
+        for (k in listOf(KEYCODE_CHANNEL_DOWN, KEYCODE_PAGE_DOWN)) assertEquals(Action.ChannelDown, keyAction(k))
     }
 
     @Test
@@ -21,7 +21,7 @@ class KeyActionTest {
         assertEquals(Action.Up, keyAction(KEYCODE_DPAD_UP))
         assertNull(keyAction(KEYCODE_BACK)) // Back goes through BackHandler
         assertNull(keyAction(KEYCODE_A))
-        assertEquals(Action.Recall, keyAction(KEYCODE_LAST_CHANNEL))
+        for (k in listOf(KEYCODE_LAST_CHANNEL, KEYCODE_MEDIA_PREVIOUS)) assertEquals(Action.Recall, keyAction(k))
     }
 
     @Test

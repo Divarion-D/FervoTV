@@ -65,6 +65,10 @@ files: [core/src/main/java/app/iptvplayer/core/player/**, core/src/main/java/app
   tech: `app-tv/src/main/java/app/iptvplayer/ui/PlayerTools.kt`; `VodPlayer.kt`; `core/src/main/java/app/iptvplayer/core/player/AudioDelayProcessor.kt`; `AudioEffectsProcessor.kt`; `VideoDetails.kt`
 - [x] Switch live channels from the transport buttons instead of seeking {#playback-live-transport}
   tech: `PlayerTools.kt`; `PlayerScreen.kt`; `NavigationUiTest.kt`; `make test-ui-build`; `make test-ui-host`
+- [x] Return to the previously watched channel {#playback-previous-channel}
+  by: codex
+  from: roadmap
+  tech: `Action.kt`; `PlayerScreen.kt`; `KeyActionTest.kt`; `NavigationUiTest.kt`
 - [x] Decode unsupported audio with the bundled Media3 FFmpeg extension {#playback-ffmpeg-audio}
   tech: `third_party/media3-ffmpeg/media3-decoder-ffmpeg-1.5.1.aar`; `third_party/media3-ffmpeg/README.md`; `app-tv/build.gradle.kts`; `tools/build-media3-ffmpeg.sh`
 - [ ] Add and select a second playback backend {#playback-alternative-engine}
@@ -137,3 +141,4 @@ files: [PLAN.md, AGENTS.md, CLAUDE.md, README.md, docs/**]
 - 2026-11-07: Split the device UI matrix into independent screen-route test classes over the shared deterministic fixtures. Production UI changes require a reproduced route failure; agents may report missing semantics instead of editing shared screens speculatively.
 - 2026-11-07: Kept the phone emulator on API 35 but moved the TV job to API 36: the official SDK repository has no Android TV API 35 image, while `system-images;android-36;android-tv;x86_64` is published. The first API 35 TV job failed before Gradle for that exact missing package.
 - 2026-11-08: Live transport buttons will reuse the fullscreen player's existing circular channel index navigation; VOD keeps seek and episode controls unchanged. This changes only the two touch-panel actions and their labels/icons, not remote key behavior.
+- 2026-11-09: The live player's previous transport button and media-previous key will reuse the existing `Recall` path; next remains circular channel navigation and VOD controls remain unchanged.

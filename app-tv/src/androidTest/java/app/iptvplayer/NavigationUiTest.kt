@@ -121,5 +121,9 @@ class NavigationUiTest {
         compose.onNodeWithContentDescription(previous).performClick()
         compose.waitUntil(5_000) { compose.onAllNodes(hasText(firstPosition)).fetchSemanticsNodes().isNotEmpty() }
         compose.onNode(hasText("Test MP4") and hasAnySibling(hasText(firstPosition))).assertIsDisplayed()
+
+        compose.onNodeWithContentDescription(previous).performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(secondPosition)).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasText("Test MPEG-TS") and hasAnySibling(hasText(secondPosition))).assertIsDisplayed()
     }
 }

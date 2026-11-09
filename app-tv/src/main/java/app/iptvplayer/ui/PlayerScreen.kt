@@ -233,7 +233,7 @@ fun PlayerScreen(
         if (controls) PlayerControls(
             player,
             shown?.let { onFavorite?.let { action -> { action(it) } } },
-            onChannelStep = { handle(if (it < 0) Action.Down else Action.Up) },
+            onChannelStep = { handle(if (it < 0) Action.Recall else Action.Up) },
             modifier = Modifier.align(Alignment.BottomCenter),
         )
         // The dialed number at the top right (LIVE-009); no clock in the player (UI-009, owner's decision).
