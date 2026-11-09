@@ -37,6 +37,10 @@ files: [core/src/main/java/app/iptvplayer/core/epg/**, core/src/main/java/app/ip
   tech: `app-tv/src/main/java/app/iptvplayer/MainActivity.kt`; `ui/Sections.kt`; `ui/HomeScreen.kt`; `ui/LiveScreen.kt`; `ui/LibraryScreen.kt`; `ui/SearchScreen.kt`; `ui/MoreScreen.kt`
 - [x] Render remote-aware lists, grids, guide navigation and adaptive layouts {#experience-adaptive-navigation}
   tech: `app-tv/src/main/java/app/iptvplayer/Input.kt`; `ui/LiveParts.kt`; `ui/GuideGrid.kt`; `app-tv/src/testDebug/java/app/iptvplayer/LiveNavigationTest.kt`
+- [x] Open the selected channel's schedule with Right and return to that channel with Left {#experience-live-schedule}
+  by: codex
+  from: roadmap
+  tech: `app-tv/src/main/java/app/iptvplayer/ui/LiveScreen.kt`; `app-tv/src/testDebug/java/app/iptvplayer/LiveNavigationTest.kt`
 - [~] Automate end-to-end touch and TV-remote interaction routes {#experience-device-ui-matrix}
   by: codex
   from: roadmap
@@ -137,3 +141,4 @@ files: [PLAN.md, AGENTS.md, CLAUDE.md, README.md, docs/**]
 - 2026-11-07: Split the device UI matrix into independent screen-route test classes over the shared deterministic fixtures. Production UI changes require a reproduced route failure; agents may report missing semantics instead of editing shared screens speculatively.
 - 2026-11-07: Kept the phone emulator on API 35 but moved the TV job to API 36: the official SDK repository has no Android TV API 35 image, while `system-images;android-36;android-tv;x86_64` is published. The first API 35 TV job failed before Gradle for that exact missing package.
 - 2026-11-08: Live transport buttons will reuse the fullscreen player's existing circular channel index navigation; VOD keeps seek and episode controls unchanged. This changes only the two touch-panel actions and their labels/icons, not remote key behavior.
+- 2026-11-09: LIVE-007 reuses the existing schedule panel and future-programme menu; reminder and recording actions remain deferred until EPG-015 and CU-009 exist.

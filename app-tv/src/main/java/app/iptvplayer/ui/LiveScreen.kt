@@ -491,12 +491,25 @@ fun LiveScreen(
 
     fun focusSelectedCategory() = focusCategory(groups.indexOfFirst { it.group == group }.coerceAtLeast(0))
 
+    fun enterSchedule() {
+        if (schedule.isEmpty()) return
+        scheduleMode = true
+        scope.launch {
+            withFrameNanos {}
+            runCatching { scheduleFocus.requestFocus() }
+        }
+    }
+
     /** After a sheet or a dialog: back on the element it was opened on (UI-011). */
     fun restoreFocus() {
         if (!tv) return
         scope.launch {
             withFrameNanos {}
-            if (area == Area.Categories) focusCategory(focusedCat[0]) else focusRow(focusedRow[0])
+            when (area) {
+                Area.Categories -> focusCategory(focusedCat[0])
+                Area.Schedule -> runCatching { scheduleFocus.requestFocus() }
+                else -> focusRow(focusedRow[0])
+            }
         }
     }
 
@@ -651,13 +664,7 @@ fun LiveScreen(
             listOf(
                 str(R.string.menu_watching) to listOf(SheetItem(R.drawable.ic_play_arrow, str(R.string.watch)) { watch(index, item) }),
                 str(R.string.menu_channel) to listOfNotNull(
-                    if (schedule.isNotEmpty()) SheetItem(R.drawable.ic_schedule, str(R.string.hint_schedule)) {
-                        scheduleMode = true
-                        scope.launch {
-                            withFrameNanos {}
-                            runCatching { scheduleFocus.requestFocus() }
-                        }
-                    } else null,
+                    if (schedule.isNotEmpty()) SheetItem(R.drawable.ic_schedule, str(R.string.hint_schedule), onClick = ::enterSchedule) else null,
                     if (item.favorite) SheetItem(R.drawable.ic_favorite_fill, str(R.string.favorite_remove)) { scope.launch { repo.setFavorite(source, ch.key, false) } }
                     else SheetItem(R.drawable.ic_favorite, str(R.string.favorite_add)) { scope.launch { repo.setFavorite(source, ch.key, true) } },
                     SheetItem(R.drawable.ic_playlist_add, str(R.string.collection_add)) { addToCollection(item) },
@@ -940,7 +947,7 @@ fun LiveScreen(
                 true
             }
             Action.Left -> if (!wide || tilesNow) false else { focusSelectedCategory(); true }
-            Action.Right -> if (!wide || tilesNow) false else true
+            Action.Right -> if (!wide || tilesNow) false else { enterSchedule(); true }
             else -> false
         }
     }
@@ -961,8 +968,10 @@ fun LiveScreen(
     }
 
     fun leaveSchedule() {
-        scheduleMode = false
-        scope.launch { focusRow(focusedRow[0]) }
+        scope.launch {
+            focusRow(focusedRow[0])
+            scheduleMode = false
+        }
     }
 
     fun scheduleKeys(a: Action, long: Boolean): Boolean {

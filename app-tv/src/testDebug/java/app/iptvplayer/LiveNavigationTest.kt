@@ -26,6 +26,8 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.input.key.Key
 import app.iptvplayer.core.Repository
+import app.iptvplayer.core.db.EpgStore
+import app.iptvplayer.core.model.Programme
 import app.iptvplayer.core.model.Settings
 import app.iptvplayer.core.model.Source
 import app.iptvplayer.core.player.PlayerSession
@@ -75,7 +77,7 @@ class LiveNavigationTest {
         }
     }
 
-    private fun start(tv: Boolean = true, channels: Int = 30, duplicate: Boolean = false) {
+    private fun start(tv: Boolean = true, channels: Int = 30, duplicate: Boolean = false, schedule: Boolean = false) {
         shadowOf(compose.activity.getSystemService(UiModeManager::class.java)).setCurrentModeType(if (tv) Configuration.UI_MODE_TYPE_TELEVISION else Configuration.UI_MODE_TYPE_NORMAL)
         val file = tmp.newFile("live.m3u")
         playlist = file
@@ -100,6 +102,17 @@ class LiveNavigationTest {
         database = db
         repo = Repository(compose.activity, db)
         runBlocking { repo.load(source) }
+        if (schedule) {
+            val now = System.currentTimeMillis()
+            EpgStore(db).storeShortEpg(
+                "https://example.invalid/1",
+                listOf(
+                    Programme(now - 30 * 60_000, now + 30 * 60_000, "Current programme"),
+                    Programme(now + 30 * 60_000, now + 90 * 60_000, "Future programme", "Future details"),
+                ),
+                now,
+            )
+        }
         val player = PlayerSession { engine }
         compose.setContent {
             AppTheme {
@@ -117,6 +130,39 @@ class LiveNavigationTest {
         compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 1")).assertIsFocused()
         compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
         compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 2")).assertIsFocused()
+    }
+
+    @Test fun rightOpensScheduleAndLeftReturnsToTheSameChannel() {
+        start(schedule = true)
+
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("Future programme", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("Channel 1") and isFocused()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionRight) }
+        val current = SemanticsMatcher.keyIsDefined(SemanticsActions.RequestFocus) and
+            SemanticsMatcher.keyNotDefined(SemanticsActions.OnLongClick) and hasText("Current programme")
+        compose.waitUntil(5_000) { compose.onAllNodes(current and isFocused()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(current and isFocused()).performKeyInput { pressKey(Key.DirectionLeft) }
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("Channel 1") and isFocused()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 1")).assertIsFocused()
+    }
+
+    @Test fun futureProgrammeOpensChannelMenu() {
+        start(schedule = true)
+
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("Future programme", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("Channel 1") and isFocused()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionRight) }
+        val programmeRow = SemanticsMatcher.keyIsDefined(SemanticsActions.RequestFocus) and
+            SemanticsMatcher.keyNotDefined(SemanticsActions.OnLongClick)
+        val current = programmeRow and hasText("Current programme") and isFocused()
+        compose.waitUntil(5_000) { compose.onAllNodes(current).fetchSemanticsNodes().isNotEmpty() }
+        val future = compose.onNode(programmeRow and hasText("Future programme"))
+        future.performSemanticsAction(SemanticsActions.RequestFocus)
+        future.assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.waitUntil(5_000) {
+            runCatching { compose.onNodeWithText(compose.activity.getString(R.string.watch_channel)).assertIsDisplayed() }.isSuccess
+        }
+        compose.onNodeWithText("Future details", substring = true, ignoreCase = true).assertIsDisplayed()
     }
 
     @Test fun searchOpensOnlyOnOkAndBackClearsQueryToTheField() {
