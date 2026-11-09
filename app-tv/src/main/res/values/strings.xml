@@ -493,6 +493,7 @@
     <string name="fav_remove">Remove</string>
     <string name="fav_move">Move</string>
     <string name="fav_move_hint">▲▼ — move, OK — keep, Back — cancel</string>
+    <string name="reorder_hint">▲▼ — one row, CH+/CH− — one page, hold CH+/CH− — first/last, OK — put down or pick up. Save applies all changes; Back cancels.</string>
     <string name="fav_empty_hint_tv">Long OK on a channel, film or series → “Add to favourites”</string>
     <string name="fav_empty_hint_touch">Long press a channel, film or series → “Add to favourites”</string>
     <string name="move_up">Up</string>

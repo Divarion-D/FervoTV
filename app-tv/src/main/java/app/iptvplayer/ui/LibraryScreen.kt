@@ -109,6 +109,13 @@ import kotlin.coroutines.cancellation.CancellationException
 /** Where the remote's focus is in the library (Back and the key hints follow it). */
 private enum class LibArea { Rail, Top, Categories, Grid }
 
+private class VodReorderSpec(
+    val title: String,
+    val items: List<ReorderEntry>,
+    val startKey: String,
+    val save: suspend (List<String>) -> Unit,
+)
+
 private val VodGroupSaver = Saver<VodGroup, String>({ it.asChannelGroup().encode() }, { decodeGroup(it).asVodGroup() })
 
 /**
@@ -195,6 +202,7 @@ fun LibraryScreen(
     var playing by remember { mutableStateOf<VodPlay?>(null) }
     var lastEpisode by remember { mutableStateOf<String?>(null) }
     var sheet by remember { mutableStateOf<Pair<String, List<SheetGroup>>?>(null) }
+    var reorder by remember { mutableStateOf<VodReorderSpec?>(null) }
     var dialog by remember { mutableStateOf<(@Composable () -> Unit)?>(null) }
     var toast by remember { mutableStateOf<Pair<String, Long>?>(null) }
     fun say(text: String) {
@@ -458,6 +466,28 @@ fun LibraryScreen(
         }
     }
 
+    fun startItemOrder(item: VodItem, list: VodGroup = group) {
+        if (list !is VodGroup.Category && list !is VodGroup.Collection && list != VodGroup.Favorites) return
+        scope.launch {
+            val f = filter.copy(group = list, search = "", sort = VodSort.PROVIDER, visibility = Visibility.ALL)
+            val rows = repo.firstVod(f, repo.vodCount(f)).distinctBy { it.key }
+            reorder = VodReorderSpec(
+                groups.find { it.group == list.asChannelGroup() }?.title ?: str(R.string.vod_order),
+                rows.map { ReorderEntry(it.key, it.title) }, item.key,
+            ) { keys -> repo.reorderVod(source, kind, list, keys) }
+        }
+    }
+
+    fun startCategoryOrder(gc: GroupCount) {
+        val category = gc.group.asVodGroup() as? VodGroup.Category ?: return
+        scope.launch {
+            val rows = repo.vodCategories(source, kind, withHidden = true).first()
+            reorder = VodReorderSpec(
+                str(R.string.reset_category_order), rows.map { ReorderEntry(it.name, it.title) }, category.name,
+            ) { names -> repo.reorderVodCategories(source, kind, names) }
+        }
+    }
+
     /** The library and organizing lines of a film or series (on a poster, the film card and the series page). */
     fun itemLines(item: VodItem): List<SheetGroup> {
         val g = group
@@ -472,7 +502,10 @@ fun LibraryScreen(
                 SheetItem(R.drawable.ic_playlist_add, str(R.string.collection_add)) { addToCollection(item) },
                 (g as? VodGroup.Collection)?.let { c -> SheetItem(R.drawable.ic_playlist_remove, str(R.string.collection_remove)) { scope.launch { repo.removeFromVodCollection(c.id, item.key) } } },
             ),
-            str(R.string.menu_organize) to listOf(
+            str(R.string.menu_organize) to listOfNotNull(
+                if (g is VodGroup.Category || g is VodGroup.Collection || g == VodGroup.Favorites)
+                    SheetItem(R.drawable.ic_swap_vert, str(R.string.fav_move)) { startItemOrder(item, g) }
+                else null,
                 SheetItem(R.drawable.ic_edit, str(R.string.rename)) {
                     dialog = {
                         TextDialog(str(R.string.vod_name), item.title, str(R.string.vod_name_reset_hint), { scope.launch { repo.renameVod(item.key, it); changed() } }) { closeDialog() }
@@ -522,6 +555,7 @@ fun LibraryScreen(
         val lines = mutableListOf<SheetItem>()
         when (g) {
             is VodGroup.Category -> {
+                lines += SheetItem(R.drawable.ic_swap_vert, str(R.string.fav_move)) { startCategoryOrder(gc) }
                 lines += SheetItem(R.drawable.ic_edit, str(R.string.rename)) {
                     dialog = {
                         TextDialog(str(R.string.category_name), gc.title, str(R.string.vod_name_reset_hint), { scope.launch { repo.renameVodCategory(source, kind, g.name, it) } }) { closeDialog() }
@@ -825,6 +859,13 @@ fun LibraryScreen(
         }
         toast?.let { (text, _) ->
             Toast(text, Modifier.align(Alignment.BottomCenter).then(if (wide) Modifier.padding(bottom = 84.dp) else Modifier.navigationBarsPadding().padding(bottom = 136.dp)))
+        }
+        reorder?.let { r ->
+            ReorderMode(
+                r.title, r.items, r.startKey,
+                onSave = { keys -> scope.launch { r.save(keys); reorder = null; restoreFocus() } },
+                onCancel = { reorder = null; restoreFocus() },
+            )
         }
     }
     dialog?.invoke()

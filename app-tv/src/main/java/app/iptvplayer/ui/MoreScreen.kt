@@ -34,7 +34,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -250,10 +249,12 @@ private fun Modifier.combinedClickableNoLong(interaction: MutableInteractionSour
 /** HOME-014 filter: everything, or one kind. */
 private enum class FavFilter { ALL, CHANNELS, MOVIES, SERIES }
 
+private data class FavoriteReorder(val kind: FavFilter, val startKey: String, val items: List<ReorderEntry>)
+
 /**
  * HOME-014: all favourite channels (with what's on now), films and series on one page, filtered by kind. OK opens the
- * item in its section; its menu (long OK, Menu, long press) has «Убрать» and «Переместить»: in moving mode ▲▼ (or the
- * arrows on the line) move it, OK or «Готово» keeps the new order, Back puts it back as it was.
+ * item in its section; its menu (long OK, Menu, long press) has «Убрать» and «Переместить». The shared reorder mode
+ * keeps all moves as a draft until Save; Back discards them.
  */
 @Composable
 private fun FavoritesPage(
@@ -268,53 +269,31 @@ private fun FavoritesPage(
     val now by remember { minuteTicks() }.collectAsState(System.currentTimeMillis())
     var filter by rememberSaveable { mutableStateOf(FavFilter.ALL) }
     var sheet by remember { mutableStateOf<Pair<String, List<SheetGroup>>?>(null) }
-    // Moving mode: the kind's list as it will be saved, and which line moves.
-    var moving by remember { mutableStateOf<Pair<FavFilter, List<Pair<String, String>>>?>(null) }
-    var movingIndex by remember { mutableIntStateOf(0) }
-    val movingFocus = remember { FocusRequester() }
-    val movingState = rememberLazyListState()
+    var moving by remember { mutableStateOf<FavoriteReorder?>(null) }
     val key = source.cacheKey()
-    LaunchedEffect(moving?.first, movingIndex) {
-        if (moving == null) return@LaunchedEffect
-        movingState.scrollToItem(movingIndex)
-        if (tv) { withFrameNanos {}; runCatching { movingFocus.requestFocus() } }
-    }
 
     fun startMoving(kind: FavFilter, itemKey: String) {
         scope.launch {
             val list = when (kind) {
-                FavFilter.CHANNELS -> repo.firstChannels(ChannelFilter(key, ChannelGroup.Favorites), channels.itemCount).map { it.channel.key to it.channel.name }
-                FavFilter.MOVIES -> repo.firstVod(VodFilter(key, VodKind.MOVIE, VodGroup.Favorites), movies.itemCount).map { it.key to it.title }
-                else -> repo.firstVod(VodFilter(key, VodKind.SERIES, VodGroup.Favorites), series.itemCount).map { it.key to it.title }
+                FavFilter.CHANNELS -> ChannelFilter(key, ChannelGroup.Favorites).let { f -> repo.firstChannels(f, repo.channelCount(f)).map { ReorderEntry(it.channel.key, it.channel.name) } }
+                FavFilter.MOVIES -> VodFilter(key, VodKind.MOVIE, VodGroup.Favorites).let { f -> repo.firstVod(f, repo.vodCount(f)).map { ReorderEntry(it.key, it.title) } }
+                else -> VodFilter(key, VodKind.SERIES, VodGroup.Favorites).let { f -> repo.firstVod(f, repo.vodCount(f)).map { ReorderEntry(it.key, it.title) } }
             }
-            val index = list.indexOfFirst { it.first == itemKey }
-            if (index < 0) return@launch // removed or refreshed while the menu was open
-            movingIndex = index
-            moving = kind to list
+            if (list.none { it.key == itemKey }) return@launch // removed or refreshed while the menu was open
+            moving = FavoriteReorder(kind, itemKey, list)
         }
     }
 
-    fun move(by: Int) {
-        val (kind, list) = moving ?: return
-        val to = (movingIndex + by).coerceIn(0, list.size - 1)
-        if (to == movingIndex) return
-        moving = kind to list.toMutableList().apply { add(to, removeAt(movingIndex)) }
-        movingIndex = to
-    }
-
-    fun saveMoving() {
-        val (kind, list) = moving ?: return
-        moving = null
+    fun saveMoving(kind: FavFilter, keys: List<String>) {
         scope.launch {
-            val keys = list.map { it.first }
             when (kind) {
                 FavFilter.CHANNELS -> repo.reorder(source, ChannelGroup.Favorites, keys)
                 FavFilter.MOVIES -> repo.reorderVod(source, VodKind.MOVIE, VodGroup.Favorites, keys)
                 else -> repo.reorderVod(source, VodKind.SERIES, VodGroup.Favorites, keys)
             }
+            moving = null
         }
     }
-    BackHandler(moving != null) { moving = null }
 
     fun menu(kind: FavFilter, itemKey: String, title: String) {
         sheet = title to listOf(
@@ -328,7 +307,11 @@ private fun FavoritesPage(
     }
 
     Box(modifier) {
-        Column(Modifier.fillMaxSize()) {
+        val order = moving
+        if (order != null) ReorderMode(
+            ctx.getString(order.kind.title()), order.items, order.startKey,
+            onSave = { saveMoving(order.kind, it) }, onCancel = { moving = null },
+        ) else Column(Modifier.fillMaxSize()) {
             val kinds = FavFilter.entries.filter {
                 it == FavFilter.ALL || it == FavFilter.CHANNELS || (it == FavFilter.MOVIES && VodKind.MOVIE in library) || (it == FavFilter.SERIES && VodKind.SERIES in library)
             }
@@ -345,26 +328,7 @@ private fun FavoritesPage(
                     }
                 }
             }
-            val m = moving
-            if (m != null) {
-                // Moving mode: the whole list of that kind, the moving line marked.
-                Text(stringResource(R.string.fav_move_hint), style = TvType.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
-                LazyColumn(
-                    Modifier.weight(1f).fillMaxWidth().remoteKeys { a, _ ->
-                        when (a) {
-                            Action.Up -> { move(-1); true }
-                            Action.Down -> { move(1); true }
-                            Action.Ok -> { saveMoving(); true }
-                            else -> false
-                        }
-                    },
-                    movingState, verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    itemsIndexed(m.second, key = { _, it -> it.first }) { i, (_, name) ->
-                        MovingLine(name, i == movingIndex, if (i == movingIndex) Modifier.focusRequester(movingFocus) else Modifier, onUp = { move(-1) }, onDown = { move(1) }, onDone = ::saveMoving)
-                    }
-                }
-            } else if (channels.itemCount + movies.itemCount + series.itemCount == 0) {
+            if (channels.itemCount + movies.itemCount + series.itemCount == 0) {
                 EmptyState(
                     R.drawable.ic_star_fill, stringResource(R.string.favorites_empty),
                     stringResource(if (tv) R.string.fav_empty_hint_tv else R.string.fav_empty_hint_touch), Modifier.fillMaxWidth(),
@@ -413,31 +377,6 @@ private fun FavFilter.title(): Int = when (this) {
 @Composable
 private fun PageHeading(text: String) =
     Text(text, style = TvType.label, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp, top = 12.dp, bottom = 4.dp))
-
-/** A line in moving mode: the moving one is filled, with ▲▼ and «Готово» for touch. */
-@Composable
-private fun MovingLine(name: String, on: Boolean, modifier: Modifier, onUp: () -> Unit, onDown: () -> Unit, onDone: () -> Unit) {
-    val c = MaterialTheme.colorScheme
-    val interaction = remember { MutableInteractionSource() }
-    val focused by interaction.collectIsFocusedAsState()
-    Row(
-        modifier.fillMaxWidth().height(56.dp)
-            .background(if (on) (if (focused) Ext.focus else c.surfaceContainerHigh) else Color.Transparent, RoundedCornerShape(12.dp))
-            .combinedClickableNoLong(interaction) { if (on) onDone() }
-            .padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (on) Icon(painterResource(R.drawable.ic_swap_vert), null, tint = if (focused) Ext.onFocus else c.primary, modifier = Modifier.size(20.dp).padding(end = 4.dp))
-        Text(name, style = TvType.body, color = if (on && focused) Ext.onFocus else c.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 8.dp))
-        if (on && !LocalContext.current.isTv()) {
-            ToolButton(R.drawable.ic_arrow_upward, stringResource(R.string.move_up), size = 48.dp, onClick = onUp)
-            Spacer(Modifier.width(8.dp))
-            ToolButton(R.drawable.ic_arrow_downward, stringResource(R.string.move_down), size = 48.dp, onClick = onDown)
-            Spacer(Modifier.width(8.dp))
-            ToolButton(R.drawable.ic_check, stringResource(R.string.done), size = 48.dp, onClick = onDone)
-        }
-    }
-}
 
 // --- History (HOME-013) ---
 

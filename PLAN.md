@@ -31,7 +31,7 @@ files: [core/src/main/java/app/iptvplayer/core/db/**, core/src/main/java/app/ipt
 tech: the adaptive Compose shell in `app-tv` consumes home, search, guide and logo projections from `core`.
 needs: [ingestion, persistence]
 links: [playback, configuration]
-files: [core/src/main/java/app/iptvplayer/core/epg/**, core/src/main/java/app/iptvplayer/core/home/**, core/src/main/java/app/iptvplayer/core/search/**, core/src/main/java/app/iptvplayer/core/logos/**, app-tv/src/main/java/app/iptvplayer/MainActivity.kt, app-tv/src/main/java/app/iptvplayer/Input.kt, app-tv/src/main/java/app/iptvplayer/ui/HomeScreen.kt, app-tv/src/main/java/app/iptvplayer/ui/Live*.kt, app-tv/src/main/java/app/iptvplayer/ui/GuideGrid.kt, app-tv/src/main/java/app/iptvplayer/ui/LibraryScreen.kt, app-tv/src/main/java/app/iptvplayer/ui/SearchScreen.kt, app-tv/src/main/java/app/iptvplayer/ui/MoreScreen.kt, app-tv/src/main/java/app/iptvplayer/ui/VodPages.kt, app-tv/src/main/java/app/iptvplayer/ui/VodParts.kt, app-tv/src/main/java/app/iptvplayer/ui/Sections.kt, app-tv/src/main/java/app/iptvplayer/ui/ChannelLogo.kt, app-tv/src/main/res/**, app-tv/src/sharedUiTest/**, app-tv/src/testDebug/**, app-tv/src/androidTest/**]
+files: [core/src/main/java/app/iptvplayer/core/epg/**, core/src/main/java/app/iptvplayer/core/home/**, core/src/main/java/app/iptvplayer/core/search/**, core/src/main/java/app/iptvplayer/core/logos/**, app-tv/src/main/java/app/iptvplayer/MainActivity.kt, app-tv/src/main/java/app/iptvplayer/Input.kt, app-tv/src/main/java/app/iptvplayer/ui/HomeScreen.kt, app-tv/src/main/java/app/iptvplayer/ui/Live*.kt, app-tv/src/main/java/app/iptvplayer/ui/GuideGrid.kt, app-tv/src/main/java/app/iptvplayer/ui/LibraryScreen.kt, app-tv/src/main/java/app/iptvplayer/ui/SearchScreen.kt, app-tv/src/main/java/app/iptvplayer/ui/MoreScreen.kt, app-tv/src/main/java/app/iptvplayer/ui/ReorderMode.kt, app-tv/src/main/java/app/iptvplayer/ui/VodPages.kt, app-tv/src/main/java/app/iptvplayer/ui/VodParts.kt, app-tv/src/main/java/app/iptvplayer/ui/Sections.kt, app-tv/src/main/java/app/iptvplayer/ui/ChannelLogo.kt, app-tv/src/main/res/**, app-tv/src/sharedUiTest/**, app-tv/src/testDebug/**, app-tv/src/androidTest/**]
 
 - [x] Route home, live TV, guide, VOD, search, favorites and history in one shell {#experience-route-sections}
   tech: `app-tv/src/main/java/app/iptvplayer/MainActivity.kt`; `ui/Sections.kt`; `ui/HomeScreen.kt`; `ui/LiveScreen.kt`; `ui/LibraryScreen.kt`; `ui/SearchScreen.kt`; `ui/MoreScreen.kt`
@@ -41,6 +41,10 @@ files: [core/src/main/java/app/iptvplayer/core/epg/**, core/src/main/java/app/ip
   by: codex
   from: roadmap
   tech: `ui/LiveScreen.kt`; `ui/LiveParts.kt`; `core/Defaults.kt`; `app-tv/src/testDebug/java/app/iptvplayer/LiveNavigationTest.kt`
+- [x] Reorder several list items before saving or cancelling {#experience-manual-order}
+  by: codex
+  from: roadmap
+  tech: one reusable Compose reorder screen serves live and VOD categories/items, favourites and Home rows; repository order APIs remain the persistence boundary
 - [~] Automate end-to-end touch and TV-remote interaction routes {#experience-device-ui-matrix}
   by: codex
   from: roadmap
@@ -143,3 +147,4 @@ files: [PLAN.md, AGENTS.md, CLAUDE.md, README.md, docs/**]
 - 2026-11-07: Split the device UI matrix into independent screen-route test classes over the shared deterministic fixtures. Production UI changes require a reproduced route failure; agents may report missing semantics instead of editing shared screens speculatively.
 - 2026-11-07: Kept the phone emulator on API 35 but moved the TV job to API 36: the official SDK repository has no Android TV API 35 image, while `system-images;android-36;android-tv;x86_64` is published. The first API 35 TV job failed before Gradle for that exact missing package.
 - 2026-11-08: Live transport buttons will reuse the fullscreen player's existing circular channel index navigation; VOD keeps seek and episode controls unchanged. This changes only the two touch-panel actions and their labels/icons, not remote key behavior.
+- 2026-11-09: LIVE-013 uses one reusable draft reorder screen for every existing manual-order UI. Sports has no order model or screen in this checkout, so the task adds no speculative sports feature.

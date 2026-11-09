@@ -71,7 +71,6 @@ import app.iptvplayer.core.home.HomeRow
 import app.iptvplayer.core.home.HomeRowSetting
 import app.iptvplayer.core.home.encodeHomeRows
 import app.iptvplayer.core.home.homeRows
-import app.iptvplayer.core.home.moved
 import app.iptvplayer.core.model.StartScreen
 import app.iptvplayer.core.model.SubtitleBackground
 import app.iptvplayer.core.model.SubtitleColor
@@ -169,6 +168,7 @@ fun SettingsScreen(
     var playerReset by remember { mutableStateOf<Pair<List<PlayerMemory.Kind>, Boolean>?>(null) }
     var playerCounts by remember(playerMemory) { mutableStateOf(playerMemory.counts()) }
     var startDialog by remember { mutableStateOf(false) }
+    var homeMoving by remember { mutableStateOf<HomeRow?>(null) }
     var groupName by rememberSaveable { mutableStateOf<String?>(null) }
     val group = groupName?.let(SettingsGroup::valueOf)
     BackHandler(onBack = { if (group == null) onClose() else groupName = null })
@@ -192,6 +192,22 @@ fun SettingsScreen(
 
     if (group == null) {
         SettingsGroupList(onOpen = { groupName = it.name }, onClose = onClose)
+        return
+    }
+
+    homeMoving?.let { start ->
+        val home = homeRows(settings.homeRows, settings.homeChannels)
+        ReorderMode(
+            stringResource(R.string.settings_home),
+            home.map { ReorderEntry(it.row.name, stringResource(it.row.title())) },
+            start.name,
+            onSave = { order ->
+                val byName = home.associateBy { it.row.name }
+                onChange(settings.copy(homeRows = encodeHomeRows(order.mapNotNull(byName::get))))
+                homeMoving = null
+            },
+            onCancel = { homeMoving = null },
+        )
         return
     }
 
@@ -291,7 +307,7 @@ fun SettingsScreen(
                 R.drawable.ic_guide, stringResource(R.string.settings_home_guide), stringResource(R.string.settings_home_guide_summary),
                 Modifier.row("homeGuide"), trailing = { Switch(settings.homeGuide, onCheckedChange = null) },
             ) { onChange(settings.copy(homeGuide = !settings.homeGuide)) }
-            // The rows: on/off by OK, ▲▼ buttons beside move them.
+            // The rows: on/off by OK; the shared LIVE-013 screen changes their order as one draft.
             val rows = homeRows(settings.homeRows, settings.homeChannels)
             rows.forEachIndexed { i, r ->
                 fun save(list: List<HomeRowSetting>) = onChange(settings.copy(homeRows = encodeHomeRows(list)))
@@ -300,8 +316,7 @@ fun SettingsScreen(
                     Modifier.row("home_" + r.row.name),
                     trailing = {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            if (i > 0) ToolButton(R.drawable.ic_arrow_upward, stringResource(R.string.move_up)) { save(rows.moved(r.row, -1)) }
-                            if (i < rows.lastIndex) ToolButton(R.drawable.ic_arrow_downward, stringResource(R.string.move_down)) { save(rows.moved(r.row, 1)) }
+                            ToolButton(R.drawable.ic_swap_vert, stringResource(R.string.fav_move)) { homeMoving = r.row }
                             Switch(r.on, onCheckedChange = null)
                         }
                     },

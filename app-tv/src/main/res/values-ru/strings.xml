@@ -490,6 +490,7 @@
     <string name="fav_remove">Убрать</string>
     <string name="fav_move">Переместить</string>
     <string name="fav_move_hint">▲▼ — двигать, OK — оставить так, Назад — отменить</string>
+    <string name="reorder_hint">▲▼ — строка, CH+/CH− — страница, удержание CH+/CH− — начало/конец, OK — положить или взять. «Сохранить» применит всё, Назад отменит.</string>
     <string name="fav_empty_hint_tv">Долгий OK на канале, фильме или сериале → «В избранное»</string>
     <string name="fav_empty_hint_touch">Долгое нажатие на канале, фильме или сериале → «В избранное»</string>
     <string name="move_up">Выше</string>

@@ -130,6 +130,13 @@ private enum class Area { Rail, Top, Categories, List, Schedule, Grid }
 /** An open sheet: title, the channel it is about (logo in the header), its groups of lines. */
 private class SheetSpec(val title: String, val channel: ChannelItem?, val groups: List<SheetGroup>)
 
+private class ReorderSpec(
+    val title: String,
+    val items: List<ReorderEntry>,
+    val startKey: String,
+    val save: suspend (List<String>) -> Unit,
+)
+
 private val GroupSaver = Saver<ChannelGroup, String>({ it.encode() }, ::decodeGroup)
 
 /** TV, and any screen from 600 dp held in landscape (tablet, phone on its side); the rest gets the phone layout. */
@@ -286,6 +293,7 @@ fun LiveScreen(
     var schedule by remember { mutableStateOf<List<Programme>>(emptyList()) }
     var scheduleMode by remember { mutableStateOf(false) }
     var sheet by remember { mutableStateOf<SheetSpec?>(null) }
+    var reorder by remember { mutableStateOf<ReorderSpec?>(null) }
     var dialog by remember { mutableStateOf<(@Composable () -> Unit)?>(null) }
     var toast by remember { mutableStateOf<Pair<String, Long>?>(null) }
     fun say(text: String) {
@@ -621,6 +629,28 @@ fun LiveScreen(
         }
     }
 
+    fun startChannelOrder(item: ChannelItem, list: ChannelGroup = group) {
+        if (list !is ChannelGroup.Category && list !is ChannelGroup.Collection && list != ChannelGroup.Favorites) return
+        scope.launch {
+            val f = filterFor(list).copy(search = "", sort = ChannelSort.PROVIDER, visibility = Visibility.ALL, guideOnly = false)
+            val rows = repo.firstChannels(f, repo.channelCount(f)).distinctBy { it.channel.key }
+            reorder = ReorderSpec(
+                groupsAll?.find { it.group == list }?.title ?: str(R.string.channel_order),
+                rows.map { ReorderEntry(it.channel.key, it.channel.name) }, item.channel.key,
+            ) { keys -> repo.reorder(source, list, keys) }
+        }
+    }
+
+    fun startCategoryOrder(gc: GroupCount) {
+        val category = gc.group as? ChannelGroup.Category ?: return
+        scope.launch {
+            val rows = repo.categories(source, withHidden = true).first()
+            reorder = ReorderSpec(
+                str(R.string.reset_category_order), rows.map { ReorderEntry(it.name, it.title) }, category.name,
+            ) { names -> repo.reorderCategories(source, names) }
+        }
+    }
+
     /** LIVE-015: what changes, then back as in the playlist; [category] null = all categories. */
     fun resetEdits(category: String?, title: String?) {
         scope.launch {
@@ -664,6 +694,9 @@ fun LiveScreen(
                     (g as? ChannelGroup.Collection)?.let { c ->
                         SheetItem(R.drawable.ic_playlist_remove, str(R.string.collection_remove)) { scope.launch { repo.removeFromCollection(c.id, ch.key) } }
                     },
+                    if (g is ChannelGroup.Category || g is ChannelGroup.Collection || g == ChannelGroup.Favorites)
+                        SheetItem(R.drawable.ic_swap_vert, str(R.string.fav_move)) { startChannelOrder(item, g) }
+                    else null,
                     SheetItem(R.drawable.ic_edit, str(R.string.rename)) {
                         dialog = {
                             TextDialog(str(R.string.channel_name), ch.name, str(R.string.name_reset_hint), { scope.launch { repo.rename(ch.key, it) } }) { closeDialog() }
@@ -681,6 +714,7 @@ fun LiveScreen(
         val lines = mutableListOf<SheetItem>()
         when (g) {
             is ChannelGroup.Category -> {
+                lines += SheetItem(R.drawable.ic_swap_vert, str(R.string.fav_move)) { startCategoryOrder(gc) }
                 lines += SheetItem(R.drawable.ic_edit, str(R.string.rename)) {
                     dialog = {
                         TextDialog(str(R.string.category_name), gc.title, str(R.string.name_reset_hint), { scope.launch { repo.renameCategory(source, g.name, it) } }) { closeDialog() }
@@ -1381,6 +1415,13 @@ fun LiveScreen(
         }
         toast?.let { (text, _) ->
             Toast(text, Modifier.align(Alignment.BottomCenter).then(if (wide) Modifier.padding(bottom = 84.dp) else Modifier.navigationBarsPadding().padding(bottom = 136.dp))) // over the task pill
+        }
+        reorder?.let { r ->
+            ReorderMode(
+                r.title, r.items, r.startKey,
+                onSave = { keys -> scope.launch { r.save(keys); reorder = null; restoreFocus() } },
+                onCancel = { reorder = null; restoreFocus() },
+            )
         }
     }
     dialog?.invoke()
