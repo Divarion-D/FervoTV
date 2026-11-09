@@ -140,9 +140,10 @@ class LiveNavigationTest {
 
         compose.mainClock.advanceTimeBy(100)
         compose.runOnIdle { assertEquals(listOf("https://example.invalid/3"), engine.played.map { it.url }) }
+        compose.mainClock.autoAdvance = true
         compose.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
-        compose.mainClock.advanceTimeByFrame()
         compose.runOnIdle {
+            assertTrue(engine.view is SurfaceView)
             assertEquals(1, engine.played.size)
             assertEquals(0, engine.stops)
             assertEquals(0, engine.releases)
