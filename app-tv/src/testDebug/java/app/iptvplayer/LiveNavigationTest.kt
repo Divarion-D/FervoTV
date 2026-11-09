@@ -142,7 +142,11 @@ class LiveNavigationTest {
         compose.runOnIdle { assertEquals(listOf("https://example.invalid/3"), engine.played.map { it.url }) }
         compose.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
         compose.mainClock.advanceTimeByFrame()
-        compose.runOnIdle { assertEquals(1, engine.played.size) }
+        compose.runOnIdle {
+            assertEquals(1, engine.played.size)
+            assertEquals(0, engine.stops)
+            assertEquals(0, engine.releases)
+        }
     }
 
     @Test fun searchOpensOnlyOnOkAndBackClearsQueryToTheField() {
@@ -291,10 +295,12 @@ class LiveNavigationTest {
         override fun resume() = Unit
         override fun seekTo(ms: Long) = Unit
         override fun retry() = Unit
-        override fun stop() = Unit
+        var stops = 0
+        override fun stop() { stops++ }
         override fun setMuted(muted: Boolean) = Unit
         var view: View? = null
         override fun setVideoView(view: View?) { this.view = view }
-        override fun release() = Unit
+        var releases = 0
+        override fun release() { releases++ }
     }
 }
