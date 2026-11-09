@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.*
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import android.view.View
@@ -27,6 +28,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.input.key.Key
+import app.iptvplayer.core.Defaults
 import app.iptvplayer.core.Repository
 import app.iptvplayer.core.model.Settings
 import app.iptvplayer.core.model.Source
@@ -78,7 +80,14 @@ class LiveNavigationTest {
         }
     }
 
-    private fun start(tv: Boolean = true, channels: Int = 30, duplicate: Boolean = false, tiles: Boolean = false, favorite: Int? = null, search: Boolean = false) {
+    private fun start(
+        tv: Boolean = true,
+        channels: Int = 30,
+        duplicate: Boolean = false,
+        settings: Settings = Settings(preview = false, rememberLive = false, liveTiles = false),
+        favorite: Int? = null,
+        search: Boolean = false,
+    ) {
         shadowOf(compose.activity.getSystemService(UiModeManager::class.java)).setCurrentModeType(if (tv) Configuration.UI_MODE_TYPE_TELEVISION else Configuration.UI_MODE_TYPE_NORMAL)
         val file = tmp.newFile("live.m3u")
         playlist = file
@@ -112,7 +121,7 @@ class LiveNavigationTest {
                 if (search) SearchScreen(
                     repo, source, player, Settings(preview = false), true, null, emptySet(), null, {}, { _, _ -> }, null,
                 ) else LiveScreen(repo, source, player,
-                    Settings(preview = false, rememberLive = false, liveTiles = tiles), true, null, {})
+                    settings, true, null, {})
             }
         }
         if (!search) compose.waitUntil(10_000) { compose.onAllNodesWithText("Channel 1").fetchSemanticsNodes().isNotEmpty() }
@@ -121,7 +130,7 @@ class LiveNavigationTest {
     }
 
     @Test fun favoriteTileShowsHeart() {
-        start(channels = 1, tiles = true, favorite = 1)
+        start(channels = 1, settings = Settings(preview = false, rememberLive = false, liveTiles = true), favorite = 1)
         compose.onNodeWithContentDescription(compose.activity.getString(R.string.row_favorite)).assertIsDisplayed()
     }
 
@@ -178,6 +187,29 @@ class LiveNavigationTest {
         compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 1")).assertIsFocused()
         compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
         compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 2")).assertIsFocused()
+    }
+
+    @Test fun rapidFocusStartsOnlyTheSettledPreviewAndFullscreenReusesIt() {
+        start(settings = Settings(preview = true, previewSound = false, rememberLive = false, liveTiles = false))
+        compose.waitUntil(10_000) { engine.played.isNotEmpty() }
+        engine.played.clear()
+        compose.mainClock.autoAdvance = false
+
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+        compose.mainClock.advanceTimeBy(Defaults.PREVIEW_DELAY_MS / 2)
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+        compose.mainClock.advanceTimeBy(Defaults.PREVIEW_DELAY_MS - 100)
+        compose.runOnIdle { assertTrue(engine.played.isEmpty()) }
+
+        compose.mainClock.advanceTimeBy(100)
+        compose.runOnIdle { assertEquals(listOf("https://example.invalid/3"), engine.played.map { it.url }) }
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.mainClock.advanceTimeByFrame()
+        compose.runOnIdle {
+            assertEquals(1, engine.played.size)
+            assertEquals(0, engine.stops)
+            assertEquals(0, engine.releases)
+        }
     }
 
     @Test fun searchOpensOnlyOnOkAndBackClearsQueryToTheField() {
@@ -320,15 +352,18 @@ class LiveNavigationTest {
         override val state = MutableStateFlow(PlaybackState())
         override val position = 0L
         override val duration = 0L
-        override fun play(item: PlayItem) = Unit
+        val played = mutableListOf<PlayItem>()
+        override fun play(item: PlayItem) { played += item }
         override fun pause() = Unit
         override fun resume() = Unit
         override fun seekTo(ms: Long) = Unit
         override fun retry() = Unit
-        override fun stop() = Unit
+        var stops = 0
+        override fun stop() { stops++ }
         override fun setMuted(muted: Boolean) = Unit
         var view: View? = null
         override fun setVideoView(view: View?) { this.view = view }
-        override fun release() = Unit
+        var releases = 0
+        override fun release() { releases++ }
     }
 }
