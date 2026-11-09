@@ -37,6 +37,10 @@ files: [core/src/main/java/app/iptvplayer/core/epg/**, core/src/main/java/app/ip
   tech: `app-tv/src/main/java/app/iptvplayer/MainActivity.kt`; `ui/Sections.kt`; `ui/HomeScreen.kt`; `ui/LiveScreen.kt`; `ui/LibraryScreen.kt`; `ui/SearchScreen.kt`; `ui/MoreScreen.kt`
 - [x] Render remote-aware lists, grids, guide navigation and adaptive layouts {#experience-adaptive-navigation}
   tech: `app-tv/src/main/java/app/iptvplayer/Input.kt`; `ui/LiveParts.kt`; `ui/GuideGrid.kt`; `app-tv/src/testDebug/java/app/iptvplayer/LiveNavigationTest.kt`
+- [x] Keep live preview delayed and reuse its stream in full screen {#experience-live-preview}
+  by: codex
+  from: roadmap
+  tech: `ui/LiveScreen.kt`; `ui/LiveParts.kt`; `core/Defaults.kt`; `app-tv/src/testDebug/java/app/iptvplayer/LiveNavigationTest.kt`
 - [~] Automate end-to-end touch and TV-remote interaction routes {#experience-device-ui-matrix}
   by: codex
   from: roadmap
@@ -128,6 +132,8 @@ files: [PLAN.md, AGENTS.md, CLAUDE.md, README.md, docs/**]
   tech: `docs/PRE_RELEASE.md`; `docs/P3_PLAYER_DEVICE_CHECKS.md`; `docs/P3_TV_DEVICE_CHECKS.md`
 
 ## decisions
+
+- 2026-11-09: LIVE-006 production behavior already exists in `LiveScreen.kt`, `LiveParts.kt`, settings and player-session handoff. This task will add focused regression coverage for delayed focus playback and stream reuse instead of duplicating the feature; DL-009 and physical-TV acceptance stay separate.
 
 - 2026-11-07: Replaced the placeholder `setup` node with eight session-ownable components derived from the current source tree. IDs introduced by this backfill are now stable.
 - 2026-11-07: Treated code and tracked build inputs as implementation evidence, then recent Git history, then acceptance/handoff records. README and roadmap claims were used only for unchecked intent.
