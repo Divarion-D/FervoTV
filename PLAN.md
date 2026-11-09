@@ -37,6 +37,9 @@ files: [core/src/main/java/app/iptvplayer/core/epg/**, core/src/main/java/app/ip
   tech: `app-tv/src/main/java/app/iptvplayer/MainActivity.kt`; `ui/Sections.kt`; `ui/HomeScreen.kt`; `ui/LiveScreen.kt`; `ui/LibraryScreen.kt`; `ui/SearchScreen.kt`; `ui/MoreScreen.kt`
 - [x] Render remote-aware lists, grids, guide navigation and adaptive layouts {#experience-adaptive-navigation}
   tech: `app-tv/src/main/java/app/iptvplayer/Input.kt`; `ui/LiveParts.kt`; `ui/GuideGrid.kt`; `app-tv/src/testDebug/java/app/iptvplayer/LiveNavigationTest.kt`
+- [x] Open grouped channel actions from remote and touch {#experience-channel-actions}
+  by: codex
+  tech: context menu entry points, conditional actions and focus restoration in `ui/Live*.kt`, with targeted UI tests
 - [x] Keep live preview delayed and reuse its stream in full screen {#experience-live-preview}
   by: codex
   from: roadmap

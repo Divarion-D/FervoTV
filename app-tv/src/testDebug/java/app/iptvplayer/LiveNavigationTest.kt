@@ -126,6 +126,53 @@ class LiveNavigationTest {
         compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 2")).assertIsFocused()
     }
 
+    @Test fun menuKeyOpensGroupedChannelActionsAndBackRestoresFocus() {
+        start()
+        val channel = SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 1")
+        fun action(id: Int) = hasTextExactly(compose.activity.getString(id)) and hasClickAction()
+        val watch = action(R.string.watch)
+
+        compose.onRoot().performKeyInput { pressKey(Key.Menu) }
+
+        compose.onNodeWithText(compose.activity.getString(R.string.menu_watching).uppercase()).assertIsDisplayed()
+        compose.onNodeWithText(compose.activity.getString(R.string.menu_channel).uppercase()).assertIsDisplayed()
+        compose.onNode(watch).assertIsDisplayed()
+        compose.onNode(action(R.string.favorite_add)).assertIsDisplayed()
+        compose.onNode(action(R.string.collection_add)).assertIsDisplayed()
+        compose.onNode(action(R.string.rename)).assertIsDisplayed()
+        compose.onNode(action(R.string.hide)).assertIsDisplayed()
+        compose.onNodeWithText(compose.activity.getString(R.string.hint_schedule)).assertDoesNotExist()
+
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.waitUntil(5_000) { compose.onAllNodes(watch).fetchSemanticsNodes().isEmpty() }
+        compose.onNode(channel).assertIsFocused()
+    }
+
+    @Test fun longOkOpensChannelActions() {
+        start()
+        compose.runOnUiThread {
+            compose.activity.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DPAD_CENTER))
+            compose.activity.dispatchKeyEvent(
+                android.view.KeyEvent(0, 1, android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DPAD_CENTER, 1, 0, -1, 0, android.view.KeyEvent.FLAG_LONG_PRESS),
+            )
+            compose.activity.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DPAD_CENTER))
+        }
+
+        compose.onNodeWithText(compose.activity.getString(R.string.menu_watching).uppercase()).assertIsDisplayed()
+    }
+
+    @Test
+    @Config(qualifiers = "en-w400dp-h800dp-port")
+    fun touchLongPressOpensChannelActions() {
+        start(tv = false)
+
+        compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 1"))
+            .performSemanticsAction(SemanticsActions.OnLongClick)
+
+        compose.onNodeWithText(compose.activity.getString(R.string.menu_watching).uppercase()).assertIsDisplayed()
+        compose.onNode(hasTextExactly(compose.activity.getString(R.string.watch)) and hasClickAction()).assertIsDisplayed()
+    }
+
     @Test fun rapidFocusStartsOnlyTheSettledPreviewAndFullscreenReusesIt() {
         start(settings = Settings(preview = true, previewSound = false, rememberLive = false, liveTiles = false))
         compose.waitUntil(10_000) { engine.played.isNotEmpty() }
