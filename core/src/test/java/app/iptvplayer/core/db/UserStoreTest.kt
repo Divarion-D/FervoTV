@@ -199,6 +199,38 @@ class UserStoreTest {
         assertEquals(listOf("Новости", "Кино", "Спорт"), runBlocking { store.categories("k").first() }.map { it.name })
     }
 
+    @Test
+    fun resetRestoresPlaylistEditsAndKeepsOtherUserData() {
+        refresh()
+        val collection = user.createCollection("Моя")
+        user.addToCollection(collection, "http://a")
+        user.setFavorite("k", "http://a", true)
+        user.bindEpg(listOf(Triple("http://a", "guide-a", null)), takeLogo = false)
+        user.rename("http://a", "Мой первый")
+        user.setHidden(listOf("http://b"), true)
+        user.renameCategory("k", "Новости", "Мои новости")
+        user.setCategoriesHidden("k", listOf("Кино"), true)
+        user.reorder("k", cat("Новости"), listOf("http://b", "http://a"))
+        user.reorderCategories("k", listOf("Спорт", "Новости", "Кино"))
+
+        switchTo("k2", other)
+        user.rename("http://n/1", "Другие новости")
+        user.renameCategory("k2", "Новости", "Другой источник")
+        refresh()
+
+        user.reset("k", null)
+
+        assertEquals(listOf("Первый", "Второй"), names(cat("Новости")))
+        assertEquals(listOf("Новости", "Кино", "Спорт"), runBlocking { store.categories("k").first() }.map { it.title })
+        assertEquals(listOf("Первый"), names(ChannelGroup.Favorites))
+        assertEquals(listOf("Первый"), names(ChannelGroup.Collection(collection)))
+        assertEquals("guide-a", runBlocking { user.channelState("http://a") }?.epg)
+
+        switchTo("k2", other)
+        assertEquals("Другие новости", items("k2").first().channel.name)
+        assertEquals("Другой источник", runBlocking { store.categories("k2").first() }.first().title)
+    }
+
     /** LIVE-014 and LIVE-010 lists. */
     @Test
     fun collectionsRecentAndServiceGroups() {
