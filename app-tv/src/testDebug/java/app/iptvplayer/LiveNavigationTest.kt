@@ -2,8 +2,10 @@ package app.iptvplayer
 
 import android.app.UiModeManager
 import android.content.res.Configuration
+import android.os.SystemClock
 import android.view.SurfaceView
 import android.view.ViewGroup
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.ui.platform.ComposeView
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -15,6 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.*
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import android.view.View
@@ -25,6 +28,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.input.key.Key
+import app.iptvplayer.core.Defaults
 import app.iptvplayer.core.Repository
 import app.iptvplayer.core.model.Settings
 import app.iptvplayer.core.model.Source
@@ -35,6 +39,7 @@ import app.iptvplayer.core.player.PlayItem
 import kotlinx.coroutines.flow.MutableStateFlow
 import app.iptvplayer.ui.AppTheme
 import app.iptvplayer.ui.LiveScreen
+import app.iptvplayer.ui.SearchScreen
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
@@ -75,7 +80,14 @@ class LiveNavigationTest {
         }
     }
 
-    private fun start(tv: Boolean = true, channels: Int = 30, duplicate: Boolean = false) {
+    private fun start(
+        tv: Boolean = true,
+        channels: Int = 30,
+        duplicate: Boolean = false,
+        settings: Settings = Settings(preview = false, rememberLive = false, liveTiles = false),
+        favorite: Int? = null,
+        search: Boolean = false,
+    ) {
         shadowOf(compose.activity.getSystemService(UiModeManager::class.java)).setCurrentModeType(if (tv) Configuration.UI_MODE_TYPE_TELEVISION else Configuration.UI_MODE_TYPE_NORMAL)
         val file = tmp.newFile("live.m3u")
         playlist = file
@@ -99,17 +111,75 @@ class LiveNavigationTest {
             }, Executor { it.run() }).build()
         database = db
         repo = Repository(compose.activity, db)
-        runBlocking { repo.load(source) }
+        runBlocking {
+            repo.load(source)
+            favorite?.let { repo.setFavorite(source, "https://example.invalid/$it", true) }
+        }
         val player = PlayerSession { engine }
         compose.setContent {
             AppTheme {
-                LiveScreen(repo, source, player,
-                    Settings(preview = false, rememberLive = false, liveTiles = false), true, null, {})
+                if (search) SearchScreen(
+                    repo, source, player, Settings(preview = false), true, null, emptySet(), null, {}, { _, _ -> }, null,
+                ) else LiveScreen(repo, source, player,
+                    settings, true, null, {})
             }
         }
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Channel 1").fetchSemanticsNodes().isNotEmpty() }
+        if (!search) compose.waitUntil(10_000) { compose.onAllNodesWithText("Channel 1").fetchSemanticsNodes().isNotEmpty() }
         compose.mainClock.advanceTimeBy(500)
         compose.waitForIdle()
+    }
+
+    @Test fun favoriteTileShowsHeart() {
+        start(channels = 1, settings = Settings(preview = false, rememberLive = false, liveTiles = true), favorite = 1)
+        compose.onNodeWithContentDescription(compose.activity.getString(R.string.row_favorite)).assertIsDisplayed()
+    }
+
+    @Test fun searchResultMenuTogglesFavorite() {
+        start(tv = false, channels = 3, search = true)
+        compose.onNode(hasSetTextAction()).performTextInput("Channel 1")
+        compose.mainClock.advanceTimeBy(500)
+        val channel = hasText("Channel 1") and !hasSetTextAction() and SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick)
+        compose.waitUntil(10_000) { compose.onAllNodes(channel).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(channel).performSemanticsAction(SemanticsActions.OnLongClick)
+        compose.waitForIdle()
+        compose.onNodeWithText(compose.activity.getString(R.string.favorite_add))
+            .performSemanticsAction(SemanticsActions.RequestFocus)
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.waitForIdle()
+        assertTrue(runBlocking { repo.channel(source, "https://example.invalid/1")?.favorite == true })
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithContentDescription(compose.activity.getString(R.string.row_favorite)).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    @Test fun searchResultRemoteMenusToggleFavoriteAndRestoreFocus() {
+        start(channels = 3, search = true)
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.waitUntil(5_000) { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasSetTextAction()).performTextInput("Channel 1")
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.waitUntil(5_000) { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isEmpty() }
+        compose.mainClock.advanceTimeBy(500)
+        val channel = hasText("Channel 1") and !hasSetTextAction() and SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick)
+        compose.waitUntil(10_000) { compose.onAllNodes(channel).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(channel).performSemanticsAction(SemanticsActions.RequestFocus)
+
+        compose.onRoot().performKeyInput { pressKey(Key.Menu) }
+        compose.onNodeWithText(compose.activity.getString(R.string.favorite_add)).assertIsFocused()
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.waitUntil(10_000) { runBlocking { repo.channel(source, "https://example.invalid/1")?.favorite == true } }
+        compose.onNode(channel).assertIsFocused()
+
+        compose.runOnUiThread {
+            val down = SystemClock.uptimeMillis()
+            compose.activity.dispatchKeyEvent(AndroidKeyEvent(down, down, AndroidKeyEvent.ACTION_DOWN, AndroidKeyEvent.KEYCODE_DPAD_CENTER, 0))
+            compose.activity.dispatchKeyEvent(AndroidKeyEvent(down, down + 500, AndroidKeyEvent.ACTION_DOWN, AndroidKeyEvent.KEYCODE_DPAD_CENTER, 1, 0, -1, 0, AndroidKeyEvent.FLAG_LONG_PRESS))
+            compose.activity.dispatchKeyEvent(AndroidKeyEvent(down, down + 501, AndroidKeyEvent.ACTION_UP, AndroidKeyEvent.KEYCODE_DPAD_CENTER, 0))
+        }
+        compose.onNodeWithText(compose.activity.getString(R.string.favorite_remove)).assertIsFocused()
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.waitUntil(10_000) { runBlocking { repo.channel(source, "https://example.invalid/1")?.favorite == false } }
+        compose.onNode(channel).assertIsFocused()
     }
 
     @Test fun opensOnFirstChannelAndRemoteMovesToNext() {
@@ -117,6 +187,29 @@ class LiveNavigationTest {
         compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 1")).assertIsFocused()
         compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
         compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("Channel 2")).assertIsFocused()
+    }
+
+    @Test fun rapidFocusStartsOnlyTheSettledPreviewAndFullscreenReusesIt() {
+        start(settings = Settings(preview = true, previewSound = false, rememberLive = false, liveTiles = false))
+        compose.waitUntil(10_000) { engine.played.isNotEmpty() }
+        engine.played.clear()
+        compose.mainClock.autoAdvance = false
+
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+        compose.mainClock.advanceTimeBy(Defaults.PREVIEW_DELAY_MS / 2)
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+        compose.mainClock.advanceTimeBy(Defaults.PREVIEW_DELAY_MS - 100)
+        compose.runOnIdle { assertTrue(engine.played.isEmpty()) }
+
+        compose.mainClock.advanceTimeBy(100)
+        compose.runOnIdle { assertEquals(listOf("https://example.invalid/3"), engine.played.map { it.url }) }
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.mainClock.advanceTimeByFrame()
+        compose.runOnIdle {
+            assertEquals(1, engine.played.size)
+            assertEquals(0, engine.stops)
+            assertEquals(0, engine.releases)
+        }
     }
 
     @Test fun searchOpensOnlyOnOkAndBackClearsQueryToTheField() {
@@ -259,15 +352,18 @@ class LiveNavigationTest {
         override val state = MutableStateFlow(PlaybackState())
         override val position = 0L
         override val duration = 0L
-        override fun play(item: PlayItem) = Unit
+        val played = mutableListOf<PlayItem>()
+        override fun play(item: PlayItem) { played += item }
         override fun pause() = Unit
         override fun resume() = Unit
         override fun seekTo(ms: Long) = Unit
         override fun retry() = Unit
-        override fun stop() = Unit
+        var stops = 0
+        override fun stop() { stops++ }
         override fun setMuted(muted: Boolean) = Unit
         var view: View? = null
         override fun setVideoView(view: View?) { this.view = view }
-        override fun release() = Unit
+        var releases = 0
+        override fun release() { releases++ }
     }
 }

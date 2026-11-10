@@ -227,6 +227,22 @@ fun SearchScreen(
         )
     }
 
+    fun channelMenu(item: ChannelItem) {
+        sheet = item.channel.name to listOf(
+            null to listOf(
+                SheetItem(
+                    if (item.favorite) R.drawable.ic_favorite_fill else R.drawable.ic_favorite,
+                    ctx.getString(if (item.favorite) R.string.favorite_remove else R.string.favorite_add),
+                ) {
+                    scope.launch {
+                        repo.setFavorite(source, item.channel.key, !item.favorite)
+                        results = repo.search(source, query)
+                    }
+                },
+            ),
+        )
+    }
+
     val exit = remember { ExitGuard() }
     var toast by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(toast) { if (toast != null) { delay(Defaults.TOAST_MS); toast = null } }
@@ -280,10 +296,12 @@ fun SearchScreen(
                         )
                     }
                     item(key = h.id) {
-                        val mod = (if (h.id == focusId) Modifier.focusRequester(hitFocus) else Modifier)
+                        val mod = (if (h.id == focusId) Modifier.focusRequester(hitFocus) else Modifier).then(
+                            if (h.channel != null) Modifier.remoteKeysMenu({ open(h) }) { channelMenu(h.channel) } else Modifier,
+                        )
                         val onFocus = { focused = h; focusId = h.id }
                         when {
-                            h.channel != null -> ChannelRow(h.channel, false, now, !wide, mod, onFocus, { open(h) }, { open(h) })
+                            h.channel != null -> ChannelRow(h.channel, false, now, !wide, mod, onFocus, { open(h) }, { channelMenu(h.channel) })
                             h.programme != null -> ProgrammeHitRow(h.programme, now, !wide, mod, onFocus) { open(h) }
                             h.vod != null -> VodRow(h.vod, !wide, mod, onFocus, { open(h) }, { open(h) })
                         }
@@ -330,7 +348,7 @@ fun SearchScreen(
         sheet?.let { (title, groups) ->
             ActionSheet(title, null, groups, wide) {
                 sheet = null
-                if (tv) scope.launch { withFrameNanos {}; runCatching { fieldFocus.requestFocus() } }
+                if (tv) scope.launch { withFrameNanos {}; focusContent() }
             }
         }
     }

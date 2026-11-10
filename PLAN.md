@@ -25,6 +25,10 @@ files: [core/src/main/java/app/iptvplayer/core/db/**, core/src/main/java/app/ipt
   tech: `core/src/main/java/app/iptvplayer/core/db/Db.kt`; `PlaylistStore.kt`; `EpgStore.kt`; `LibraryStore.kt`; `core/schemas/app.iptvplayer.core.db.AppDb/7.json`
 - [x] Preserve favorites, edits, collections, history and resume positions {#persistence-user-state}
   tech: `core/src/main/java/app/iptvplayer/core/db/UserStore.kt`; `LibraryUser.kt`; `core/src/test/java/app/iptvplayer/core/db/UserStoreTest.kt`; `LibraryStoreTest.kt`
+- [x] Keep favorite channels available across source changes {#persistence-live-favorites}
+  by: codex
+  from: roadmap
+  tech: stable channel keys and stored source names resolve the first current-source match without deleting unmatched favorites
 
 ## Navigate live, guide and library content {#experience}
 
@@ -37,6 +41,14 @@ files: [core/src/main/java/app/iptvplayer/core/epg/**, core/src/main/java/app/ip
   tech: `app-tv/src/main/java/app/iptvplayer/MainActivity.kt`; `ui/Sections.kt`; `ui/HomeScreen.kt`; `ui/LiveScreen.kt`; `ui/LibraryScreen.kt`; `ui/SearchScreen.kt`; `ui/MoreScreen.kt`
 - [x] Render remote-aware lists, grids, guide navigation and adaptive layouts {#experience-adaptive-navigation}
   tech: `app-tv/src/main/java/app/iptvplayer/Input.kt`; `ui/LiveParts.kt`; `ui/GuideGrid.kt`; `app-tv/src/testDebug/java/app/iptvplayer/LiveNavigationTest.kt`
+- [x] Show and toggle favorite channels across live surfaces {#experience-live-favorites}
+  by: codex
+  from: roadmap
+  tech: live rows, tiles, guide, search and player surfaces expose the favorite toggle and marker; `LiveNavigationTest.kt` covers touch and TV remote paths
+- [x] Keep live preview delayed and reuse its stream in full screen {#experience-live-preview}
+  by: codex
+  from: roadmap
+  tech: `ui/LiveScreen.kt`; `ui/LiveParts.kt`; `core/Defaults.kt`; `app-tv/src/testDebug/java/app/iptvplayer/LiveNavigationTest.kt`
 - [~] Automate end-to-end touch and TV-remote interaction routes {#experience-device-ui-matrix}
   by: codex
   from: roadmap
@@ -133,6 +145,8 @@ files: [PLAN.md, AGENTS.md, CLAUDE.md, README.md, docs/**]
 
 ## decisions
 
+- 2026-11-09: LIVE-006 production behavior already exists in `LiveScreen.kt`, `LiveParts.kt`, settings and player-session handoff. This task will add focused regression coverage for delayed focus playback and stream reuse instead of duplicating the feature; DL-009 and physical-TV acceptance stay separate.
+
 - 2026-11-07: Replaced the placeholder `setup` node with eight session-ownable components derived from the current source tree. IDs introduced by this backfill are now stable.
 - 2026-11-07: Treated code and tracked build inputs as implementation evidence, then recent Git history, then acceptance/handoff records. README and roadmap claims were used only for unchecked intent.
 - 2026-11-07: Omitted `app-mobile` as a component: commit `22a2151` removed its source, and `settings.gradle.kts` now includes only `core` and `app-tv`. The roadmap's older three-module P0 criterion is stale.
@@ -143,4 +157,5 @@ files: [PLAN.md, AGENTS.md, CLAUDE.md, README.md, docs/**]
 - 2026-11-08: Live transport buttons will reuse the fullscreen player's existing circular channel index navigation; VOD keeps seek and episode controls unchanged. This changes only the two touch-panel actions and their labels/icons, not remote key behavior.
 - 2026-11-09: The live player's previous transport button and media-previous key will reuse the existing `Recall` path; next remains circular channel navigation and VOD controls remain unchanged.
 - 2026-11-09: Keep Last/Recall as `Recall`, but map media-previous to its own action so live recalls the prior channel while VOD still opens the previous episode.
+- 2026-11-09: Split LIVE-008 ownership between persistence and experience so the component map assigns storage to core and favorite controls to app-tv.
 - 2026-11-10: Defer source/channel identity in recall history to multi-provider aggregation; the current repository exposes one active source, so cross-provider state would be unused today.
