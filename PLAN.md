@@ -44,7 +44,7 @@ files: [core/src/main/java/app/iptvplayer/core/epg/**, core/src/main/java/app/ip
 - [x] Manage hidden and renamed live categories and channels {#experience-manage-live-visibility}
   by: codex
   from: roadmap
-  tech: `ui/LiveManagementScreen.kt`; `PlaylistStore.keys`; stable-key range anchors, profile-backed filters and one management entry for the separate P5 `PROF-006` gate
+  tech: `ui/LiveManagementScreen.kt`; stable-key range anchors, visible TV focus and the shared `NowPlaying` surface; one management entry for the separate P5 `PROF-006` gate
 - [x] Show and toggle favorite channels across live surfaces {#experience-live-favorites}
   by: codex
   from: roadmap

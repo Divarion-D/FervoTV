@@ -61,8 +61,8 @@ fun Modifier.focusRing(shape: Shape): Modifier {
 }
 
 @Composable
-fun BackButton(onClick: () -> Unit) =
-    IconButton(onClick = onClick, modifier = Modifier.focusRing(RoundedCornerShape(50))) {
+fun BackButton(onClick: () -> Unit, modifier: Modifier = Modifier) =
+    IconButton(onClick = onClick, modifier = modifier.focusRing(RoundedCornerShape(50))) {
         Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = stringResource(R.string.back))
     }
 

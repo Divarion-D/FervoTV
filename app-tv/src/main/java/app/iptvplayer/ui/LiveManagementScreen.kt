@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import app.iptvplayer.R
+import app.iptvplayer.initialFocus
 import app.iptvplayer.core.Repository
 import app.iptvplayer.core.db.ChannelFilter
 import app.iptvplayer.core.db.ChannelGroup
@@ -83,7 +84,7 @@ fun LiveManagementScreen(repo: Repository, source: Source, initialCategory: Stri
         val selectedCategory = categories.firstOrNull { (it.group as ChannelGroup.Category).name == category }
         TopAppBar(
             title = { Text(selectedCategory?.title ?: stringResource(R.string.manage_live)) },
-            navigationIcon = { BackButton(::back) },
+            navigationIcon = { BackButton(::back, Modifier.initialFocus()) },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         )
         Column(Modifier.widthIn(max = 840.dp).fillMaxWidth().weight(1f)) {
@@ -272,7 +273,7 @@ private fun ManagementListItem(
         colors = ListItemDefaults.colors(
             containerColor = if (selected) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainerLow,
         ),
-        modifier = Modifier.fillMaxWidth().clip(shape).combinedClickable(onLongClick = onSelect, onClick = onSelect)
+        modifier = Modifier.fillMaxWidth().focusRing(shape).clip(shape).combinedClickable(onLongClick = onSelect, onClick = onSelect)
             .then(if (hidden) Modifier.padding(start = 8.dp) else Modifier),
     )
 }
@@ -295,7 +296,7 @@ private fun ManageButton(
 ) {
     val interaction = remember { MutableInteractionSource() }
     androidx.compose.foundation.layout.Box(
-        Modifier.size(48.dp).clip(CircleShape)
+        Modifier.size(48.dp).focusRing(CircleShape).clip(CircleShape)
             .semantics { contentDescription = description }
             .combinedClickable(interaction, ripple(), onLongClick = onLongClick, onClick = onClick),
         contentAlignment = Alignment.Center,

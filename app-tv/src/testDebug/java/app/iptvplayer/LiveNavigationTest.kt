@@ -38,6 +38,7 @@ import app.iptvplayer.core.player.PlaybackState
 import app.iptvplayer.core.player.PlayItem
 import kotlinx.coroutines.flow.MutableStateFlow
 import app.iptvplayer.ui.AppTheme
+import app.iptvplayer.ui.LiveManagementScreen
 import app.iptvplayer.ui.LiveScreen
 import app.iptvplayer.ui.SearchScreen
 import kotlinx.coroutines.runBlocking
@@ -87,6 +88,7 @@ class LiveNavigationTest {
         settings: Settings = Settings(preview = false, rememberLive = false, liveTiles = false),
         favorite: Int? = null,
         search: Boolean = false,
+        management: Boolean = false,
     ) {
         shadowOf(compose.activity.getSystemService(UiModeManager::class.java)).setCurrentModeType(if (tv) Configuration.UI_MODE_TYPE_TELEVISION else Configuration.UI_MODE_TYPE_NORMAL)
         val file = tmp.newFile("live.m3u")
@@ -118,15 +120,21 @@ class LiveNavigationTest {
         val player = PlayerSession { engine }
         compose.setContent {
             AppTheme {
-                if (search) SearchScreen(
+                if (management) LiveManagementScreen(repo, source, onClose = {})
+                else if (search) SearchScreen(
                     repo, source, player, Settings(preview = false), true, null, emptySet(), null, {}, { _, _ -> }, null,
                 ) else LiveScreen(repo, source, player,
                     settings, true, null, {})
             }
         }
-        if (!search) compose.waitUntil(10_000) { compose.onAllNodesWithText("Channel 1").fetchSemanticsNodes().isNotEmpty() }
+        if (!search && !management) compose.waitUntil(10_000) { compose.onAllNodesWithText("Channel 1").fetchSemanticsNodes().isNotEmpty() }
         compose.mainClock.advanceTimeBy(500)
         compose.waitForIdle()
+    }
+
+    @Test fun managementStartsOnAVisibleRemoteTarget() {
+        start(channels = 1, management = true)
+        compose.onNodeWithContentDescription(compose.activity.getString(R.string.back)).assertIsFocused()
     }
 
     @Test fun favoriteTileShowsHeart() {

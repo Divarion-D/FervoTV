@@ -199,7 +199,7 @@ fun SettingsScreen(
     Column(Modifier.fillMaxSize().safeDrawingPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
         TopAppBar(
             title = { Text(stringResource(group.title)) },
-            navigationIcon = { BackButton { groupName = null } },
+            navigationIcon = { BackButton(onClick = { groupName = null }) },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         )
         Column(

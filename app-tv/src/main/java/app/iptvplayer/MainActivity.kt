@@ -676,7 +676,7 @@ private fun App(repo: Repository, onLanguage: (String) -> Unit, onPlayer: (Playe
         PlaybackContent.SERIES -> section != Section.Series
         null -> false
     }
-    NowPlaying(player, playingElsewhere || settingsOpen)
+    NowPlaying(player, playingElsewhere || settingsOpen || liveManagement)
 
     if (changelogOffer && availableUpdate == null) {
         val shape = RoundedCornerShape(50)
