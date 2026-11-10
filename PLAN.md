@@ -13,7 +13,7 @@ files: [core/src/main/java/app/iptvplayer/core/Repository.kt, core/src/main/java
   tech: `core/src/main/java/app/iptvplayer/core/source/PlaylistCache.kt`; `core/src/main/java/app/iptvplayer/core/Repository.kt` (`load`, `recognize`, `episodes`)
 - [ ] Combine multiple provider accounts in one library {#ingestion-multiple-providers}
   from: roadmap
-  tech: intent is `SRC-013`–`SRC-015` in `docs/spec/90-roadmap.md`; current `Repository.kt` exposes one active `Source`, not a combined source set
+  tech: intent is `SRC-013`–`SRC-015` in `docs/spec/90-roadmap.md`; current `Repository.kt` exposes one active `Source`; aggregation must store source/channel identity in `zapped` for cross-provider LIVE-018 recall
 
 ## Preserve catalogs and viewing state {#persistence}
 
@@ -143,3 +143,4 @@ files: [PLAN.md, AGENTS.md, CLAUDE.md, README.md, docs/**]
 - 2026-11-08: Live transport buttons will reuse the fullscreen player's existing circular channel index navigation; VOD keeps seek and episode controls unchanged. This changes only the two touch-panel actions and their labels/icons, not remote key behavior.
 - 2026-11-09: The live player's previous transport button and media-previous key will reuse the existing `Recall` path; next remains circular channel navigation and VOD controls remain unchanged.
 - 2026-11-09: Keep Last/Recall as `Recall`, but map media-previous to its own action so live recalls the prior channel while VOD still opens the previous episode.
+- 2026-11-10: Defer source/channel identity in recall history to multi-provider aggregation; the current repository exposes one active source, so cross-provider state would be unused today.
