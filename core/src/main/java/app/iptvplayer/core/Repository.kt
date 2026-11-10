@@ -432,8 +432,6 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
 
     /** Live rows with now/next (EPG-006); the shift of [settings] is applied. */
     fun items(f: ChannelFilter): Flow<PagingData<ChannelItem>> = store.items(f, settings.epgShift)
-    suspend fun channelKeys(f: ChannelFilter, range: IntRange): List<String> = store.keys(f, range)
-
     /** Programme grid rows for [from, to) (EPG-008); the first page starts at row [initialKey]. */
     fun guide(f: ChannelFilter, from: Long, to: Long, initialKey: Int? = null): Flow<PagingData<GuideRow>> =
         store.guide(f, settings.epgShift, from, to, initialKey)
@@ -464,6 +462,19 @@ class Repository(private val ctx: Context, private val db: AppDb = AppDb.get(ctx
     suspend fun setFavorite(s: Source, key: String, on: Boolean) = io { user.setFavorite(s.cacheKey(), key, on) }
     suspend fun toggleFavorite(s: Source, key: String): Boolean = io { user.toggleFavorite(s.cacheKey(), key) }
     suspend fun setHidden(keys: List<String>, hidden: Boolean) = io { user.setHidden(keys, hidden) }
+    suspend fun setHiddenRange(
+        f: ChannelFilter,
+        startKey: String?,
+        startOccurrence: Int,
+        endKey: String,
+        endOccurrence: Int,
+        hidden: Boolean,
+    ) = io {
+        db.runInTransaction {
+            val keys = store.keysBetween(f, startKey, startOccurrence, endKey, endOccurrence)
+            if (keys.isNotEmpty()) user.setHidden(keys, hidden)
+        }
+    }
     suspend fun rename(key: String, name: String?) = io { user.rename(key, name) }
     suspend fun setCategoriesHidden(s: Source, names: List<String>, hidden: Boolean) = io { user.setCategoriesHidden(s.cacheKey(), names, hidden) }
     suspend fun renameCategory(s: Source, name: String, title: String?) = io { user.renameCategory(s.cacheKey(), name, title) }

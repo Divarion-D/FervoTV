@@ -247,13 +247,30 @@ class PlaylistStore(private val db: AppDb, private val clock: () -> Long = Syste
     suspend fun first(f: ChannelFilter, n: Int): List<ChannelItem> = withContext(Dispatchers.IO) { rows(f, n, 0).map { it.item(null, null) } }
 
     /** Stable keys of an inclusive block in the filtered list (LIVE-012 range actions). */
-    suspend fun keys(f: ChannelFilter, range: IntRange): List<String> = withContext(Dispatchers.IO) {
-        if (range.isEmpty()) emptyList() else rows(f, range.last - range.first + 1, range.first).map { it.channel.key }.distinct()
+    suspend fun keys(f: ChannelFilter, range: IntRange): List<String> = withContext(Dispatchers.IO) { keysNow(f, range) }
+
+    internal fun keysBetween(
+        f: ChannelFilter,
+        startKey: String?,
+        startOccurrence: Int,
+        endKey: String,
+        endOccurrence: Int,
+    ): List<String> {
+        val end = indexOfNow(f, endKey, endOccurrence) ?: return emptyList()
+        val start = startKey?.let { indexOfNow(f, it, startOccurrence) } ?: end
+        return keysNow(f, minOf(start, end)..maxOf(start, end))
     }
+
+    private fun keysNow(f: ChannelFilter, range: IntRange): List<String> =
+        if (range.isEmpty()) emptyList() else rows(f, range.last - range.first + 1, range.first).map { it.channel.key }.distinct()
 
     /** Position of the channel [key] in the list (LIVE-017: focus where the user left), null if it isn't there. */
     suspend fun indexOf(f: ChannelFilter, key: String, occurrence: Int? = null): Int? = withContext(Dispatchers.IO) {
-        db.query(f.query("ch.ckey, ch.sourceId, ch.position", order = true)).use { c ->
+        indexOfNow(f, key, occurrence)
+    }
+
+    private fun indexOfNow(f: ChannelFilter, key: String, occurrence: Int? = null): Int? {
+        return db.query(f.query("ch.ckey, ch.sourceId, ch.position", order = true)).use { c ->
             while (c.moveToNext()) if (c.getString(0) == key) {
                 if (occurrence == null) return@use c.position
                 val ordinal = db.query(SimpleSQLiteQuery(

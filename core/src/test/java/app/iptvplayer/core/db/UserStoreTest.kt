@@ -1,6 +1,7 @@
 package app.iptvplayer.core.db
 
 import androidx.room.Room
+import app.iptvplayer.core.Repository
 import app.iptvplayer.core.loadPage
 import app.iptvplayer.core.model.Channel
 import app.iptvplayer.core.model.ChannelItem
@@ -175,6 +176,21 @@ class UserStoreTest {
         val all = runBlocking { store.groups("k", withHidden = true).first() }.filter { it.group is ChannelGroup.Category }
         assertEquals(listOf("Новости" to false, "Кино" to true, "Футбол" to false), all.map { it.title to it.hidden })
         assertEquals(2, runBlocking { store.groups("k").first() }.count { it.group is ChannelGroup.Category })
+    }
+
+    @Test
+    fun rangeVisibilityResolvesStableAnchorsTogether() {
+        refresh()
+        refresh(listOf(Channel("Новый", "http://new", "Новости")) + playlist)
+        val filter = ChannelFilter("k", visibility = Visibility.ALL)
+        val repo = Repository(RuntimeEnvironment.getApplication(), db)
+
+        runBlocking { repo.setHiddenRange(filter, "missing", 0, "http://d", 0, true) }
+        assertEquals(listOf("Матч"), list(visibility = Visibility.HIDDEN).map { it.channel.name })
+        runBlocking { repo.setHiddenRange(filter, null, 0, "http://d", 0, false) }
+        runBlocking { repo.setHiddenRange(filter, "http://b", 0, "http://d", 0, true) }
+
+        assertEquals(listOf("Второй", "Ёлки", "Матч"), list(visibility = Visibility.HIDDEN).map { it.channel.name })
     }
 
     /** LIVE-013/015: manual order on top of the provider's; new channels go after; reset brings the playlist back. */

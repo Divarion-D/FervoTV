@@ -154,10 +154,14 @@ fun LiveManagementScreen(repo: Repository, source: Source, initialCategory: Stri
                                 val startKey = rangeStartKey
                                 val startOccurrence = rangeStartOccurrence
                                 scope.launch {
-                                    val end = repo.indexOf(filter, row.channel.key, row.occurrence) ?: return@launch
-                                    val start = if (long && startKey != null) repo.indexOf(filter, startKey, startOccurrence) else null
-                                    val range = if (long) rangeBetween(start, end) else end..end
-                                    repo.setHidden(repo.channelKeys(filter, range), !row.hidden)
+                                    repo.setHiddenRange(
+                                        filter,
+                                        startKey.takeIf { long },
+                                        startOccurrence,
+                                        row.channel.key,
+                                        row.occurrence,
+                                        !row.hidden,
+                                    )
                                 }
                                 rangeStartKey = null
                             },
