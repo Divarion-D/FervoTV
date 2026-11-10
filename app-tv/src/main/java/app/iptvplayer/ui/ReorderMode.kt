@@ -106,7 +106,7 @@ internal fun ReorderMode(
         LazyColumn(
             Modifier.fillMaxSize().remoteKeys { action, long ->
                 state = when (action) {
-                    Action.Up -> state.step(-1)
+                    Action.Up -> if (state.cursor == 0 && !state.picked) return@remoteKeys false else state.step(-1)
                     Action.Down -> state.step(1)
                     Action.ChannelUp -> state.moveTo(if (long) 0 else state.cursor - Defaults.LIST_PAGE)
                     Action.ChannelDown -> state.moveTo(if (long) state.items.lastIndex else state.cursor + Defaults.LIST_PAGE)
