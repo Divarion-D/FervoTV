@@ -142,3 +142,4 @@ files: [PLAN.md, AGENTS.md, CLAUDE.md, README.md, docs/**]
 - 2026-11-07: Kept the phone emulator on API 35 but moved the TV job to API 36: the official SDK repository has no Android TV API 35 image, while `system-images;android-36;android-tv;x86_64` is published. The first API 35 TV job failed before Gradle for that exact missing package.
 - 2026-11-08: Live transport buttons will reuse the fullscreen player's existing circular channel index navigation; VOD keeps seek and episode controls unchanged. This changes only the two touch-panel actions and their labels/icons, not remote key behavior.
 - 2026-11-09: The live player's previous transport button and media-previous key will reuse the existing `Recall` path; next remains circular channel navigation and VOD controls remain unchanged.
+- 2026-11-09: Keep Last/Recall as `Recall`, but map media-previous to its own action so live recalls the prior channel while VOD still opens the previous episode.

@@ -161,7 +161,7 @@ fun PlayerScreen(
                 Action.PlayPause -> player.togglePause()
                 Action.Play -> player.setPaused(false)
                 Action.Pause -> player.setPaused(true)
-                Action.Recall -> jump(Zap.Previous)
+                Action.Recall, Action.MediaPrevious -> jump(Zap.Previous)
                 Action.Left, Action.Right -> latestSide(a) // channel list / recent channels (LIVE-019/020)
             }
         }

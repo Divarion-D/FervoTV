@@ -229,7 +229,7 @@ fun VodPlayer(
             Action.Play -> { player.setPaused(false); panel = true }
             Action.Pause -> { player.setPaused(true); panel = true }
             Action.ChannelUp -> next?.let(::goTo)
-            Action.ChannelDown -> previous?.let(::goTo)
+            Action.ChannelDown, Action.MediaPrevious -> previous?.let(::goTo)
             Action.Recall -> {}
         }
         true

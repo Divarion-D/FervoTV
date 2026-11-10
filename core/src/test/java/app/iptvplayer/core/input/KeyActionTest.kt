@@ -21,7 +21,8 @@ class KeyActionTest {
         assertEquals(Action.Up, keyAction(KEYCODE_DPAD_UP))
         assertNull(keyAction(KEYCODE_BACK)) // Back goes through BackHandler
         assertNull(keyAction(KEYCODE_A))
-        for (k in listOf(KEYCODE_LAST_CHANNEL, KEYCODE_MEDIA_PREVIOUS)) assertEquals(Action.Recall, keyAction(k))
+        assertEquals(Action.Recall, keyAction(KEYCODE_LAST_CHANNEL))
+        assertEquals(Action.MediaPrevious, keyAction(KEYCODE_MEDIA_PREVIOUS))
     }
 
     @Test

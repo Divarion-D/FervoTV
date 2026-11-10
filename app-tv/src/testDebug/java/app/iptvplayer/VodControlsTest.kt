@@ -15,6 +15,7 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.pressKey
 import app.iptvplayer.core.Defaults
+import app.iptvplayer.core.model.Episode
 import app.iptvplayer.core.model.VodItem
 import app.iptvplayer.core.model.VodKind
 import app.iptvplayer.core.player.PlayItem
@@ -40,8 +41,9 @@ class VodControlsTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private val engine = TestEngine()
     private var closed = 0
+    private var openedEpisode: Episode? = null
 
-    private fun startPlayer() {
+    private fun startPlayer(previous: Episode? = null) {
         compose.mainClock.autoAdvance = false
         val session = PlayerSession { engine }
         val film = VodItem(
@@ -52,8 +54,8 @@ class VodControlsTest {
         )
         compose.setContent {
             AppTheme {
-                VodPlayer(session, VodPlay(film), emptyMap(), "Film", null, false, false, null, null,
-                    onSave = { _, _, _ -> }, onEpisode = {}, onClose = { closed++ })
+                VodPlayer(session, VodPlay(film), emptyMap(), "Film", null, false, false, null, previous,
+                    onSave = { _, _, _ -> }, onEpisode = { openedEpisode = it }, onClose = { closed++ })
             }
         }
         compose.mainClock.advanceTimeBy(100)
@@ -83,6 +85,15 @@ class VodControlsTest {
         dispatchKey(KeyEvent.KEYCODE_MEDIA_PLAY)
         assertEquals(false, engine.state.value.paused)
         assertEquals(120_000L, engine.position)
+    }
+
+    @Test
+    fun mediaPreviousOpensPreviousEpisode() {
+        val previous = Episode("previous", "series", 1, 1, null, "Previous", "https://example.invalid/previous.mp4", null, null, null, null, null)
+        startPlayer(previous)
+        compose.mainClock.autoAdvance = true
+        dispatchKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+        assertEquals(previous, openedEpisode)
     }
 
     private fun dispatchKey(code: Int) {
