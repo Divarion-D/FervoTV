@@ -212,6 +212,19 @@ class LiveNavigationTest {
         }
     }
 
+    @Test fun mediaSessionPreviousRecallsChannelAndClearsOnExit() {
+        start(channels = 3)
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.waitUntil(5_000) { engine.previousHandler != null }
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionUp) }
+        compose.waitUntil(5_000) { engine.played.lastOrNull()?.url == "https://example.invalid/2" }
+
+        compose.runOnUiThread { engine.previousHandler?.invoke() }
+        compose.waitUntil(5_000) { engine.played.lastOrNull()?.url == "https://example.invalid/1" }
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.waitUntil(5_000) { engine.previousHandler == null }
+    }
+
     @Test fun searchOpensOnlyOnOkAndBackClearsQueryToTheField() {
         start()
         val hint = compose.activity.getString(R.string.search_channels)
@@ -363,6 +376,8 @@ class LiveNavigationTest {
         override fun setMuted(muted: Boolean) = Unit
         var view: View? = null
         override fun setVideoView(view: View?) { this.view = view }
+        var previousHandler: (() -> Unit)? = null
+        override fun setMediaNavigationHandlers(previous: (() -> Unit)?, next: (() -> Unit)?) { previousHandler = previous }
         var releases = 0
         override fun release() { releases++ }
     }

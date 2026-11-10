@@ -159,3 +159,4 @@ files: [PLAN.md, AGENTS.md, CLAUDE.md, README.md, docs/**]
 - 2026-11-09: Keep Last/Recall as `Recall`, but map media-previous to its own action so live recalls the prior channel while VOD still opens the previous episode.
 - 2026-11-09: Split LIVE-008 ownership between persistence and experience so the component map assigns storage to core and favorite controls to app-tv.
 - 2026-11-10: Defer source/channel identity in recall history to multi-provider aggregation; the current repository exposes one active source, so cross-provider state would be unused today.
+- 2026-11-10: Install the live previous-channel MediaSession handler only for `PlayerScreen` lifetime and clear it on dispose, matching VOD handler ownership.

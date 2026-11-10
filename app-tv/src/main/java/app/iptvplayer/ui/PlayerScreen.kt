@@ -122,10 +122,15 @@ fun PlayerScreen(
         }
     }
 
+    val latestFind by rememberUpdatedState(find)
     fun jump(zap: Zap) {
         scope.launch {
-            find(zap)?.let { index = it; reopen++ }
+            latestFind(zap)?.let { index = it; reopen++ }
         }
+    }
+    DisposableEffect(player) {
+        player.setMediaNavigationHandlers({ jump(Zap.Previous) }, null)
+        onDispose { player.setMediaNavigationHandlers(null, null) }
     }
 
     // Number dialing (LIVE-009): OK switches at once, otherwise the dial does by itself; Back cancels.
