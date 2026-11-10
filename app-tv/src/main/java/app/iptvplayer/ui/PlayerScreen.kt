@@ -169,7 +169,8 @@ fun PlayerScreen(
     }
 
     val focus = remember { FocusRequester() }
-    val shown = item
+    val shownItem = item
+    val shown = shownItem?.channel
     Box(
         Modifier
             .fillMaxSize()
@@ -228,12 +229,12 @@ fun PlayerScreen(
                 modifier = Modifier.padding(top = 8.dp), color = Color.White,
             )
         }
-        if (shown != null && (showInfo || error != null)) {
-            InfoBar(shown.channel, shown.number, error, Modifier.align(if (controls) Alignment.TopStart else Alignment.BottomStart))
+        if (shownItem != null && (showInfo || error != null)) {
+            InfoBar(shownItem.channel, shownItem.number, error, Modifier.align(if (controls) Alignment.TopStart else Alignment.BottomStart))
         }
         if (controls) PlayerControls(
             player,
-            shown?.channel?.let { onFavorite?.let { action -> { action(it) } } },
+            shown?.let { onFavorite?.let { action -> { action(it) } } },
             onChannelStep = { handle(if (it < 0) Action.Down else Action.Up) },
             modifier = Modifier.align(Alignment.BottomCenter),
         )
