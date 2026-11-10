@@ -530,6 +530,10 @@ fun ChannelCard(item: ChannelItem?, selected: Boolean, now: Long, tv: Boolean, m
             if (p != null || selected) Spacer(
                 Modifier.matchParentSize().progressLine(if (selected) 1f else p!!.progress(now), Ext.nowTrack, Ext.now, if (selected) 3.dp else 2.dp)
             )
+            if (item?.favorite == true) Icon(
+                painterResource(R.drawable.ic_favorite_fill), stringResource(R.string.row_favorite), tint = c.primary,
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(20.dp),
+            )
         }
         Column(
             Modifier

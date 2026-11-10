@@ -25,6 +25,10 @@ files: [core/src/main/java/app/iptvplayer/core/db/**, core/src/main/java/app/ipt
   tech: `core/src/main/java/app/iptvplayer/core/db/Db.kt`; `PlaylistStore.kt`; `EpgStore.kt`; `LibraryStore.kt`; `core/schemas/app.iptvplayer.core.db.AppDb/7.json`
 - [x] Preserve favorites, edits, collections, history and resume positions {#persistence-user-state}
   tech: `core/src/main/java/app/iptvplayer/core/db/UserStore.kt`; `LibraryUser.kt`; `core/src/test/java/app/iptvplayer/core/db/UserStoreTest.kt`; `LibraryStoreTest.kt`
+- [x] Keep favorite channels available across source changes {#persistence-live-favorites}
+  by: codex
+  from: roadmap
+  tech: stable channel keys and stored source names resolve the first current-source match without deleting unmatched favorites
 
 ## Navigate live, guide and library content {#experience}
 
@@ -41,6 +45,10 @@ files: [core/src/main/java/app/iptvplayer/core/epg/**, core/src/main/java/app/ip
   by: codex
   from: roadmap
   tech: `ui/LiveManagementScreen.kt`; `PlaylistStore.keys`; stable-key range anchors, profile-backed filters and one management entry for the separate P5 `PROF-006` gate
+- [x] Show and toggle favorite channels across live surfaces {#experience-live-favorites}
+  by: codex
+  from: roadmap
+  tech: live rows, tiles, guide, search and player surfaces expose the favorite toggle and marker; `LiveNavigationTest.kt` covers touch and TV remote paths
 - [x] Keep live preview delayed and reuse its stream in full screen {#experience-live-preview}
   by: codex
   from: roadmap
@@ -151,3 +159,4 @@ files: [PLAN.md, AGENTS.md, CLAUDE.md, README.md, docs/**]
 - 2026-11-09: The LIVE-012 screen does not add a standalone PIN store. PROF-006 and profile ownership remain one P5 security boundary, so a later profile PIN gate can protect this single entry point without migration or duplicate secrets.
 - 2026-11-09: LIVE-012 range selection anchors both ends by stable channel key and occurrence, then resolves current positions at action time. Restoring hidden Live content enters the shared management screen so PROF-006 has one future gate.
 - 2026-11-10: Channel range visibility resolves both stable anchors, reads the current block and writes its user state inside one Room transaction. Profile-key isolation remains part of the P5 profile schema, not this P1 task.
+- 2026-11-09: Split LIVE-008 ownership between persistence and experience so the component map assigns storage to core and favorite controls to app-tv.
