@@ -40,7 +40,7 @@ files: [core/src/main/java/app/iptvplayer/core/epg/**, core/src/main/java/app/ip
 - [x] Manage hidden and renamed live categories and channels {#experience-manage-live-visibility}
   by: codex
   from: roadmap
-  tech: `ui/LiveManagementScreen.kt`; `PlaylistStore.keys`; profile-backed filters, rename and range visibility actions; the separate P5 `PROF-006` gate can protect this entry point
+  tech: `ui/LiveManagementScreen.kt`; `PlaylistStore.keys`; stable-key range anchors, profile-backed filters and one management entry for the separate P5 `PROF-006` gate
 - [x] Keep live preview delayed and reuse its stream in full screen {#experience-live-preview}
   by: codex
   from: roadmap
@@ -149,3 +149,4 @@ files: [PLAN.md, AGENTS.md, CLAUDE.md, README.md, docs/**]
 - 2026-11-08: Live transport buttons will reuse the fullscreen player's existing circular channel index navigation; VOD keeps seek and episode controls unchanged. This changes only the two touch-panel actions and their labels/icons, not remote key behavior.
 - 2026-11-09: LIVE-012 reuses the stable-key user state already preserved across source refreshes. Its management UI is a top-level screen shared by Settings and category menus; no second edit store is introduced.
 - 2026-11-09: The LIVE-012 screen does not add a standalone PIN store. PROF-006 and profile ownership remain one P5 security boundary, so a later profile PIN gate can protect this single entry point without migration or duplicate secrets.
+- 2026-11-09: LIVE-012 range selection anchors both ends by stable channel key and occurrence, then resolves current positions at action time. Restoring hidden Live content enters the shared management screen so PROF-006 has one future gate.

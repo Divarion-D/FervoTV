@@ -30,7 +30,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -71,7 +70,8 @@ fun LiveManagementScreen(repo: Repository, source: Source, initialCategory: Stri
     var category by rememberSaveable { mutableStateOf(initialCategory) }
     var visibilityName by rememberSaveable { mutableStateOf(Visibility.ALL.name) }
     val visibility = Visibility.valueOf(visibilityName)
-    var rangeStart by rememberSaveable(category, visibility) { mutableIntStateOf(-1) }
+    var rangeStartKey by rememberSaveable(category, visibility) { mutableStateOf<String?>(null) }
+    var rangeStartOccurrence by rememberSaveable(category, visibility) { mutableIntStateOf(0) }
     var rename by remember { mutableStateOf<RenameTarget?>(null) }
 
     fun back() {
@@ -103,7 +103,6 @@ fun LiveManagementScreen(repo: Repository, source: Source, initialCategory: Stri
             )
             if (category == null) {
                 val shown = categories.filter { visibility.accepts(it.hidden) }
-                LaunchedEffect(shown) { if (rangeStart > shown.lastIndex) rangeStart = -1 }
                 LazyColumn(
                     Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -114,16 +113,17 @@ fun LiveManagementScreen(repo: Repository, source: Source, initialCategory: Stri
                             title = item.title,
                             subtitle = stringResource(R.string.manage_channel_count, item.count),
                             hidden = item.hidden,
-                            selected = index == rangeStart,
+                            selected = name == rangeStartKey,
                             leading = R.drawable.ic_category,
-                            onSelect = { rangeStart = index },
+                            onSelect = { rangeStartKey = name },
                             onOpen = { category = name },
                             onRename = { rename = RenameTarget.Category(name, item.title) },
                             onVisibility = { long ->
-                                val range = if (long) rangeBetween(rangeStart, index) else index..index
+                                val keys = shown.map { (it.group as ChannelGroup.Category).name }
+                                val range = if (long) rangeBetween(rangeStartKey, keys, index) else index..index
                                 val names = shown.slice(range).map { (it.group as ChannelGroup.Category).name }
                                 scope.launch { repo.setCategoriesHidden(source, names, !item.hidden) }
-                                rangeStart = -1
+                                rangeStartKey = null
                             },
                         )
                     }
@@ -133,7 +133,6 @@ fun LiveManagementScreen(repo: Repository, source: Source, initialCategory: Stri
                     ChannelFilter(source.cacheKey(), ChannelGroup.Category(category!!), visibility = visibility)
                 }
                 val items = remember(filter) { repo.items(filter) }.collectAsLazyPagingItems()
-                LaunchedEffect(filter) { rangeStart = -1 }
                 LazyColumn(
                     Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -142,16 +141,25 @@ fun LiveManagementScreen(repo: Repository, source: Source, initialCategory: Stri
                         val item = items[index]
                         ChannelManagementRow(
                             item = item,
-                            selected = index == rangeStart,
-                            onSelect = { rangeStart = index },
+                            selected = item?.let { it.channel.key == rangeStartKey && it.occurrence == rangeStartOccurrence } == true,
+                            onSelect = {
+                                item?.let {
+                                    rangeStartKey = it.channel.key
+                                    rangeStartOccurrence = it.occurrence
+                                }
+                            },
                             onRename = { item?.let { rename = RenameTarget.Channel(it.channel.key, it.channel.name) } },
                             onVisibility = { long ->
                                 val row = item ?: return@ChannelManagementRow
+                                val startKey = rangeStartKey
+                                val startOccurrence = rangeStartOccurrence
                                 scope.launch {
-                                    val range = if (long) rangeBetween(rangeStart, index) else index..index
+                                    val end = repo.indexOf(filter, row.channel.key, row.occurrence) ?: return@launch
+                                    val start = if (long && startKey != null) repo.indexOf(filter, startKey, startOccurrence) else null
+                                    val range = if (long) rangeBetween(start, end) else end..end
                                     repo.setHidden(repo.channelKeys(filter, range), !row.hidden)
                                 }
-                                rangeStart = -1
+                                rangeStartKey = null
                             },
                         )
                     }
@@ -183,7 +191,11 @@ private sealed class RenameTarget(val key: String, val title: String) {
     class Channel(key: String, title: String) : RenameTarget(key, title)
 }
 
-internal fun rangeBetween(start: Int, end: Int): IntRange = if (start < 0) end..end else minOf(start, end)..maxOf(start, end)
+internal fun rangeBetween(start: Int?, end: Int): IntRange =
+    if (start == null) end..end else minOf(start, end)..maxOf(start, end)
+
+internal fun rangeBetween(startKey: String?, keys: List<String>, end: Int): IntRange =
+    rangeBetween(startKey?.let(keys::indexOf)?.takeIf { it >= 0 }, end)
 
 private fun Visibility.accepts(hidden: Boolean) = when (this) {
     Visibility.ALL -> true

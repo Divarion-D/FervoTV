@@ -192,8 +192,7 @@ fun LiveScreen(
     var query by rememberSaveable { mutableStateOf("") }
     var search by remember { mutableStateOf(query.trim()) } // query after the input delay
     var groupQuery by rememberSaveable { mutableStateOf("") }
-    var showHidden by rememberSaveable { mutableStateOf(false) }
-    val groupsRaw by remember(source, showHidden) { repo.groups(source, showHidden) }.collectAsState(initial = null)
+    val groupsRaw by remember(source) { repo.groups(source) }.collectAsState(initial = null)
     val groupsAll = groupsRaw?.let { remember(it, ctx, conf) { it.named(ctx) } } // UI-022: the service lists named here
     val searchGroups = (groupsAll?.size ?: 0) >= Defaults.CATEGORY_SEARCH_MIN
     val groups = remember(groupsAll, groupQuery, searchGroups) {
@@ -218,7 +217,7 @@ fun LiveScreen(
     }
     // By source key and list, not row ids: the same filter keeps working when a refresh replaces the rows.
     fun filterFor(g: ChannelGroup, s: String = "") = ChannelFilter(
-        source.cacheKey(), g, s, settings.channelSort, if (showHidden) Visibility.ALL else Visibility.VISIBLE,
+        source.cacheKey(), g, s, settings.channelSort, Visibility.VISIBLE,
         guideOnly = guide && !settings.guideEmpty,
     )
     val filter = filterFor(group, search)
@@ -670,8 +669,7 @@ fun LiveScreen(
                             TextDialog(str(R.string.channel_name), ch.name, str(R.string.name_reset_hint), { scope.launch { repo.rename(ch.key, it) } }) { closeDialog() }
                         }
                     },
-                    if (item.hidden) SheetItem(R.drawable.ic_visibility, str(R.string.show)) { scope.launch { repo.setHidden(listOf(ch.key), false) } }
-                    else SheetItem(R.drawable.ic_visibility_off, str(R.string.hide), danger = true) { scope.launch { repo.setHidden(listOf(ch.key), true) } },
+                    SheetItem(R.drawable.ic_visibility_off, str(R.string.hide), danger = true) { scope.launch { repo.setHidden(listOf(ch.key), true) } },
                 ),
             ),
         )
@@ -687,8 +685,7 @@ fun LiveScreen(
                         TextDialog(str(R.string.category_name), gc.title, str(R.string.name_reset_hint), { scope.launch { repo.renameCategory(source, g.name, it) } }) { closeDialog() }
                     }
                 }
-                lines += if (gc.hidden) SheetItem(R.drawable.ic_visibility, str(R.string.category_show)) { scope.launch { repo.setCategoriesHidden(source, listOf(g.name), false) } }
-                else SheetItem(R.drawable.ic_visibility_off, str(R.string.category_hide), danger = true) { scope.launch { repo.setCategoriesHidden(source, listOf(g.name), true) } }
+                lines += SheetItem(R.drawable.ic_visibility_off, str(R.string.category_hide), danger = true) { scope.launch { repo.setCategoriesHidden(source, listOf(g.name), true) } }
                 lines += SheetItem(R.drawable.ic_category, str(R.string.manage_live)) { onManage(g.name) }
                 lines += SheetItem(R.drawable.ic_replay, str(R.string.reset_category)) { resetEdits(g.name, gc.title) }
             }
@@ -708,8 +705,7 @@ fun LiveScreen(
             else -> {}
         }
         lines += SheetItem(R.drawable.ic_new_label, str(R.string.collection_new)) { newCollection(null) }
-        lines += if (showHidden) SheetItem(R.drawable.ic_visibility_off, str(R.string.hide_hidden)) { showHidden = false }
-        else SheetItem(R.drawable.ic_visibility, str(R.string.show_hidden)) { showHidden = true }
+        lines += SheetItem(R.drawable.ic_visibility, str(R.string.show_hidden)) { onManage(null) }
         sheet = SheetSpec(gc.title, null, listOf(null to lines))
     }
 
